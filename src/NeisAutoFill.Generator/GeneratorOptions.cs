@@ -17,5 +17,5 @@ public sealed record GeneratorOptions
     public string NeisRegionCode { get; init; } = "jbe";
 
     /// <summary>자동업데이트용 GitHub 저장소 ("owner/repo"). 비우면 업데이트 확인 안 함.</summary>
-    public string UpdateRepo { get; init; } = "";
+    public string UpdateRepo { get; init; } = "thejurio/NeisAutoFill";
 }
