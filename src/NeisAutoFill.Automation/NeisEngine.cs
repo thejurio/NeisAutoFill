@@ -84,6 +84,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         GradeScale scale,
         bool dryRun,
         IProgress<ProgressInfo> progress,
+        Func<string, Task<bool>>? confirmOrderMode = null,
         CancellationToken ct = default)
     {
         var page = RequirePage();
@@ -99,12 +100,40 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             ?? throw new InvalidOperationException("평가 그리드를 찾지 못했습니다. [조회]를 눌렀는지 확인하세요.");
         int expected = int.Parse(await grid.GetAttributeAsync("aria-rowcount") ?? "1") - 1;
 
+        Log($"엑셀 영역: {string.Join(", ", sheet.Areas.Select(a => $"'{a}'"))}");
         Log($"그리드 {expected}행 / 행 위치 파악 중...");
         var rowMap = await new RowMapBuilder(page, _scroller!).BuildAsync(grid, expected, Log, ct);
         var missing = Enumerable.Range(0, expected).Where(i => !rowMap.ContainsKey(i)).ToList();
         Log($"행 파악 {rowMap.Count}/{expected}" + (missing.Count > 0 ? $" (누락: {string.Join(",", missing)})" : ""));
 
-        var (todo, skipped) = StudentMatcher.Build(rowMap, sheet.Students, scale);
+        // 매칭 모드 결정: 이름 기반이 안전하지 않으면 사용자에게 순서 기반 확인
+        var mode = StudentMatcher.MatchMode.ByName;
+        var problem = StudentMatcher.DetectNameProblem(rowMap, sheet.Students, sheet.Areas);
+        if (problem is not null)
+        {
+            var msg = $"⚠ 영역명으로 매칭할 수 없는 문제가 있습니다.\n\n" +
+                      $"• 문제: {problem}\n\n" +
+                      "이럴 때는 영역명 대신 '순서대로' 입력할 수 있습니다.\n" +
+                      "(엑셀의 영역 순서와 나이스 화면의 영역 순서가 같아야 정확히 들어갑니다)\n\n" +
+                      "순서대로 입력할까요?\n" +
+                      "[예] 순서대로 진행    [아니오] 중단하고 영역명 확인";
+            bool ok = confirmOrderMode is not null && await confirmOrderMode(msg);
+            if (!ok)
+            {
+                Log($"매칭 문제({problem}) — 사용자가 순서 입력을 취소했습니다.");
+                return new RunReport(new List<GradeTask>(),
+                    new List<SkipItem> { new("", "", "", problem + " (순서 입력 취소)") },
+                    new List<SkipItem>(), missing);
+            }
+            mode = StudentMatcher.MatchMode.ByOrder;
+            Log($"⚠ 이름 매칭 문제({problem}) → 순서 기반 입력으로 진행합니다.");
+        }
+
+        var (todo, skipped, actualMode, fatal) =
+            StudentMatcher.Build(rowMap, sheet.Students, scale, sheet.Areas, mode);
+        if (fatal is not null)
+            throw new InvalidOperationException(fatal);
+        Log($"매칭 방식: {(actualMode == StudentMatcher.MatchMode.ByOrder ? "순서 기반" : "이름 기반")} / 입력 대상 {todo.Count}건");
 
         var done = new List<GradeTask>();
         var failed = new List<SkipItem>();

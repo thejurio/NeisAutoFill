@@ -63,7 +63,7 @@
                                 <TextBlock Text="{Binding ConnectionText}" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Ink}"/>
                             </StackPanel>
                         </Border>
-                        <Button Style="{StaticResource GhostButton}" Content="✨ AI 서술문" Command="{Binding OpenGeneratorCommand}"/>
+                        <Button Style="{StaticResource GhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}"/>
                     </StackPanel>
                 </DockPanel>
             </Border>

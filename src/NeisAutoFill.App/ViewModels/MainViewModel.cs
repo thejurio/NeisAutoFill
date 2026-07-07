@@ -369,19 +369,47 @@ public sealed class MainViewModel : ObservableObject
         ProgressValue = 0;
         try
         {
-            var report = await _engine.RunSubjectAsync(sheet, _scales.Active, dryRun, _progress, _cts.Token);
+            Func<string, Task<bool>> confirmOrder = msg =>
+                Application.Current.Dispatcher.InvokeAsync(() =>
+                    MessageBox.Show(msg, "순서 기반 입력 확인", MessageBoxButton.YesNo, MessageBoxImage.Warning)
+                    == MessageBoxResult.Yes).Task;
+
+            var report = await _engine.RunSubjectAsync(sheet, _scales.Active, dryRun, _progress, confirmOrder, _cts.Token);
             Log(new string('=', 50));
             Log($"[{sheet.SubjectName}] {(dryRun ? "검증" : "입력")} 완료: " +
                 $"성공 {report.Done.Count} / 건너뜀 {report.Skipped.Count} / 실패 {report.Failed.Count}");
-            foreach (var s in report.Skipped) Log($"  건너뜀: {s.No}번 {s.Name} {s.Area} ({s.Reason})");
-            foreach (var f in report.Failed) Log($"  실패: {f.No}번 {f.Name} {f.Area} ({f.Reason})");
+            foreach (var s in report.Skipped) Log($"  건너뜀: {s.No}번 {s.Name} '{s.Area}' ({s.Reason})");
+            foreach (var f in report.Failed) Log($"  실패: {f.No}번 {f.Name} '{f.Area}' ({f.Reason})");
             if (report.Missing.Count > 0)
                 Log($"  ⚠ 화면에서 파악 못한 행 {string.Join(",", report.Missing)} — 나이스에서 직접 확인 필요");
             if (!dryRun)
                 Log("※ 저장하지 않았습니다. 나이스에서 값 확인 후 [저장]을 눌러주세요.");
+
+            // 건너뜀·실패·누락이 있으면 팝업으로도 알림 (로그를 못 볼 수 있으므로)
+            int problems = report.Skipped.Count + report.Failed.Count + report.Missing.Count;
+            if (problems > 0)
+            {
+                var lines = new System.Text.StringBuilder();
+                lines.AppendLine($"[{sheet.SubjectName}] {(dryRun ? "검증" : "입력")} 결과");
+                lines.AppendLine($"성공 {report.Done.Count} / 건너뜀 {report.Skipped.Count} / 실패 {report.Failed.Count}");
+                lines.AppendLine();
+                foreach (var f in report.Failed) lines.AppendLine($"✗ 실패 {f.No}번 {f.Name} '{f.Area}' — {f.Reason}");
+                foreach (var s in report.Skipped) lines.AppendLine($"· 건너뜀 {s.No}번 {s.Name} '{s.Area}' — {s.Reason}");
+                if (report.Missing.Count > 0) lines.AppendLine($"⚠ 화면에서 못 읽은 행: {string.Join(",", report.Missing)}");
+                lines.AppendLine();
+                lines.Append("자세한 내용은 아래 로그를 확인하세요.");
+                MessageBox.Show(lines.ToString(),
+                    report.Failed.Count > 0 ? "일부 실패" : "일부 건너뜀",
+                    MessageBoxButton.OK,
+                    report.Failed.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            }
         }
         catch (OperationCanceledException) { Log("⛔ 사용자 중지"); }
-        catch (Exception ex) { Log($"오류: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Log($"오류: {ex.Message}");
+            ShowError($"입력 중 오류가 발생했습니다.\n\n{ex.Message}");   // 로그 + 팝업 둘 다
+        }
     }
 
     public void Cancel() => _cts?.Cancel();

@@ -50,8 +50,33 @@ public sealed class GeneratorViewModel : ObservableObject
         GenerateSelectedCommand = new AsyncRelayCommand(() => GenerateAsync(onlySelected: true));
         UploadCommand = new AsyncRelayCommand(() => UploadAsync(dryRun: false));
         ExportCommand = new RelayCommand(ExportToExcel);
+        DeleteAllCommand = new RelayCommand(() => Delete(onlySelected: false));
+        DeleteSelectedCommand = new RelayCommand(() => Delete(onlySelected: true));
 
         RefreshSubjects();
+    }
+
+    /// <summary>생성된 서술문 삭제 (결과 비우기 + 저장소에서 제거).</summary>
+    private void Delete(bool onlySelected)
+    {
+        var targets = Students.Where(s => (!onlySelected || s.IsSelected) && s.HasValidResult).ToList();
+        if (targets.Count == 0)
+        {
+            MessageBox.Show(
+                onlySelected ? "선택된 학생 중 삭제할 서술문이 없습니다." : "삭제할 서술문이 없습니다.",
+                "안내", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var ok = MessageBox.Show(
+            $"'{SelectedSubject}' {targets.Count}명의 생성된 서술문을 삭제합니다.\n(나이스에 이미 입력된 내용은 지워지지 않습니다)",
+            "삭제 확인", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (ok != MessageBoxResult.Yes) return;
+
+        foreach (var item in targets)
+        {
+            item.Result = "";        // setter 가 저장소에서 제거까지 처리
+            item.UploadState = "";
+        }
     }
 
     public ObservableCollection<string> SubjectNames { get; } = new();
@@ -87,6 +112,8 @@ public sealed class GeneratorViewModel : ObservableObject
     public ICommand GenerateSelectedCommand { get; }
     public ICommand UploadCommand { get; }
     public ICommand ExportCommand { get; }
+    public ICommand DeleteAllCommand { get; }
+    public ICommand DeleteSelectedCommand { get; }
 
     /// <summary>모든 과목의 생성된 서술문을 xlsx 로 저장 (과목별 시트).</summary>
     private void ExportToExcel()

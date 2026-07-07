@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:NeisAutoFill.App.ViewModels"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="AI 교과 서술문 생성기" Icon="app.ico" Height="740" Width="1000" MinWidth="780" MinHeight="520"
+        Title="교과학습발달상황 생성" Icon="app.ico" Height="740" Width="1000" MinWidth="780" MinHeight="520"
         WindowStyle="None" ResizeMode="CanResize" WindowStartupLocation="CenterOwner"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" FontFamily="{StaticResource UiFont}">
     <shell:WindowChrome.WindowChrome>
@@ -24,7 +24,7 @@
             <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
                 <DockPanel LastChildFill="False">
                     <Image Source="app.ico" Width="20" Height="20" Margin="12,0,8,0" DockPanel.Dock="Left" VerticalAlignment="Center"/>
-                    <TextBlock DockPanel.Dock="Left" Text="AI 교과 서술문 생성기" VerticalAlignment="Center"
+                    <TextBlock DockPanel.Dock="Left" Text="교과학습발달상황 생성" VerticalAlignment="Center"
                                FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
                     <Button DockPanel.Dock="Right" Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="Close_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
                     <Button DockPanel.Dock="Right" Style="{StaticResource CaptionButton}" Content="&#xE922;" Click="Max_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
@@ -39,7 +39,11 @@
                     <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding SubjectNames}" SelectedItem="{Binding SelectedSubject}" MinWidth="110" Margin="0,0,12,0"/>
                     <CheckBox Content="전체선택" IsChecked="{Binding SelectAll}" VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12"/>
                     <Button Style="{StaticResource PrimaryButton}" Content="🚀 전체 생성" Command="{Binding GenerateAllCommand}" Margin="0,0,4,0"/>
-                    <Button Style="{StaticResource AccentGhostButton}" Content="☑ 선택만 생성" Command="{Binding GenerateSelectedCommand}" Margin="0,0,14,0"/>
+                    <Button Style="{StaticResource AccentGhostButton}" Content="☑ 선택만 생성" Command="{Binding GenerateSelectedCommand}" Margin="0,0,4,0"/>
+                    <Button Style="{StaticResource GhostButton}" Content="🗑 전체 삭제" Command="{Binding DeleteAllCommand}" Margin="0,0,4,0"
+                            ToolTip="현재 과목의 생성된 서술문을 모두 지웁니다"/>
+                    <Button Style="{StaticResource GhostButton}" Content="🗑 선택 삭제" Command="{Binding DeleteSelectedCommand}" Margin="0,0,14,0"
+                            ToolTip="체크한 학생의 서술문만 지웁니다"/>
                     <Button Style="{StaticResource PrimaryButton}" Content="▶ 나이스에 입력" Command="{Binding UploadCommand}" Margin="0,0,4,0"/>
                     <Button Style="{StaticResource GhostButton}" Content="💾 엑셀 저장" Command="{Binding ExportCommand}"
                             ToolTip="모든 과목의 생성된 서술문을 과목별 시트로 저장합니다"/>

@@ -41,6 +41,7 @@ public sealed class RowMapBuilder(IPage page, GridScroller scroller)
         CancellationToken ct)
     {
         var map = new Dictionary<int, RowMeta>();
+        var rawArea = new Dictionary<int, string>();   // 진단: 영역 파싱 실패 행의 원본 라벨
 
         async Task ScanAsync()
         {
@@ -50,6 +51,7 @@ public sealed class RowMapBuilder(IPage page, GridScroller scroller)
                 if (!int.TryParse(row[0], out var idx) || map.ContainsKey(idx)) continue;
                 var meta = Parse(row[1], row[2], row[3]);
                 if (meta.Area is not null) map[idx] = meta;   // 영역 파싱된 행만 (오버레이 배제)
+                else if (!string.IsNullOrWhiteSpace(row[3])) rawArea[idx] = row[3];
             }
         }
 
@@ -90,6 +92,17 @@ public sealed class RowMapBuilder(IPage page, GridScroller scroller)
         }
 
         if (vscroll is { } vend) { await scroller.ScrollProxyAsync(vend.bar, 0); await Task.Delay(Timings.AfterScroll, ct); }
+
+        // 진단: 화면 행 지도 전체 (rowindex → 번호/성명/영역). 엑셀 영역 순서와 비교용.
+        foreach (var idx in map.Keys.OrderBy(k => k))
+        {
+            var m = map[idx];
+            log($"    행{idx}: {m.No}번 {m.Name} 영역='{m.Area}'");
+        }
+        // 영역 파싱 실패 행(오버레이 아님)의 원본 라벨 — 이름 있는데 영역만 못 읽은 경우
+        foreach (var idx in rawArea.Keys.OrderBy(k => k))
+            log($"    ⚠ 행{idx} 영역 파싱 실패 원본='{rawArea[idx]}'");
+
         return map;
     }
 

@@ -24,11 +24,15 @@ public interface INeisEngine
     Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default);
 
     /// <summary>한 과목 전체 실행 (§4.1). 저장은 하지 않는다.</summary>
+    /// <param name="confirmOrderMode">
+    /// 이름 매칭이 불가해 순서 기반으로 넘어가야 할 때 사용자 확인 콜백 (메시지 → 진행 여부).
+    /// </param>
     Task<RunReport> RunSubjectAsync(
         SubjectSheet sheet,
         GradeScale scale,
         bool dryRun,
         IProgress<ProgressInfo> progress,
+        Func<string, Task<bool>>? confirmOrderMode = null,
         CancellationToken ct = default);
 
     /// <summary>현재 화면 구조 진단 리포트 (Phase 8 셀렉터 실측용, 읽기 전용).</summary>
