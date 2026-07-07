@@ -22,3 +22,5 @@ test_install/
 # 아이콘 중간 산출물 (svg·ico 만 커밋)
 assets/png/
 assets/DrawIcon.cs
+assets/mockups/
+assets/ref/

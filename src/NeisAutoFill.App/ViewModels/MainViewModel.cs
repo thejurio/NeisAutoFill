@@ -45,7 +45,6 @@ public sealed class MainViewModel : ObservableObject
         _progress = new Progress<ProgressInfo>(OnProgress);
 
         LaunchEdgeCommand = new RelayCommand(LaunchEdge);
-        AttachCommand = new AsyncRelayCommand(AttachAsync);
         OpenExcelCommand = new RelayCommand(OpenExcel);
         OpenGeneratorCommand = new RelayCommand(OpenGenerator);
         OpenScaleEditorCommand = new RelayCommand(OpenScaleEditor);
@@ -54,6 +53,46 @@ public sealed class MainViewModel : ObservableObject
         SaveStep2TemplateCommand = new RelayCommand(SaveStep2Template);
         OpenDataPrepCommand = new RelayCommand(() =>
             new DataPrepWindow(this) { Owner = Application.Current.MainWindow }.ShowDialog());
+
+        _ = AutoConnectLoopAsync();   // 앱 시작부터 자동 연결·재연결 (이미 열린 브라우저도 자동 포착)
+    }
+
+    /// <summary>
+    /// 백그라운드 자동 연결 루프. 안 붙어 있으면 조용히 attach 시도(이미 열린 attach 가능 브라우저 자동 포착),
+    /// 붙어 있으면 생존 확인해 끊기면 재연결. 사용자가 [② 연결] 을 따로 누를 필요가 없다.
+    /// </summary>
+    private async Task AutoConnectLoopAsync()
+    {
+        while (true)
+        {
+            try
+            {
+                if (!_engine.Connected)
+                {
+                    try
+                    {
+                        await _engine.AttachAsync().ConfigureAwait(false);
+                        Ui(() => { SetConnected(true); Log("브라우저 자동 연결됨."); });
+                    }
+                    catch { /* 아직 attach 가능한 브라우저 없음 — 조용히 재시도 */ }
+                }
+                else if (!await _engine.IsAliveAsync().ConfigureAwait(false))
+                {
+                    Ui(() => { SetConnected(false); Log("브라우저 연결이 끊어졌습니다. 재연결을 시도합니다."); });
+                }
+            }
+            catch { /* 루프는 어떤 경우에도 죽지 않는다 */ }
+
+            await Task.Delay(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+        }
+    }
+
+    private static void Ui(Action a) => Application.Current?.Dispatcher.Invoke(a);
+
+    private void SetConnected(bool on)
+    {
+        ConnectionText = on ? "연결됨" : "미연결";
+        ConnectionBrush = new SolidColorBrush(on ? Color.FromRgb(0x22, 0xC5, 0x5E) : Color.FromRgb(0xEF, 0x44, 0x44));
     }
 
     public ICommand OpenDataPrepCommand { get; }
@@ -138,6 +177,10 @@ public sealed class MainViewModel : ObservableObject
     public string ActiveScaleSummary =>
         string.Join("/", _scales.Active.Levels.Select(l => l.Label));
 
+    /// <summary>성적 표 드롭다운 편집용 등급 라벨 (빈칸 선택 허용).</summary>
+    public IReadOnlyList<string> GradeLabels =>
+        new[] { "" }.Concat(_scales.Active.Levels.Select(l => l.Label)).ToList();
+
     // ── 지역 선택 (시도 교육청 나이스 주소) ──
     public IReadOnlyList<NeisRegion> Regions => NeisRegions.All;
 
@@ -172,10 +215,13 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private string _connectionText = "● 미연결";
+    public string VersionText => "v" + (System.Reflection.Assembly.GetExecutingAssembly()
+        .GetName().Version?.ToString(3) ?? "1.0");
+
+    private string _connectionText = "미연결";
     public string ConnectionText { get => _connectionText; set => SetProperty(ref _connectionText, value); }
 
-    private Brush _connectionBrush = Brushes.Red;
+    private Brush _connectionBrush = new SolidColorBrush(Color.FromRgb(0xEF, 0x44, 0x44));
     public Brush ConnectionBrush { get => _connectionBrush; set => SetProperty(ref _connectionBrush, value); }
 
     private string _excelName = "성적파일 없음";
@@ -192,18 +238,25 @@ public sealed class MainViewModel : ObservableObject
     public string LogText { get => _logText; set => SetProperty(ref _logText, value); }
 
     public ICommand LaunchEdgeCommand { get; }
-    public ICommand AttachCommand { get; }
     public ICommand OpenExcelCommand { get; }
     public ICommand OpenGeneratorCommand { get; }
 
     private void OpenGenerator()
     {
-        _generatorVm ??= new GeneratorViewModel(
-            () => Subjects.Select(s => s.Sheet).ToList(),
-            () => _plans,
-            _scales, _generatorSettings, _narratives, _engine, Log);
-        _generatorVm.RefreshSubjects();   // 메인에서 로드된 성적·평가계획을 자동 반영
-        new GeneratorWindow(_generatorVm) { Owner = Application.Current.MainWindow }.Show();
+        try
+        {
+            _generatorVm ??= new GeneratorViewModel(
+                () => Subjects.Select(s => s.Sheet).ToList(),
+                () => _plans,
+                _scales, _generatorSettings, _narratives, _engine, Log);
+            _generatorVm.RefreshSubjects();   // 메인에서 로드된 성적·평가계획을 자동 반영
+            new GeneratorWindow(_generatorVm) { Owner = Application.Current.MainWindow }.Show();
+        }
+        catch (Exception ex)
+        {
+            Log($"생성기 열기 오류: {ex.Message}");
+            ShowError(ex.ToString());
+        }
     }
 
     // 화면 진단(InspectDomAsync)·dry-run 은 UI 에서 제거됨.
@@ -220,26 +273,9 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             _engine.LaunchEdge();
-            Log("Edge 실행됨. 로그인 후 [교과별 평가]에서 과목을 조회하세요.");
+            Log("Edge 실행됨. 로그인 후 [교과별 평가]에서 과목을 조회하세요. (연결은 자동으로 됩니다)");
         }
         catch (Exception ex) { ShowError(ex.Message); }
-    }
-
-    private async Task AttachAsync()
-    {
-        try
-        {
-            await _engine.AttachAsync();
-            ConnectionText = "● 연결됨";
-            ConnectionBrush = Brushes.Green;
-            Log("브라우저 연결 성공.");
-        }
-        catch (Exception ex)
-        {
-            ConnectionText = "● 미연결";
-            ConnectionBrush = Brushes.Red;
-            Log($"연결 실패: {ex.Message}");
-        }
     }
 
     private void OpenExcel()
@@ -259,8 +295,11 @@ public sealed class MainViewModel : ObservableObject
         LoadGrades(path);
     }
 
+    private string? _gradeFilePath;   // 편집 저장 대상
+
     private void LoadGrades(string path)
     {
+        if (!ConfirmSaveIfDirty()) return;   // 기존 편집 보호
         try
         {
             var sheets = WorkbookLoader.Load(path);
@@ -269,16 +308,51 @@ public sealed class MainViewModel : ObservableObject
             Subjects.Clear();
             foreach (var s in sheets) Subjects.Add(new SubjectViewModel(this, s));
             ExcelName = Path.GetFileName(path);
+            _gradeFilePath = path;
             Log($"성적파일 로드: {ExcelName} ({string.Join(", ", sheets.Select(s => s.SubjectName))})");
         }
         catch (Exception ex) { ShowError(ex.Message); }
+    }
+
+    /// <summary>수정된 성적이 있으면 저장 여부를 묻는다. true=계속 진행, false=취소.</summary>
+    public bool ConfirmSaveIfDirty()
+    {
+        if (!Subjects.Any(s => s.IsDirty)) return true;
+
+        var r = MessageBox.Show(
+            "수정한 성적이 있습니다. 엑셀 파일에 저장할까요?",
+            "저장 확인", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (r == MessageBoxResult.Cancel) return false;
+        if (r == MessageBoxResult.Yes) SaveGrades();
+        else foreach (var s in Subjects) s.MarkSaved();   // 저장 안 함 → dirty 해제
+        return true;
+    }
+
+    private void SaveGrades()
+    {
+        try
+        {
+            var path = _gradeFilePath;
+            if (path is null)
+            {
+                var dlg = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = "성적.xlsx" };
+                if (dlg.ShowDialog() != true) return;
+                path = dlg.FileName;
+                _gradeFilePath = path;
+                ExcelName = Path.GetFileName(path);
+            }
+            GradeWorkbookWriter.Write(path, Subjects.Select(s => s.Sheet).ToList());
+            foreach (var s in Subjects) s.MarkSaved();
+            Log($"성적 저장: {Path.GetFileName(path)}");
+        }
+        catch (Exception ex) { ShowError($"저장 실패: {ex.Message}"); }
     }
 
     public async Task RunSubjectAsync(SubjectSheet sheet, bool dryRun)
     {
         if (!_engine.Connected)
         {
-            ShowError("② 브라우저 연결을 먼저 해주세요.");
+            ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속]으로 브라우저를 열고 로그인·조회하면 자동으로 연결됩니다.");
             return;
         }
         if (!dryRun)

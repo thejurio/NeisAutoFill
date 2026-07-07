@@ -17,6 +17,9 @@ public interface INeisEngine
     /// <summary>실행된 Edge 에 CDP attach + neis.go.kr 탭 선택.</summary>
     Task<bool> AttachAsync(CancellationToken ct = default);
 
+    /// <summary>연결 생존 확인 — 죽었으면 내부 상태를 비우고 false 반환.</summary>
+    Task<bool> IsAliveAsync();
+
     /// <summary>현재 화면의 교과(과목)명 (§3.2). 없으면 null.</summary>
     Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default);
 

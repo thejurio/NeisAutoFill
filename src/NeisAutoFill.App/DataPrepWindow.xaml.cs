@@ -11,4 +11,6 @@ public partial class DataPrepWindow : Window
         InitializeComponent();
         DataContext = vm;
     }
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 }

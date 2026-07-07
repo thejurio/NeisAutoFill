@@ -43,6 +43,26 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         throw new InvalidOperationException("neis.go.kr 탭을 찾지 못했습니다. NEIS에 접속해 주세요.");
     }
 
+    /// <summary>연결이 살아있는지 확인. 죽었으면 상태를 비우고 false. (자동 재연결 루프용)</summary>
+    public async Task<bool> IsAliveAsync()
+    {
+        if (_page is null) return false;
+        try
+        {
+            _ = await _page.TitleAsync();          // 페이지 응답 확인
+            if (_page.IsClosed) throw new InvalidOperationException("page closed");
+            if (!_page.Url.Contains("neis.go.kr")) return true;   // 다른 탭으로 이동해도 연결 유지
+            return true;
+        }
+        catch
+        {
+            _page = null; _scroller = null; _combo = null;
+            try { if (_browser is not null) await _browser.CloseAsync(); } catch { }
+            _browser = null;
+            return false;
+        }
+    }
+
     public async Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default)
     {
         var page = RequirePage();

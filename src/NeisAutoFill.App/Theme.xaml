@@ -1,0 +1,255 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:app="clr-namespace:NeisAutoFill.App">
+
+    <!-- 등급 배지 색 컨버터 -->
+    <app:GradeBadgeConverter x:Key="BadgeBg" Target="Background"/>
+    <app:GradeBadgeConverter x:Key="BadgeFg" Target="Foreground"/>
+
+    <!-- ==== NEIS 팔레트 (실측 #3175FF) ==== -->
+    <Color x:Key="NeisColor">#3175FF</Color>
+    <SolidColorBrush x:Key="Neis" Color="#3175FF"/>
+    <SolidColorBrush x:Key="NeisDark" Color="#1F5BE0"/>
+    <SolidColorBrush x:Key="NeisSoft" Color="#EAF1FF"/>
+    <SolidColorBrush x:Key="Ink" Color="#1E293B"/>
+    <SolidColorBrush x:Key="Sub" Color="#64748B"/>
+    <SolidColorBrush x:Key="Line" Color="#E2E8F0"/>
+    <SolidColorBrush x:Key="Panel" Color="#F1F5F9"/>
+    <SolidColorBrush x:Key="Panel2" Color="#F8FAFC"/>
+    <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
+
+    <FontFamily x:Key="UiFont">Malgun Gothic</FontFamily>
+
+    <!-- 전역 기본 폰트 -->
+    <Style TargetType="Control" x:Key="BaseControl">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+    </Style>
+
+    <!-- ==== 주요 버튼 (파랑) ==== -->
+    <Style x:Key="PrimaryButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Background" Value="{StaticResource Neis}"/>
+        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="7"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource NeisDark}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==== 보조 버튼 (아웃라인) ==== -->
+    <Style x:Key="GhostButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontWeight" Value="Medium"/>
+        <Setter Property="Foreground" Value="#475569"/>
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="7"
+                            BorderBrush="{StaticResource Line}" BorderThickness="1"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource Panel}"/>
+                            <Setter TargetName="b" Property="BorderBrush" Value="#cbd5e1"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 강조 아웃라인(파란 글자) -->
+    <Style x:Key="AccentGhostButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+        <Setter Property="Foreground" Value="{StaticResource Neis}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- 타이틀바 창 제어 버튼 -->
+    <Style x:Key="CaptionButton" TargetType="Button">
+        <Setter Property="Width" Value="44"/>
+        <Setter Property="Height" Value="40"/>
+        <Setter Property="Foreground" Value="#94A3B8"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource Panel}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="CloseButton" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="White"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ==== 콤보박스 (심플) ==== -->
+    <Style x:Key="Combo" TargetType="ComboBox">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="Padding" Value="8,0"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+
+    <!-- ==== 성적표 편집용 콤보 (둥근 모서리, 얇은 라인) ==== -->
+    <Style x:Key="GradeEditCombo" TargetType="ComboBox">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+        <Setter Property="Margin" Value="4,3"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <Border x:Name="bd" Background="White" CornerRadius="6"
+                                BorderBrush="{StaticResource Neis}" BorderThickness="1.4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="22"/>
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Grid.Column="0" Margin="9,0,0,0" VerticalAlignment="Center"
+                                                  Content="{TemplateBinding SelectionBoxItem}"/>
+                                <Path Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Data="M0,0 L4,4 L8,0 Z" Fill="{StaticResource Sub}"/>
+                            </Grid>
+                        </Border>
+                        <ToggleButton Opacity="0" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"/>
+                        <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
+                               AllowsTransparency="True" PopupAnimation="Fade" Focusable="False">
+                            <Border Background="White" CornerRadius="8" BorderBrush="{StaticResource Line}" BorderThickness="1"
+                                    Margin="0,3,0,0" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.18" Color="#0F172A"/>
+                                </Border.Effect>
+                                <StackPanel IsItemsHost="True" Margin="4"/>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource NeisDark}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="ComboBoxItem">
+                    <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+                    <Setter Property="FontSize" Value="12"/>
+                    <Setter Property="Padding" Value="9,6"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ComboBoxItem">
+                                <Border x:Name="ib" Background="Transparent" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="ib" Property="Background" Value="{StaticResource NeisSoft}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==== 탭 (밑줄형) ==== -->
+    <Style x:Key="UnderlineTab" TargetType="TabItem">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="Foreground" Value="{StaticResource Sub}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border x:Name="b" BorderThickness="0,0,0,2" BorderBrush="Transparent" Padding="16,9">
+                        <ContentPresenter ContentSource="Header"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Neis}"/>
+                            <Setter Property="Foreground" Value="{StaticResource Neis}"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ==== DataGrid ==== -->
+    <Style x:Key="CleanGrid" TargetType="DataGrid">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="RowBackground" Value="White"/>
+        <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+        <Setter Property="HorizontalGridLinesBrush" Value="#EEF2F7"/>
+        <Setter Property="HeadersVisibility" Value="Column"/>
+        <Setter Property="RowHeight" Value="34"/>
+        <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+    </Style>
+    <Style x:Key="CleanGridHeader" TargetType="DataGridColumnHeader">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="#475569"/>
+        <Setter Property="Background" Value="{StaticResource Panel}"/>
+        <Setter Property="Padding" Value="10,8"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    </Style>
+
+</ResourceDictionary>

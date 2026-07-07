@@ -228,8 +228,8 @@ public sealed class GeneratorViewModel : ObservableObject
         if (SelectedSubject is null) return;
         if (!_engine.Connected)
         {
-            MessageBox.Show("② 브라우저 연결을 먼저 해주세요.", "연결 필요",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("나이스에 아직 연결되지 않았습니다. 메인 화면에서 [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.",
+                "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 

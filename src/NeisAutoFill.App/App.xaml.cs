@@ -16,6 +16,15 @@ public partial class App : Application
         base.OnStartup(e);
         AppPaths.EnsureRoot();
 
+        DispatcherUnhandledException += (_, args) =>
+        {
+            try { System.IO.File.WriteAllText(
+                System.IO.Path.Combine(AppPaths.Root, "crash.txt"), args.Exception.ToString()); }
+            catch { }
+            MessageBox.Show(args.Exception.Message, "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            args.Handled = true;
+        };
+
         var services = new ServiceCollection();
         services.AddSingleton(new EngineOptions());
         services.AddSingleton<INeisEngine, NeisEngine>();
