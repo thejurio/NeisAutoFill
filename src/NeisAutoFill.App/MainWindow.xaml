@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:NeisAutoFill.App.ViewModels"
         Title="NEIS 교과평가 자동입력기" Height="740" Width="1000" MinWidth="820" MinHeight="560"
-        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
+        Icon="app.ico" AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver">
     <Grid Margin="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>

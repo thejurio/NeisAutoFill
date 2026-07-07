@@ -18,3 +18,7 @@ NEIS_자동입력기_개발노트.md
 # 로컬 도구 설정
 .claude/
 test_install/
+
+# 아이콘 중간 산출물 (svg·ico 만 커밋)
+assets/png/
+assets/DrawIcon.cs
