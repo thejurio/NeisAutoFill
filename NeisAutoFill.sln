@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{22B7919F-207B-466D-A243-31F349DBBF00}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NeisAutoFill.Core", "src\NeisAutoFill.Core\NeisAutoFill.Core.csproj", "{B4FD44F8-2CB0-4C45-83E7-34869BD8F0D3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NeisAutoFill.Excel", "src\NeisAutoFill.Excel\NeisAutoFill.Excel.csproj", "{72D3E4DB-83A7-46D9-B570-11D297B3C73A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NeisAutoFill.Automation", "src\NeisAutoFill.Automation\NeisAutoFill.Automation.csproj", "{A657A9AC-3FF4-4CE4-8533-6B947DF9A5EC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NeisAutoFill.Generator", "src\NeisAutoFill.Generator\NeisAutoFill.Generator.csproj", "{3C506D6D-392B-49EE-8071-E764BE0925CA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NeisAutoFill.App", "src\NeisAutoFill.App\NeisAutoFill.App.csproj", "{9DD0027F-3CC3-4483-98EB-D774ECFD66E3}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{FFCA1181-BAC9-4FA7-8BB7-7914E2509947}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NeisAutoFill.Tests", "tests\NeisAutoFill.Tests\NeisAutoFill.Tests.csproj", "{D05343EE-132A-498A-AE67-68CB38E9BA40}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B4FD44F8-2CB0-4C45-83E7-34869BD8F0D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4FD44F8-2CB0-4C45-83E7-34869BD8F0D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4FD44F8-2CB0-4C45-83E7-34869BD8F0D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4FD44F8-2CB0-4C45-83E7-34869BD8F0D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{72D3E4DB-83A7-46D9-B570-11D297B3C73A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{72D3E4DB-83A7-46D9-B570-11D297B3C73A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{72D3E4DB-83A7-46D9-B570-11D297B3C73A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{72D3E4DB-83A7-46D9-B570-11D297B3C73A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A657A9AC-3FF4-4CE4-8533-6B947DF9A5EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A657A9AC-3FF4-4CE4-8533-6B947DF9A5EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A657A9AC-3FF4-4CE4-8533-6B947DF9A5EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A657A9AC-3FF4-4CE4-8533-6B947DF9A5EC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3C506D6D-392B-49EE-8071-E764BE0925CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3C506D6D-392B-49EE-8071-E764BE0925CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3C506D6D-392B-49EE-8071-E764BE0925CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3C506D6D-392B-49EE-8071-E764BE0925CA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9DD0027F-3CC3-4483-98EB-D774ECFD66E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9DD0027F-3CC3-4483-98EB-D774ECFD66E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9DD0027F-3CC3-4483-98EB-D774ECFD66E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9DD0027F-3CC3-4483-98EB-D774ECFD66E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D05343EE-132A-498A-AE67-68CB38E9BA40}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D05343EE-132A-498A-AE67-68CB38E9BA40}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D05343EE-132A-498A-AE67-68CB38E9BA40}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D05343EE-132A-498A-AE67-68CB38E9BA40}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{B4FD44F8-2CB0-4C45-83E7-34869BD8F0D3} = {22B7919F-207B-466D-A243-31F349DBBF00}
+		{72D3E4DB-83A7-46D9-B570-11D297B3C73A} = {22B7919F-207B-466D-A243-31F349DBBF00}
+		{A657A9AC-3FF4-4CE4-8533-6B947DF9A5EC} = {22B7919F-207B-466D-A243-31F349DBBF00}
+		{3C506D6D-392B-49EE-8071-E764BE0925CA} = {22B7919F-207B-466D-A243-31F349DBBF00}
+		{9DD0027F-3CC3-4483-98EB-D774ECFD66E3} = {22B7919F-207B-466D-A243-31F349DBBF00}
+		{D05343EE-132A-498A-AE67-68CB38E9BA40} = {FFCA1181-BAC9-4FA7-8BB7-7914E2509947}
+	EndGlobalSection
+EndGlobal

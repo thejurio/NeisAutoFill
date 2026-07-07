@@ -1,0 +1,19 @@
+# 빌드 산출물
+bin/
+obj/
+publish/
+*.user
+
+# 로컬 전용 (공개 저장소 제외 — GAS 원본/배포주소/레거시 프로토타입)
+code.gs
+Index.html
+주소.txt
+t2.py
+NEIS_자동입력기_개발노트.md
+
+# 데이터 파일 (실수 방지)
+*.xlsx
+*.xlsm
+
+# 로컬 도구 설정
+.claude/

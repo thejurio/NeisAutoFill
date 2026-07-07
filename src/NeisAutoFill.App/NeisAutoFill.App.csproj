@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\NeisAutoFill.Core\NeisAutoFill.Core.csproj" />
+    <ProjectReference Include="..\NeisAutoFill.Excel\NeisAutoFill.Excel.csproj" />
+    <ProjectReference Include="..\NeisAutoFill.Automation\NeisAutoFill.Automation.csproj" />
+    <ProjectReference Include="..\NeisAutoFill.Generator\NeisAutoFill.Generator.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- 자동업데이트 버전 비교 기준 — 릴리스 때 올릴 것 (GitHub 릴리스 태그 v1.0.0 과 일치) -->
+    <Version>1.0.0</Version>
+    <AssemblyTitle>NEIS 교과평가 자동입력기</AssemblyTitle>
+  </PropertyGroup>
+
+</Project>
