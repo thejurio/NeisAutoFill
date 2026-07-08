@@ -35,11 +35,16 @@ public partial class App : Application
         services.AddSingleton<MainWindow>();
 
         services.AddSingleton<UpdateService>();
+        services.AddSingleton<UsageLogger>();
 
         var provider = services.BuildServiceProvider();
         provider.GetRequiredService<MainWindow>().Show();
 
         // 자동업데이트 확인 (백그라운드 — 설정에 UpdateRepo 가 있을 때만 동작)
         _ = provider.GetRequiredService<UpdateService>().CheckAndPromptAsync();
+
+        // 프로그램 시작을 GAS RequestLog 시트에 기록 (백그라운드)
+        var version = UpdateService.CurrentVersion.ToString(3);
+        _ = provider.GetRequiredService<UsageLogger>().LogStartupAsync(version);
     }
 }
