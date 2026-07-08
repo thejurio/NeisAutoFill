@@ -81,8 +81,8 @@
             </Border>
 
             <!-- ===== 과목 탭 + 성적표 ===== -->
-            <TabControl Grid.Row="3" ItemsSource="{Binding Subjects}" BorderThickness="0" Background="White"
-                        Padding="0" Margin="0">
+            <TabControl Grid.Row="3" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
+                        BorderThickness="0" Background="White" Padding="0" Margin="0">
                 <TabControl.ItemContainerStyle>
                     <Style TargetType="TabItem" BasedOn="{StaticResource UnderlineTab}"/>
                 </TabControl.ItemContainerStyle>

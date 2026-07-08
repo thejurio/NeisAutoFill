@@ -173,6 +173,13 @@ public sealed class MainViewModel : ObservableObject
 
     public ObservableCollection<SubjectViewModel> Subjects { get; } = new();
 
+    private SubjectViewModel? _selectedSubject;
+    public SubjectViewModel? SelectedSubject
+    {
+        get => _selectedSubject;
+        set => SetProperty(ref _selectedSubject, value);
+    }
+
     /// <summary>현재 활성 척도 요약 (예: "잘함/보통/노력요함").</summary>
     public string ActiveScaleSummary =>
         string.Join("/", _scales.Active.Levels.Select(l => l.Label));
@@ -307,6 +314,7 @@ public sealed class MainViewModel : ObservableObject
 
             Subjects.Clear();
             foreach (var s in sheets) Subjects.Add(new SubjectViewModel(this, s));
+            SelectedSubject = Subjects.FirstOrDefault();   // 첫 과목 탭 자동 선택
             ExcelName = Path.GetFileName(path);
             _gradeFilePath = path;
             Log($"성적파일 로드: {ExcelName} ({string.Join(", ", sheets.Select(s => s.SubjectName))})");
