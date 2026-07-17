@@ -36,20 +36,23 @@ public static partial class NeisSelectors
         $"div.cl-grid-row[data-rowindex='{rowIndex}'] " +
         "div[role='gridcell'][data-cellindex='6'] [role='combobox']";
 
-    // ── Phase 5.5 전과목 자동 업로드 (★ 잠정 — 실기기 [🔎 진단] 덤프로 확정할 것) ──
-    // CLX 버튼은 div[role='button'] + aria-label 패턴. 엔진은 접근성 이름으로 탐색한다.
+    // ── Phase 5.5 전과목 자동 업로드 (✔ 2026-07-17 실기기 진단 덤프로 확정) ──
+    // 실측: [조회]=div.cl-button 'btn-i-search btn-primary', [저장]=div.cl-button 'btn-primary'
+    //       (변경사항 없으면 cl-disabled), 저장 확인 대화상자 버튼 = [확인]/[취소]
     public const string AnyButton = "[role='button'], button";
     /// <summary>[조회]/[저장] 버튼의 접근성 이름 (aria-label 또는 표시 텍스트에 포함).</summary>
     public const string QueryButtonName = "조회";
     public const string SaveButtonName = "저장";
-    /// <summary>저장 확인·완료 대화상자 안의 버튼 (잠정 — CLX 다이얼로그 컨테이너 후보들).</summary>
+    /// <summary>저장 확인·완료 대화상자 안의 버튼.</summary>
     public const string DialogButton =
         ".cl-dialog [role='button'], .cl-dialog button, " +
         "[role='dialog'] [role='button'], [role='dialog'] button, " +
         ".cl-alert [role='button'], .cl-alert button, " +
         ".cl-messagebox [role='button'], .cl-messagebox button";
-    /// <summary>대화상자 안 긍정 버튼 이름 후보.</summary>
+    /// <summary>대화상자 안 긍정 버튼 이름 후보 (실측: '확인').</summary>
     public static readonly string[] DialogYesNames = { "확인", "예", "저장" };
+    /// <summary>CLX 비활성 버튼 표시 클래스 — 저장할 변경이 없으면 [저장]에 붙는다.</summary>
+    public const string DisabledClass = "cl-disabled";
 
     // §3.3 aria-label 정규식. 행마다 번호/성명/영역이 개별 기재됨.
     // ★ 마지막 행만 "N행 마지막 행 성명 …" 처럼 '마지막 행' 토큰이 추가된다

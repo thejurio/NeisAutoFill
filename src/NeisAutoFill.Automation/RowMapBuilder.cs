@@ -72,6 +72,20 @@ public sealed class RowMapBuilder(IPage page, GridScroller scroller)
                 await ScanAsync();
             }
         }
+        else if (map.Count < expected)
+        {
+            // 프록시 스크롤바를 못 찾는 화면 (2026-07-17 진단에서 확인) —
+            // CLX 공식 reveal 로 렌더 창(약 10행)을 단계적으로 이동하며 전체를 훑는다 (화면 요동 없음).
+            log("  프록시 스크롤바 없음 → CLX reveal 스윕으로 행을 훑습니다.");
+            for (int idx = 0; idx < expected; idx += 8)
+            {
+                ct.ThrowIfCancellationRequested();
+                await ClxGridApi.RevealAsync(page, expected, Math.Min(idx + 7, expected - 1));
+                await Task.Delay(Timings.AfterScroll, ct);
+                await ScanAsync();
+                if (map.Count >= expected) break;
+            }
+        }
 
         // §8 마지막 행: 프록시 스크롤 최대치에서 마지막 행이 누락될 수 있다.
         // CLX 공식 API reveal(rowIndex) 로 복구 (2026-07-07 실기기 탐사로 확정, 화면 요동 없음).

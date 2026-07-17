@@ -47,6 +47,22 @@ public sealed class DomInspector(IPage page)
     if (vis(c)) report.combos.push(c.getAttribute('aria-label').substring(0, 50));
   });
 
+  // 2.5) 보이는 버튼 전부 (전과목 자동화의 [조회]/[저장] 셀렉터 확정용)
+  report.buttons = [];
+  document.querySelectorAll('[role=""button""], button').forEach(b => {
+    if (!vis(b)) return;
+    const aria = (b.getAttribute('aria-label') || '').trim();
+    const text = (b.textContent || '').trim();
+    const name = aria || text;
+    if (!name) return;
+    report.buttons.push({
+      name: name.substring(0, 40),
+      tag: b.tagName.toLowerCase(),
+      cls: (b.className || '').toString().substring(0, 50),
+      inDialog: !!b.closest('.cl-dialog, [role=""dialog""], .cl-alert, .cl-messagebox'),
+    });
+  });
+
   // 3) 그리드 밖 텍스트 편집기 후보 (단일 상세 편집 폼 화면 대비)
   document.querySelectorAll('textarea, [contenteditable=""true""], div.cl-inputbox, div.cl-textarea').forEach(t => {
     if (!vis(t)) return;
@@ -216,6 +232,11 @@ async () => {
         sb.AppendLine($"\n── 보이는 콤보박스 ──");
         foreach (var c in json.GetProperty("combos").EnumerateArray())
             sb.AppendLine($"  {c.GetString()}");
+
+        sb.AppendLine($"\n── 보이는 버튼 ──");
+        foreach (var b in json.GetProperty("buttons").EnumerateArray())
+            sb.AppendLine($"  [{b.GetProperty("name").GetString()}] <{b.GetProperty("tag").GetString()}> " +
+                          $"cls='{b.GetProperty("cls").GetString()}' 대화상자내부={b.GetProperty("inDialog")}");
 
         sb.AppendLine($"\n── 텍스트 편집기 후보 ──");
         foreach (var e in json.GetProperty("editors").EnumerateArray())

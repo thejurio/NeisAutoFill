@@ -65,18 +65,46 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
     public async Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default)
     {
+        var (_, subject) = await FindSubjectComboAsync();
+        return subject;
+    }
+
+    /// <summary>
+    /// 화면의 과목 콤보 탐색. 교과별 평가는 aria-label "교과, 국어".
+    /// ★ 종합의견 화면은 라벨이 전부 "학기, …" 로 잘못 붙어 있음 (2026-07-17 진단 실측)
+    ///   → 조회조건 라벨(학년도/학년/학기/반/교과) 콤보 중 값이 숫자가 아닌 것을 과목으로 본다.
+    /// </summary>
+    private async Task<(ILocator? Combo, string? Subject)> FindSubjectComboAsync()
+    {
         var page = RequirePage();
-        var combos = page.Locator(NeisSelectors.SubjectCombo);
+        var combos = page.Locator("div[role='combobox'][aria-label]");
         int n = await combos.CountAsync();
+        ILocator? fallback = null; string? fallbackValue = null;
+
         for (int i = 0; i < n; i++)
         {
             var c = combos.Nth(i);
-            if (!await c.IsVisibleAsync()) continue;
-            var label = await c.GetAttributeAsync("aria-label") ?? "";
-            var parts = label.Split(',', 2);
-            if (parts.Length == 2) return parts[1].Trim();
+            try
+            {
+                if (!await c.IsVisibleAsync()) continue;
+                var label = await c.GetAttributeAsync("aria-label") ?? "";
+                var parts = label.Split(',', 2);
+                if (parts.Length != 2) continue;
+                var key = parts[0].Trim();
+                var value = parts[1].Trim();
+
+                if (key == "교과") return (c, value);   // 정상 라벨 — 즉시 확정
+
+                // 라벨 버그 화면 폴백: 조회조건 콤보인데 값이 숫자(연도·학기·반)가 아니면 과목 후보
+                if (fallback is null && key is "학년도" or "학년" or "학기" or "반" &&
+                    value != "" && !int.TryParse(value, out _))
+                {
+                    fallback = c; fallbackValue = value;
+                }
+            }
+            catch { /* 스캔 중 사라진 요소 무시 */ }
         }
-        return null;
+        return (fallback, fallbackValue);
     }
 
     // ── Phase 5.5 전과목 자동 업로드 ────────────────────────────
@@ -86,15 +114,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     {
         var page = RequirePage();
 
-        var current = await GetCurrentSubjectAsync(ct);
+        var (combo, current) = await FindSubjectComboAsync();
         if (current == subjectName) return (true, "이미 조회됨");
-
-        // 과목 콤보 (보이는 첫 번째)
-        var combos = page.Locator(NeisSelectors.SubjectCombo);
-        ILocator? combo = null;
-        int n = await combos.CountAsync();
-        for (int i = 0; i < n; i++)
-            if (await combos.Nth(i).IsVisibleAsync()) { combo = combos.Nth(i); break; }
         if (combo is null) return (false, "화면에서 과목 콤보를 찾지 못했습니다 (교과별 평가/종합의견 화면인지 확인)");
 
         var pick = await _combo!.OpenAndPickAsync(combo, subjectName);
@@ -128,6 +149,12 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     {
         var save = await FindButtonAsync(NeisSelectors.SaveButtonName);
         if (save is null) return (false, "[저장] 버튼을 찾지 못했습니다");
+
+        // 실측: 저장할 변경이 없으면 버튼에 cl-disabled 가 붙는다 — 클릭해도 무반응이므로 명확히 보고
+        var cls = await save.GetAttributeAsync("class") ?? "";
+        if (cls.Contains(NeisSelectors.DisabledClass))
+            return (false, "[저장] 버튼이 비활성 상태입니다 (저장할 변경이 없거나 화면이 준비되지 않음)");
+
         await save.ClickAsync();
 
         // 확인("저장하시겠습니까?") → 완료("저장되었습니다") 대화상자 순서로 최대 2개 처리
