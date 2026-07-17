@@ -244,22 +244,6 @@ public sealed class GeneratorViewModel : ObservableObject
     private string _planStatus = "(평가계획서 미로드 — 기준내용 없이 등급만으로 생성됩니다)";
     public string PlanStatus { get => _planStatus; set => SetProperty(ref _planStatus, value); }
 
-    // ── 설정 바인딩 ────────────────────────
-    // 서버(GAS) URL 은 UI 에서 제거 — 변경이 필요하면 %AppData%\NeisAutoFill\settings.json 에서 수정
-    public string MaxNarrativeBytes
-    {
-        get => _settings.Options.MaxNarrativeBytes.ToString();
-        set
-        {
-            if (int.TryParse(value, out var n) && n >= 0)
-            {
-                _settings.Options = _settings.Options with { MaxNarrativeBytes = n };
-                _settings.Save();
-            }
-            OnPropertyChanged();
-        }
-    }
-
     public ICommand GenerateAllCommand { get; }
     public ICommand GenerateSelectedCommand { get; }
     public ICommand GenerateSubjectsCommand { get; }
@@ -331,47 +315,16 @@ public sealed class GeneratorViewModel : ObservableObject
             if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
         });
 
-        var summary = new List<string>();
-        int idx = 0;
-        foreach (var (subject, entries) in bySubject)
-        {
-            idx++;
-            _mainLog($"[전과목 서술문 {idx}/{bySubject.Count}] '{subject}' 과목으로 전환 중...");
-            try
+        var summary = await Services.BatchUploadRunner.RunAsync(
+            bySubject.Keys.ToList(), _engine,
+            runSubject: async subject =>
             {
-                var (selOk, selWhy) = await _engine.SelectSubjectAsync(subject);
-                if (!selOk) { summary.Add($"✗ {subject}: 과목 전환 실패 — {selWhy}"); break; }
-
                 var report = await _engine.RunNarrativesAsync(
-                    subject, entries, dryRun: false, _settings.Options.MaxNarrativeBytes, progress);
-
-                if (report.Failed.Count > 0)
-                {
-                    summary.Add($"✗ {subject}: 입력 실패 {report.Failed.Count}건 — 저장하지 않고 중단");
-                    break;
-                }
-                if (report.Done.Count == 0)
-                {
-                    summary.Add($"· {subject}: 입력된 서술문 없음 — 저장 생략");
-                    continue;
-                }
-
-                _mainLog($"[{subject}] 검증 통과 ({report.Done.Count}명) → 저장 중...");
-                var (saveOk, saveWhy) = await _engine.SaveScreenAsync();
-                if (!saveOk)
-                {
-                    summary.Add($"✗ {subject}: 입력 완료했으나 저장 실패({saveWhy}) — 중단. 나이스에서 직접 [저장]을 눌러주세요.");
-                    break;
-                }
-                summary.Add($"✓ {subject}: {report.Done.Count}명 입력·저장" +
-                            (report.Skipped.Count > 0 ? $" (건너뜀 {report.Skipped.Count})" : ""));
-            }
-            catch (Exception ex)
-            {
-                summary.Add($"✗ {subject}: 오류 — {ex.Message}");
-                break;
-            }
-        }
+                    subject, bySubject[subject], dryRun: false, _settings.Options.MaxNarrativeBytes, progress);
+                return new Services.BatchUploadRunner.SubjectResult(
+                    report.Done.Count, report.Failed.Count, report.Skipped.Count, UserCancelled: false);
+            },
+            _mainLog, unit: "명", CancellationToken.None);
 
         _mainLog("전과목 서술문 입력 결과: " + string.Join(" / ", summary));
         MessageBox.Show("전과목 서술문 입력 결과\n\n" + string.Join("\n", summary),

@@ -68,17 +68,12 @@ public sealed class MainViewModel : ObservableObject
         OpenExcelCommand = new RelayCommand(OpenExcel);
         OpenGeneratorCommand = new RelayCommand(OpenGenerator);
         OpenScaleEditorCommand = new RelayCommand(OpenScaleEditor);
-        LoadPlanCommand = new RelayCommand(OpenPlan);
-        SaveStep1TemplateCommand = new RelayCommand(SaveStep1Template);
-        SaveStep2TemplateCommand = new RelayCommand(SaveStep2Template);
-        OpenDataPrepCommand = new RelayCommand(() =>
-            new DataPrepWindow(this) { Owner = Application.Current.MainWindow }.ShowDialog());
         OpenRecentCommand = new RelayCommand<string>(p => { if (p is not null) LoadExcel(p); });
         OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
         RunAllSubjectsCommand = new AsyncRelayCommand(RunAllSubjectsAsync);
         InspectCommand = new AsyncRelayCommand(InspectAsync);
         ExportGradesCommand = new RelayCommand(ExportGrades);
-        HelpCommand = new RelayCommand(OpenHelp);
+        HelpCommand = new AsyncRelayCommand(OpenHelpAsync);
 
         _showCriteriaPanel = appState.State.ShowCriteriaPanel;
 
@@ -145,7 +140,6 @@ public sealed class MainViewModel : ObservableObject
         ConnectionBrush = new SolidColorBrush(on ? Color.FromRgb(0x22, 0xC5, 0x5E) : Color.FromRgb(0xEF, 0x44, 0x44));
     }
 
-    public ICommand OpenDataPrepCommand { get; }
 
     // ── 평가계획서 (과목·영역·기준 + 학생명단) ──
     private IReadOnlyList<SubjectPlan> _plans = Array.Empty<SubjectPlan>();
@@ -196,15 +190,8 @@ public sealed class MainViewModel : ObservableObject
     private string _planName = "평가계획서 없음";
     public string PlanName { get => _planName; set => SetProperty(ref _planName, value); }
 
-    public ICommand LoadPlanCommand { get; }
-    public ICommand SaveStep1TemplateCommand { get; }
-    public ICommand SaveStep2TemplateCommand { get; }
-
-    private void OpenPlan()
-    {
-        var dlg = new OpenFileDialog { Filter = "Excel|*.xlsx;*.xlsm", Title = "평가계획서 선택" };
-        if (dlg.ShowDialog() == true) LoadPlan(dlg.FileName);
-    }
+    // 구 [자료 준비] 양식 저장·불러오기 커맨드 제거 (v1.3.x 인앱 편집·AI 가져오기가 대체) —
+    // TemplateWriter 는 유지 (평가계획 없이 빈 양식이 필요하면 재노출 가능)
 
     private void LoadPlan(string path, bool silent = false)
     {
@@ -227,49 +214,6 @@ public sealed class MainViewModel : ObservableObject
             if (silent) Log($"⚠ 최근 평가계획서를 다시 열지 못했습니다: {ex.Message}");
             else ShowError($"평가계획서 오류: {ex.Message}");
         }
-    }
-
-    private void SaveStep1Template()
-    {
-        var dlg = new SaveFileDialog
-        {
-            Filter = "Excel|*.xlsx",
-            FileName = "평가계획서_양식.xlsx",
-            Title = "평가계획서 양식 저장",
-            InitialDirectory = AppPaths.EnsureWorkspace(),
-        };
-        if (dlg.ShowDialog() != true) return;
-        try
-        {
-            TemplateWriter.WriteStep1Template(dlg.FileName, _scales.Active);
-            Log($"평가계획서 양식 저장: {Path.GetFileName(dlg.FileName)} — " +
-                "[학생명단]에 명단을 넣고 과목 시트에 평가기준을 채운 뒤 [평가계획서 열기]로 불러오세요.");
-        }
-        catch (Exception ex) { ShowError(ex.Message); }
-    }
-
-    private void SaveStep2Template()
-    {
-        if (_plans.Count == 0)
-        {
-            ShowError("먼저 [평가계획서 열기]로 작성된 평가계획서를 불러오세요.");
-            return;
-        }
-        var dlg = new SaveFileDialog
-        {
-            Filter = "Excel|*.xlsx",
-            FileName = $"성적입력양식_{_plans.Count}개과목.xlsx",
-            Title = "성적입력 양식 저장",
-            InitialDirectory = AppPaths.EnsureWorkspace(),
-        };
-        if (dlg.ShowDialog() != true) return;
-        try
-        {
-            TemplateWriter.WriteStep2Template(dlg.FileName, _plans, _roster);
-            Log($"성적입력 양식 저장: {Path.GetFileName(dlg.FileName)} — " +
-                "성적을 채운 뒤 [성적파일 열기]로 불러오세요.");
-        }
-        catch (Exception ex) { ShowError(ex.Message); }
     }
 
     public ObservableCollection<SubjectViewModel> Subjects { get; } = new();
@@ -649,7 +593,7 @@ public sealed class MainViewModel : ObservableObject
 
     /// <summary>사용설명서 열기 — 내장 HTML 을 앱 스타일 팝업(WebView2)으로.
     /// WebView2 런타임이 없는 PC 는 기본 브라우저로 폴백. HelpUrl 이 지정되면 그 주소를 브라우저로.</summary>
-    private async void OpenHelp()
+    private async Task OpenHelpAsync()
     {
         var url = _generatorSettings.Options.HelpUrl?.Trim();
         if (!string.IsNullOrEmpty(url)) { OpenExternal(url); return; }
@@ -848,61 +792,20 @@ public sealed class MainViewModel : ObservableObject
         if (sheets.Count == 0) return;
 
         _cts = new CancellationTokenSource();
-        var summary = new List<string>();
-        try
-        {
-            for (int i = 0; i < sheets.Count; i++)
+        var bySubject = sheets.ToDictionary(s => s.SubjectName);
+        var summary = await BatchUploadRunner.RunAsync(
+            sheets.Select(s => s.SubjectName).ToList(), _engine,
+            runSubject: async subjectName =>
             {
-                var sheet = sheets[i];
-                Log(new string('─', 50));
-                Log($"[전과목 {i + 1}/{sheets.Count}] '{sheet.SubjectName}' 과목으로 전환 중...");
                 ProgressValue = 0;
-
-                var (selOk, selWhy) = await _engine.SelectSubjectAsync(sheet.SubjectName, _cts.Token);
-                if (!selOk)
-                {
-                    summary.Add($"✗ {sheet.SubjectName}: 과목 전환 실패 — {selWhy}");
-                    break;   // 화면 상태를 모르는 채 계속 가지 않는다
-                }
-
+                var sheet = bySubject[subjectName];
                 var report = await _engine.RunSubjectAsync(
                     sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
-
-                if (report.Skipped.Any(s => s.Reason == "사용자 취소"))
-                {
-                    summary.Add($"· {sheet.SubjectName}: 사용자 취소 — 저장 안 함");
-                    break;
-                }
-                if (report.Failed.Count > 0)
-                {
-                    summary.Add($"✗ {sheet.SubjectName}: 입력 실패 {report.Failed.Count}건 — 저장하지 않고 중단");
-                    Log($"⚠ '{sheet.SubjectName}' 검증 실패로 저장하지 않았습니다. 나이스에서 값을 확인하세요.");
-                    break;
-                }
-                if (report.Done.Count == 0)
-                {
-                    summary.Add($"· {sheet.SubjectName}: 입력할 값 없음 — 저장 생략");
-                    continue;
-                }
-
-                Log($"[{sheet.SubjectName}] 검증 통과 ({report.Done.Count}건) → 저장 중...");
-                var (saveOk, saveWhy) = await _engine.SaveScreenAsync(_cts.Token);
-                if (!saveOk)
-                {
-                    summary.Add($"✗ {sheet.SubjectName}: 입력 {report.Done.Count}건 완료했으나 저장 실패({saveWhy}) — 중단. " +
-                                "나이스에서 직접 [저장]을 눌러주세요.");
-                    break;
-                }
-                summary.Add($"✓ {sheet.SubjectName}: {report.Done.Count}건 입력·저장" +
-                            (report.Skipped.Count > 0 ? $" (건너뜀 {report.Skipped.Count})" : ""));
-            }
-        }
-        catch (OperationCanceledException) { summary.Add("⛔ 사용자 중지"); }
-        catch (Exception ex)
-        {
-            summary.Add($"✗ 오류: {ex.Message}");
-            Log($"전과목 입력 오류: {ex.Message}");
-        }
+                return new BatchUploadRunner.SubjectResult(
+                    report.Done.Count, report.Failed.Count, report.Skipped.Count,
+                    report.Skipped.Any(s => s.Reason == "사용자 취소"));
+            },
+            Log, unit: "건", _cts.Token);
 
         Log(new string('=', 50));
         Log("전과목 자동 입력 결과:");
