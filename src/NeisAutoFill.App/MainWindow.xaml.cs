@@ -48,11 +48,20 @@ public partial class MainWindow : Window
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-        var path = files.FirstOrDefault(f =>
+
+        var excel = files.FirstOrDefault(f =>
             f.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
             f.EndsWith(".xlsm", StringComparison.OrdinalIgnoreCase));
-        if (path is not null) _vm.LoadExcel(path);
-        else _vm.Log("xlsx 파일만 지원합니다.");
+        if (excel is not null) { _vm.LoadExcel(excel); return; }
+
+        // 평가계획 문서(pdf/hwp/hwpx) → 명단·계획 편집 창 열고 AI 가져오기
+        var doc = files.FirstOrDefault(f =>
+            f.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ||
+            f.EndsWith(".hwp", StringComparison.OrdinalIgnoreCase) ||
+            f.EndsWith(".hwpx", StringComparison.OrdinalIgnoreCase));
+        if (doc is not null) { _vm.ImportPlanDocument(doc); return; }
+
+        _vm.Log("지원 형식: xlsx (성적·계획) / pdf·hwp·hwpx (평가계획 AI 가져오기)");
     }
 
     private void LogBox_TextChanged(object sender, TextChangedEventArgs e)

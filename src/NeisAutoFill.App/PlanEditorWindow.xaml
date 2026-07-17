@@ -10,6 +10,7 @@
     </shell:WindowChrome.WindowChrome>
 
     <Border BorderBrush="#CBD5E1" BorderThickness="1" Background="White">
+      <Grid>
         <DockPanel>
             <!-- 타이틀바 -->
             <Border DockPanel.Dock="Top" Height="40" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
@@ -66,9 +67,8 @@
                 <DockPanel Grid.Column="2">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <Button Style="{StaticResource AccentGhostButton}" Content="📄 평가계획 불러오기" IsEnabled="False"
-                                    ToolTipService.ShowOnDisabled="True"
-                                    ToolTip="이지에듀·스쿨마스터 평가계획서(PDF/HWP)를 넣으면 AI가 자동 입력합니다 — 다음 업데이트에서 지원 예정"
+                            <Button Style="{StaticResource AccentGhostButton}" Content="📄 평가계획 불러오기" Command="{Binding ImportPlanCommand}"
+                                    ToolTip="이지에듀·스쿨마스터 등 평가계획서(PDF/HWP/HWPX)를 넣으면 AI가 인식해 표에 채웁니다"
                                     Margin="0,0,10,0"/>
                             <Button Style="{StaticResource GhostButton}" Content="＋ 과목" Command="{Binding AddSubjectCommand}" Margin="0,0,4,0"/>
                             <Button Style="{StaticResource GhostButton}" Content="🗑 과목 삭제" Command="{Binding RemoveSubjectCommand}"/>
@@ -81,10 +81,13 @@
                             <TextBox Text="{Binding SelectedSubject.Name, UpdateSourceTrigger=PropertyChanged}" Width="130" VerticalContentAlignment="Center"/>
                         </StackPanel>
                     </DockPanel>
-                    <TextBlock DockPanel.Dock="Top" FontSize="11" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,8">
+                    <TextBlock DockPanel.Dock="Top" FontSize="11" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,4">
                         <Run Text="행 = 평가영역. 마지막 빈 행에 입력하면 영역이 추가됩니다. 엑셀 표를 복사해 셀에서 Ctrl+V 로 붙여넣을 수 있습니다. 등급 열:"/>
                         <Run Text="{Binding ScaleSummary, Mode=OneWay}" FontWeight="SemiBold"/>
                     </TextBlock>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding ImportStatus}" FontSize="11.5" FontWeight="SemiBold"
+                               Foreground="{StaticResource Neis}" TextWrapping="Wrap" Margin="0,0,0,8"
+                               Visibility="{Binding ImportStatus, Converter={StaticResource StringToVis}}"/>
                     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
                         <Button Style="{StaticResource GhostButton}" Content="＋ 영역 행" Click="AddPlanRow_Click" Margin="0,0,4,0"/>
                         <Button Style="{StaticResource GhostButton}" Content="－ 선택 행 삭제" Click="RemovePlanRow_Click"/>
@@ -106,5 +109,24 @@
                 </DockPanel>
             </Grid>
         </DockPanel>
+
+        <!-- AI 분석 중 오버레이 — 화면 전체를 덮어 처리 중임을 직관적으로 표시 -->
+        <Border Background="#B3FFFFFF" Visibility="{Binding IsImporting, Converter={StaticResource BoolToVis}}">
+            <Border Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="1.5" CornerRadius="12"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="34,26" MaxWidth="440">
+                <StackPanel>
+                    <TextBlock Text="🤖" FontSize="34" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                    <TextBlock Text="AI 가 평가계획서를 읽고 있어요" FontWeight="Bold" FontSize="14.5"
+                               Foreground="{StaticResource Ink}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="{Binding ImportStatus}" FontSize="11.5" Foreground="{StaticResource Sub}"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,14"/>
+                    <ProgressBar IsIndeterminate="True" Height="6" Width="260"
+                                 Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"/>
+                    <TextBlock Text="문서 분량에 따라 수십 초가 걸릴 수 있습니다" FontSize="10.5" Foreground="#94A3B8"
+                               HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
+        </Border>
+      </Grid>
     </Border>
 </Window>

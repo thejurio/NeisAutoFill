@@ -18,12 +18,23 @@ public sealed class PlanEditorViewModel : ObservableObject
 
     private readonly GradeScale _scale;
 
+    private readonly Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>? _importer;
+
     public PlanEditorViewModel(
         IReadOnlyList<SubjectPlan> plans,
         IReadOnlyList<(string No, string Name)> roster,
-        GradeScale scale)
+        GradeScale scale,
+        Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>? importer = null)
     {
         _scale = scale;
+        _importer = importer;
+
+        // 커맨드를 먼저 만든다 — SelectedSubject setter 가 커맨드를 참조하므로 데이터 채우기보다 앞서야 함
+        ImportPlanCommand = new AsyncRelayCommand(ImportPlanAsync, () => !IsImporting);
+        AddSubjectCommand = new RelayCommand(AddSubject);
+        RemoveSubjectCommand = new RelayCommand(RemoveSubject, () => SelectedSubject is not null);
+        AddRosterRowCommand = new RelayCommand(() => Roster.Add(new RosterRow()));
+        RemoveRosterRowCommand = new RelayCommand(RemoveRosterRow, () => SelectedRosterRow is not null);
 
         // 이름 입력 시 자동 번호 부여를 위해 행 추가/제거 때 감시를 붙인다
         Roster.CollectionChanged += (_, e) =>
@@ -40,11 +51,6 @@ public sealed class PlanEditorViewModel : ObservableObject
 
         foreach (var p in plans) Subjects.Add(new PlanSubjectEdit(p, scale));
         SelectedSubject = Subjects.FirstOrDefault();
-
-        AddSubjectCommand = new RelayCommand(AddSubject);
-        RemoveSubjectCommand = new RelayCommand(RemoveSubject, () => SelectedSubject is not null);
-        AddRosterRowCommand = new RelayCommand(() => Roster.Add(new RosterRow()));
-        RemoveRosterRowCommand = new RelayCommand(RemoveRosterRow, () => SelectedRosterRow is not null);
     }
 
     public ObservableCollection<RosterRow> Roster { get; } = new();
@@ -72,14 +78,14 @@ public sealed class PlanEditorViewModel : ObservableObject
     public RosterRow? SelectedRosterRow
     {
         get => _selectedRosterRow;
-        set { if (SetProperty(ref _selectedRosterRow, value)) ((RelayCommand)RemoveRosterRowCommand).RaiseCanExecuteChanged(); }
+        set { if (SetProperty(ref _selectedRosterRow, value)) (RemoveRosterRowCommand as RelayCommand)?.RaiseCanExecuteChanged(); }
     }
 
     private PlanSubjectEdit? _selectedSubject;
     public PlanSubjectEdit? SelectedSubject
     {
         get => _selectedSubject;
-        set { if (SetProperty(ref _selectedSubject, value)) ((RelayCommand)RemoveSubjectCommand).RaiseCanExecuteChanged(); }
+        set { if (SetProperty(ref _selectedSubject, value)) (RemoveSubjectCommand as RelayCommand)?.RaiseCanExecuteChanged(); }
     }
 
     public string ScaleSummary => string.Join(" / ", _scale.Levels.Select(l => l.Label));
@@ -88,6 +94,90 @@ public sealed class PlanEditorViewModel : ObservableObject
     public ICommand RemoveSubjectCommand { get; }
     public ICommand AddRosterRowCommand { get; }
     public ICommand RemoveRosterRowCommand { get; }
+    public ICommand ImportPlanCommand { get; }
+
+    // ── AI 평가계획 불러오기 (이지에듀/스쿨마스터 PDF·HWP·HWPX) ──
+
+    private bool _isImporting;
+    public bool IsImporting
+    {
+        get => _isImporting;
+        set { if (SetProperty(ref _isImporting, value)) OnPropertyChanged(nameof(ImportStatus)); }
+    }
+
+    private string _importStatus = "";
+    public string ImportStatus { get => _importStatus; set => SetProperty(ref _importStatus, value); }
+
+    private async Task ImportPlanAsync()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "평가계획서 (Excel/PDF/HWP)|*.xlsx;*.xlsm;*.pdf;*.hwp;*.hwpx|모든 파일|*.*",
+            Title = "평가계획서 파일 선택 (엑셀=바로 / PDF·HWP=AI 인식)",
+        };
+        if (dlg.ShowDialog() != true) return;
+        await ImportPlanFileAsync(dlg.FileName);
+    }
+
+    /// <summary>
+    /// 파일 경로로 가져오기 (버튼·드래그앤드롭 공용 진입점).
+    /// 확장자에 따라 처리 방식이 갈린다: xlsx/xlsm = 기존 엑셀 양식 직접 읽기, pdf/hwp/hwpx = AI 인식.
+    /// </summary>
+    public async Task ImportPlanFileAsync(string path)
+    {
+        if (Subjects.Any(s => s.BuildPlan(out _) is { Domains.Count: > 0 }))
+        {
+            var ok = System.Windows.MessageBox.Show(
+                "이미 입력된 평가계획이 있습니다. 불러온 내용으로 교체할까요?",
+                "확인", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+            if (ok != System.Windows.MessageBoxResult.Yes) return;
+        }
+
+        var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
+        var fileName = System.IO.Path.GetFileName(path);
+        IsImporting = true;
+        ImportStatus = ext is ".xlsx" or ".xlsm"
+            ? $"⏳ '{fileName}' 읽는 중..."
+            : $"⏳ AI 가 '{fileName}' 을(를) 분석하는 중... (수십 초 걸릴 수 있습니다)";
+        try
+        {
+            IReadOnlyList<SubjectPlan> plans;
+            if (ext is ".xlsx" or ".xlsm")
+            {
+                // 기존 엑셀 양식 — AI 없이 로컬 파싱 (명단 시트가 있고 현재 명단이 비어 있으면 명단도 채움)
+                plans = Excel.PlanWorkbookLoader.Load(path, _scale);
+                if (plans.Count == 0)
+                    throw new InvalidOperationException(
+                        "엑셀에서 평가계획을 찾지 못했습니다.\n파일의 등급 표기가 현재 척도" +
+                        $"({ScaleSummary})와 같은지 확인해 주세요.");
+                var roster = Excel.PlanWorkbookLoader.LoadRoster(path);
+                if (roster.Count > 0 && Roster.All(r => string.IsNullOrWhiteSpace(r.Name)))
+                {
+                    Roster.Clear();
+                    foreach (var (no, name) in roster) Roster.Add(new RosterRow { No = no, Name = name });
+                }
+            }
+            else
+            {
+                if (_importer is null) throw new InvalidOperationException("AI 가져오기를 사용할 수 없습니다.");
+                // 과목별 진행 상황을 오버레이에 실시간 표시
+                var progress = new Progress<string>(s => ImportStatus = $"⏳ {s}");
+                plans = await _importer(path, progress);
+            }
+
+            Subjects.Clear();
+            foreach (var p in plans) Subjects.Add(new PlanSubjectEdit(p, _scale));
+            SelectedSubject = Subjects.FirstOrDefault();
+            ImportStatus = $"✔ {plans.Count}개 과목 인식 완료 — 내용을 확인·수정한 뒤 [저장 후 적용]을 누르세요.";
+        }
+        catch (Exception ex)
+        {
+            ImportStatus = "";
+            System.Windows.MessageBox.Show(ex.Message, "가져오기 실패",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+        finally { IsImporting = false; }
+    }
 
     /// <summary>행 삭제 — 지운 번호보다 큰 번호들은 하나씩 당긴다 (18 삭제 → 19가 18로).</summary>
     private void RemoveRosterRow()

@@ -73,7 +73,7 @@ public sealed class MainViewModel : ObservableObject
         OpenDataPrepCommand = new RelayCommand(() =>
             new DataPrepWindow(this) { Owner = Application.Current.MainWindow }.ShowDialog());
         OpenRecentCommand = new RelayCommand<string>(p => { if (p is not null) LoadExcel(p); });
-        OpenPlanEditorCommand = new RelayCommand(OpenPlanEditor);
+        OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
 
         _showCriteriaPanel = appState.State.ShowCriteriaPanel;
 
@@ -152,15 +152,24 @@ public sealed class MainViewModel : ObservableObject
     // ── 명단·평가계획 인앱 편집 ──────────────
     public ICommand OpenPlanEditorCommand { get; }
 
-    private void OpenPlanEditor()
+    private static readonly System.Net.Http.HttpClient ImportHttp = new() { Timeout = TimeSpan.FromMinutes(5) };
+
+    /// <summary>드래그앤드롭된 평가계획 문서(pdf/hwp/hwpx) → 편집 창 열고 AI 가져오기 시작.</summary>
+    public void ImportPlanDocument(string path) => OpenPlanEditor(path);
+
+    private void OpenPlanEditor(string? importPath = null)
     {
         // 평가계획서에 명단이 없으면 열려 있는 성적파일의 학생 명단을 재사용
         var roster = _roster;
         if (roster.Count == 0 && Subjects.Count > 0)
             roster = Subjects[0].Sheet.Students.Select(s => (s.No, s.Name)).ToList();
 
-        var vm = new PlanEditorViewModel(_plans, roster, _scales.Active);
+        var vm = new PlanEditorViewModel(_plans, roster, _scales.Active,
+            importer: async (path, progress) => await new Generator.GasPlanImporter(ImportHttp, _generatorSettings.Options)
+                .ImportAsync(path, _scales.Active, progress));
         var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
+        if (importPath is not null)
+            win.Loaded += async (_, _) => await vm.ImportPlanFileAsync(importPath);
         if (win.ShowDialog() != true) return;
 
         var built = vm.Build(out var error);

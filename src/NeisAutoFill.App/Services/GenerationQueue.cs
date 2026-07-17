@@ -30,10 +30,13 @@ public sealed class GenerationQueue
     private int _workers;
     private CancellationTokenSource _cts = new();
 
-    public GenerationQueue(GeneratorSettingsStore settings, NarrativeStore store)
+    private readonly UsageLogger _usage;
+
+    public GenerationQueue(GeneratorSettingsStore settings, NarrativeStore store, UsageLogger usage)
     {
         _settings = settings;
         _store = store;
+        _usage = usage;
         _dispatcher = System.Windows.Application.Current.Dispatcher;
     }
 
@@ -60,12 +63,13 @@ public sealed class GenerationQueue
 
     public void Enqueue(IEnumerable<GenJob> jobs)
     {
+        var list = jobs.ToList();
         int added = 0;
         lock (_gate)
         {
             if (_pending.Count == 0 && _workers == 0) { Done = 0; Failed = 0; Total = 0; }   // 새 배치
             if (_cts.IsCancellationRequested) _cts = new CancellationTokenSource();
-            foreach (var j in jobs) { _pending.Enqueue(j); added++; }
+            foreach (var j in list) { _pending.Enqueue(j); added++; }
             Total += added;
             while (_workers < MaxConcurrent && _pending.Count > _workers)
             {
@@ -73,7 +77,12 @@ public sealed class GenerationQueue
                 _ = Task.Run(WorkerLoopAsync);
             }
         }
-        if (added > 0) RaiseState();
+        if (added == 0) return;
+
+        // 사용 기록: 학생당이 아니라 배치당 1건 (예: "국어 24명 · 수학 20명")
+        var info = string.Join(" · ", list.GroupBy(j => j.Subject).Select(g => $"{g.Key} {g.Count()}명"));
+        _ = _usage.LogBatchAsync(info);
+        RaiseState();
     }
 
     public void CancelAll()
