@@ -31,10 +31,12 @@ public sealed class MainViewModel : ObservableObject
 
     private readonly GenerationQueue _generationQueue;
     private readonly NarrativeMirror _narrativeMirror;
+    private readonly WorkspaceService _workspace;   // 자료 파일 수명 전담 (경로·IO·계획/명단 상태)
 
     public MainViewModel(INeisEngine engine, IScaleStore scales,
         GeneratorSettingsStore generatorSettings, NarrativeStore narratives,
         AppStateStore appState, GenerationQueue generationQueue, NarrativeMirror narrativeMirror,
+        WorkspaceService workspace,
         Automation.EngineOptions engineOptions)
     {
         _engine = engine;
@@ -44,6 +46,7 @@ public sealed class MainViewModel : ObservableObject
         _appState = appState;
         _generationQueue = generationQueue;
         _narrativeMirror = narrativeMirror;
+        _workspace = workspace;
         _engineOptions = engineOptions;
 
         _generationQueue.Log += Log;      // 배치 시작·완료·중지를 메인 로그에도
@@ -90,20 +93,14 @@ public sealed class MainViewModel : ObservableObject
     public ICommand OpenRecentCommand { get; }
 
     /// <summary>최근 파일 메뉴 항목 (실존 파일만, 평가계획서·성적파일 구분).</summary>
-    public IReadOnlyList<(string Path, string Display, bool IsPlan)> RecentEntries =>
-        _appState.ExistingRecentPlans().Select(p => (p, Path.GetFileName(p), true))
-        .Concat(_appState.ExistingRecentGrades().Select(p => (p, Path.GetFileName(p), false)))
-        .ToList();
+    public IReadOnlyList<(string Path, string Display, bool IsPlan)> RecentEntries => _workspace.RecentEntries;
 
     /// <summary>시작 시 마지막으로 쓰던 성적파일·평가계획서를 복원. 실패는 로그만 (팝업 없음).
     /// 성적을 먼저 열어야 평가계획 로드가 성적표를 새로 만들지 않는다.</summary>
     private void RestoreLastFiles()
     {
-        var grades = _appState.State.LastGradePath;
-        if (grades is not null && File.Exists(grades)) LoadGrades(grades, silent: true);
-
-        var plan = _appState.State.LastPlanPath;
-        if (plan is not null && File.Exists(plan)) LoadPlan(plan, silent: true);
+        if (_workspace.LastGradePath is { } grades) LoadGrades(grades, silent: true);
+        if (_workspace.LastPlanPath is { } plan) LoadPlan(plan, silent: true);
     }
 
     /// <summary>
@@ -146,17 +143,12 @@ public sealed class MainViewModel : ObservableObject
     }
 
 
-    // ── 평가계획서 (과목·영역·기준 + 학생명단) ──
-    private IReadOnlyList<SubjectPlan> _plans = Array.Empty<SubjectPlan>();
-    private IReadOnlyList<(string No, string Name)> _roster = Array.Empty<(string, string)>();
-    private string? _planFilePath;   // 인앱 편집 저장 대상
-
-    public IReadOnlyList<SubjectPlan> Plans => _plans;
+    // ── 평가계획서 — 상태·파일 IO 는 WorkspaceService 전담 ──
+    public IReadOnlyList<SubjectPlan> Plans => _workspace.Plans;
 
     // ── 명단·평가계획 인앱 편집 ──────────────
     public ICommand OpenPlanEditorCommand { get; }
 
-    private static readonly System.Net.Http.HttpClient ImportHttp = new() { Timeout = TimeSpan.FromMinutes(5) };
 
     /// <summary>드래그앤드롭된 평가계획 문서(pdf/hwp/hwpx) → 편집 창 열고 AI 가져오기 시작.</summary>
     public void ImportPlanDocument(string path) => OpenPlanEditor(path);
@@ -164,12 +156,12 @@ public sealed class MainViewModel : ObservableObject
     private void OpenPlanEditor(string? importPath = null)
     {
         // 평가계획서에 명단이 없으면 열려 있는 성적파일의 학생 명단을 재사용
-        var roster = _roster;
+        var roster = _workspace.Roster;
         if (roster.Count == 0 && Subjects.Count > 0)
             roster = Subjects[0].Snapshot().Students.Select(s => (s.No, s.Name)).ToList();
 
-        var vm = new PlanEditorViewModel(_plans, roster, _scales.Active,
-            importer: async (path, progress) => await new Generator.GasPlanImporter(ImportHttp, _generatorSettings.Options)
+        var vm = new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active,
+            importer: async (path, progress) => await new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
                 .ImportAsync(path, _scales.Active, progress));
         var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
         if (importPath is not null)
@@ -179,46 +171,35 @@ public sealed class MainViewModel : ObservableObject
         var built = vm.Build(out var error);
         if (built is null) { ShowError(error ?? "편집 내용을 읽지 못했습니다."); return; }
 
-        var path = _planFilePath ?? Path.Combine(AppPaths.EnsureWorkspace(), "평가계획서.xlsx");
-        try
+        var (savedPath, saveError) = _workspace.SavePlan(built.Value.Plans, built.Value.Roster);
+        if (saveError is not null)
         {
-            PlanWorkbookWriter.Write(path, built.Value.Plans, built.Value.Roster, _scales.Active);
-            Log($"명단·평가계획 저장: {Path.GetFileName(path)}");
-            LoadPlan(path);   // 저장본을 다시 읽어 반영 (엑셀 직접 수정과 같은 경로)
+            ShowError($"평가계획 저장 실패: {saveError}\n(파일이 엑셀에서 열려 있으면 닫고 다시 시도하세요)");
+            return;
         }
-        catch (Exception ex)
-        {
-            ShowError($"평가계획 저장 실패: {ex.Message}\n(파일이 엑셀에서 열려 있으면 닫고 다시 시도하세요)");
-        }
+        Log($"명단·평가계획 저장: {Path.GetFileName(savedPath!)}");
+        LoadPlan(savedPath!);   // 저장본을 다시 읽어 반영 (엑셀 직접 수정과 같은 경로)
     }
 
     private string _planName = "평가계획서 없음";
     public string PlanName { get => _planName; set => SetProperty(ref _planName, value); }
 
-    // 구 [자료 준비] 양식 저장·불러오기 커맨드 제거 (v1.3.x 인앱 편집·AI 가져오기가 대체) —
-    // TemplateWriter 는 유지 (평가계획 없이 빈 양식이 필요하면 재노출 가능)
-
     private void LoadPlan(string path, bool silent = false)
     {
-        try
+        var error = _workspace.LoadPlan(path);
+        if (error is not null)
         {
-            _plans = PlanWorkbookLoader.Load(path, _scales.Active);
-            _roster = PlanWorkbookLoader.LoadRoster(path);
-            PlanName = Path.GetFileName(path);
-            _planFilePath = path;
-            _appState.TouchPlan(path);
-            OnPropertyChanged(nameof(RecentEntries));
-            RefreshCriteriaPanel();
-            Log($"평가계획서 로드: {PlanName} " +
-                $"({string.Join(", ", _plans.Select(p => $"{p.SubjectName} {p.Domains.Count}영역"))}" +
-                (_roster.Count > 0 ? $" / 명단 {_roster.Count}명)" : ")"));
-            SyncGradeTableWithPlan();   // 성적표 없으면 생성, 있으면 명단·영역 변경 동기화 (성적 보존)
+            if (silent) Log($"⚠ 최근 평가계획서를 다시 열지 못했습니다: {error}");
+            else ShowError($"평가계획서 오류: {error}");
+            return;
         }
-        catch (Exception ex)
-        {
-            if (silent) Log($"⚠ 최근 평가계획서를 다시 열지 못했습니다: {ex.Message}");
-            else ShowError($"평가계획서 오류: {ex.Message}");
-        }
+        PlanName = Path.GetFileName(path);
+        OnPropertyChanged(nameof(RecentEntries));
+        RefreshCriteriaPanel();
+        Log($"평가계획서 로드: {PlanName} " +
+            $"({string.Join(", ", _workspace.Plans.Select(p => $"{p.SubjectName} {p.Domains.Count}영역"))}" +
+            (_workspace.Roster.Count > 0 ? $" / 명단 {_workspace.Roster.Count}명)" : ")"));
+        SyncGradeTableWithPlan();   // 성적표 없으면 생성, 있으면 명단·영역 변경 동기화 (성적 보존)
     }
 
     public ObservableCollection<SubjectViewModel> Subjects { get; } = new();
@@ -258,7 +239,7 @@ public sealed class MainViewModel : ObservableObject
     private void RefreshCriteriaPanel()
     {
         var subjectName = SelectedSubject?.SubjectName;
-        var plan = subjectName is null ? null : _plans.FirstOrDefault(p => p.SubjectName == subjectName);
+        var plan = subjectName is null ? null : _workspace.Plans.FirstOrDefault(p => p.SubjectName == subjectName);
         if (plan is null)
         {
             CriteriaPanelItems = Array.Empty<CriteriaPanelBuilder.DomainView>();
@@ -359,7 +340,7 @@ public sealed class MainViewModel : ObservableObject
         {
             _generatorVm ??= new GeneratorViewModel(
                 () => Subjects.Select(s => s.Snapshot()).ToList(),
-                () => _plans,
+                () => _workspace.Plans,
                 _scales, _generatorSettings, _narratives, _generationQueue, _narrativeMirror, _engine, Log);
             _generatorVm.RefreshSubjects();   // 메인에서 로드된 성적·평가계획을 자동 반영
             new GeneratorWindow(_generatorVm) { Owner = Application.Current.MainWindow }.Show();
@@ -407,130 +388,75 @@ public sealed class MainViewModel : ObservableObject
         LoadGrades(path);
     }
 
-    private string? _gradeFilePath;   // 편집 저장 대상
-
     private void LoadGrades(string path, bool silent = false)
     {
         if (!ConfirmSaveIfDirty()) return;   // 기존 편집 보호
-        try
+        var (sheets, error) = _workspace.LoadGrades(path);
+        if (sheets is null)
         {
-            var sheets = WorkbookLoader.Load(path);
-            if (sheets.Count == 0) throw new InvalidOperationException("번호/이름 컬럼이 있는 시트를 찾지 못했습니다.");
+            if (silent) Log($"⚠ 최근 성적파일을 다시 열지 못했습니다: {error}");
+            else ShowError(error!);
+            return;
+        }
+        ReplaceSubjects(sheets, keepSelected: false);
+        Log($"성적파일 로드: {ExcelName} ({string.Join(", ", sheets.Select(s => s.SubjectName))})");
+    }
 
-            Subjects.Clear();
-            foreach (var s in sheets) Subjects.Add(new SubjectViewModel(this, s));
-            SelectedSubject = Subjects.FirstOrDefault();   // 첫 과목 탭 자동 선택
-            ExcelName = Path.GetFileName(path);
-            _gradeFilePath = path;
-            _appState.TouchGrade(path);
-            OnPropertyChanged(nameof(RecentEntries));
-            Log($"성적파일 로드: {ExcelName} ({string.Join(", ", sheets.Select(s => s.SubjectName))})");
-        }
-        catch (Exception ex)
-        {
-            if (silent) Log($"⚠ 최근 성적파일을 다시 열지 못했습니다: {ex.Message}");
-            else ShowError(ex.Message);
-        }
+    /// <summary>Subjects 컬렉션을 새 시트로 교체하고 파일명·최근 목록 표시를 갱신.</summary>
+    private void ReplaceSubjects(IReadOnlyList<SubjectSheet> sheets, bool keepSelected)
+    {
+        var selected = keepSelected ? SelectedSubject?.SubjectName : null;
+        Subjects.Clear();
+        foreach (var s in sheets) Subjects.Add(new SubjectViewModel(this, s));
+        SelectedSubject = Subjects.FirstOrDefault(s => s.SubjectName == selected) ?? Subjects.FirstOrDefault();
+        ExcelName = Path.GetFileName(_workspace.GradeFilePath ?? _workspace.DefaultGradePath);
+        OnPropertyChanged(nameof(RecentEntries));
     }
 
     /// <summary>
-    /// 평가계획·명단이 바뀌면 열려 있는 성적표를 그에 맞춘다.
-    /// 성적표가 없으면 새로 만들고, 있으면 학생 추가/삭제·영역 변경·새 과목을 반영하되
-    /// 기존 학생의 성적·특기사항은 (번호,이름) 기준으로 보존한다.
+    /// 평가계획·명단이 바뀌면 열려 있는 성적표를 그에 맞춘다 (계산은 WorkspaceService.ComputeSync).
+    /// 성적표가 없으면 새로 만들고, 기존 학생의 성적·특기사항은 (번호,이름) 기준으로 보존.
     /// </summary>
     private void SyncGradeTableWithPlan()
     {
         if (Subjects.Count == 0) { EnsureGradeTableFromPlan(); return; }
-        if (_roster.Count == 0 && _plans.Count == 0) return;
 
-        bool changed = false;
-        var planByName = _plans.ToDictionary(p => p.SubjectName);
-        var currentNames = Subjects.Select(s => s.SubjectName).ToHashSet();
-        var rebuilt = new List<SubjectViewModel>();
+        var synced = _workspace.ComputeSync(Subjects.Select(s => s.Snapshot()).ToList());
+        if (synced is null) return;
 
-        foreach (var subj in Subjects)
-        {
-            var oldSheet = subj.Snapshot();   // 미저장 편집 포함 현재 상태
-            // 영역은 계획이 있으면 계획을 따르고, 없으면 기존 유지. 명단 변경은 모든 탭에 적용.
-            var areas = planByName.TryGetValue(subj.SubjectName, out var plan) ? plan.Domains : oldSheet.Areas;
-            var newSheet = SheetSynchronizer.BuildSheet(subj.SubjectName, areas, oldSheet, _roster);
-            if (SheetSynchronizer.ShapeEquals(oldSheet, newSheet)) { rebuilt.Add(subj); continue; }
-            rebuilt.Add(new SubjectViewModel(this, newSheet));
-            changed = true;
-        }
-        foreach (var plan in _plans.Where(p => !currentNames.Contains(p.SubjectName)))
-        {
-            rebuilt.Add(new SubjectViewModel(this,
-                SheetSynchronizer.BuildSheet(plan.SubjectName, plan.Domains, null, _roster)));
-            changed = true;
-        }
-        if (!changed) return;
-
-        var selected = SelectedSubject?.SubjectName;
-        Subjects.Clear();
-        foreach (var vm in rebuilt) Subjects.Add(vm);
-        SelectedSubject = Subjects.FirstOrDefault(s => s.SubjectName == selected) ?? Subjects.FirstOrDefault();
-
-        _gradeFilePath ??= Path.Combine(AppPaths.EnsureWorkspace(), "성적.xlsx");
-        ExcelName = Path.GetFileName(_gradeFilePath);
-        try
-        {
-            GradeWorkbookWriter.Write(_gradeFilePath, Subjects.Select(s => s.Snapshot()).ToList());
-            _appState.TouchGrade(_gradeFilePath);
-            OnPropertyChanged(nameof(RecentEntries));
+        ReplaceSubjects(synced, keepSelected: true);
+        var error = _workspace.SaveGrades(synced);
+        if (error is null)
             Log($"성적표를 명단·평가계획에 맞춰 갱신: {ExcelName} (기존 성적은 번호·이름 기준 보존)");
-        }
-        catch (Exception ex)
-        {
-            Log($"⚠ 성적표 갱신 저장 실패 ({ex.Message}) — 편집·종료 때 다시 시도합니다.");
-        }
+        else
+            Log($"⚠ 성적표 갱신 저장 실패 ({error}) — 편집·종료 때 다시 시도합니다.");
     }
 
-    // 명단·계획 → 시트 반영 규칙은 Core/SheetSynchronizer (순수 로직, 테스트됨)
-
     /// <summary>
-    /// 성적표가 안 열려 있는데 평가계획+명단이 준비되면, 성적표를 앱에서 바로 만들어
-    /// 작업공간 성적.xlsx 로 저장한다 — 엑셀 양식을 따로 채우지 않아도 처음부터 앱만으로 진행 가능.
+    /// 성적표가 안 열려 있는데 평가계획+명단이 준비되면 성적표를 만들어 작업공간에 저장.
     /// 같은 파일이 이미 있으면 (지난 세션 성적 보호) 만들지 않고 그 파일을 연다.
     /// </summary>
     private void EnsureGradeTableFromPlan()
     {
-        if (_plans.Count == 0 || _roster.Count == 0 || Subjects.Count > 0) return;
+        if (Subjects.Count > 0) return;
 
-        var path = Path.Combine(AppPaths.EnsureWorkspace(), "성적.xlsx");
-        if (File.Exists(path))
+        if (File.Exists(_workspace.DefaultGradePath))
         {
+            if (_workspace.BuildFreshSheets() is null) return;   // 재료 없으면 손대지 않음
             Log("작업공간에 기존 성적.xlsx 가 있어 그 파일을 엽니다. (새로 만들려면 파일을 옮기거나 지우세요)");
-            LoadGrades(path, silent: true);
+            LoadGrades(_workspace.DefaultGradePath, silent: true);
             if (Subjects.Count > 0) SyncGradeTableWithPlan();   // 파일이 현재 명단·계획과 다르면 맞춘다
             return;
         }
 
-        var students = _roster
-            .Select(r => new Student(r.No, r.Name, new Dictionary<string, string>(), null))
-            .ToList();
-        var sheets = _plans
-            .Select(p => new SubjectSheet(p.SubjectName, p.Domains, students))
-            .ToList();
+        var sheets = _workspace.BuildFreshSheets();
+        if (sheets is null) return;
 
-        try
-        {
-            GradeWorkbookWriter.Write(path, sheets);
-        }
-        catch (Exception ex)
-        {
-            Log($"⚠ 성적표 파일 생성 실패: {ex.Message}");
-            return;
-        }
+        var error = _workspace.SaveGrades(sheets, _workspace.DefaultGradePath);
+        if (error is not null) { Log($"⚠ 성적표 파일 생성 실패: {error}"); return; }
 
-        Subjects.Clear();
-        foreach (var s in sheets) Subjects.Add(new SubjectViewModel(this, s));
-        SelectedSubject = Subjects.FirstOrDefault();
-        _gradeFilePath = path;
-        ExcelName = Path.GetFileName(path);
-        _appState.TouchGrade(path);
-        OnPropertyChanged(nameof(RecentEntries));
-        Log($"평가계획·명단으로 성적표 생성: {ExcelName} ({sheets.Count}과목 × {students.Count}명) — 편집하면 자동 저장됩니다.");
+        ReplaceSubjects(sheets, keepSelected: false);
+        Log($"평가계획·명단으로 성적표 생성: {ExcelName} ({sheets.Count}과목 × {sheets[0].Students.Count}명) — 편집하면 자동 저장됩니다.");
     }
 
     // ── 자동 저장 ──────────────────────────────
@@ -545,17 +471,15 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>편집이 잦아들면 저장 대상 파일에 조용히 저장. 실패(파일 잠금 등)는 로그만 남기고 dirty 유지.</summary>
     private void AutoSaveGrades()
     {
-        if (_gradeFilePath is null || !Subjects.Any(s => s.IsDirty)) return;
-        try
+        if (_workspace.GradeFilePath is null || !Subjects.Any(s => s.IsDirty)) return;
+        var error = _workspace.SaveGrades(Subjects.Select(s => s.Snapshot()).ToList());
+        if (error is null)
         {
-            GradeWorkbookWriter.Write(_gradeFilePath, Subjects.Select(s => s.Snapshot()).ToList());
             foreach (var s in Subjects) s.MarkSaved();
-            Log($"자동 저장됨: {Path.GetFileName(_gradeFilePath)}");
+            Log($"자동 저장됨: {Path.GetFileName(_workspace.GradeFilePath)}");
         }
-        catch (Exception ex)
-        {
-            Log($"⚠ 자동 저장 실패 ({ex.Message}) — 파일이 엑셀에서 열려 있으면 닫아 주세요. 다음 편집·종료 때 다시 시도합니다.");
-        }
+        else
+            Log($"⚠ 자동 저장 실패 ({error}) — 파일이 엑셀에서 열려 있으면 닫아 주세요. 다음 편집·종료 때 다시 시도합니다.");
     }
 
     /// <summary>수정된 성적이 있으면 저장을 시도하고, 자동 저장이 불가능할 때만 묻는다. true=계속 진행, false=취소.</summary>
@@ -564,7 +488,7 @@ public sealed class MainViewModel : ObservableObject
         if (!Subjects.Any(s => s.IsDirty)) return true;
 
         // 저장 대상 파일이 있으면 조용히 자동 저장 (평소 자동 저장과 같은 동작)
-        if (_gradeFilePath is not null)
+        if (_workspace.GradeFilePath is not null)
         {
             AutoSaveGrades();
             if (!Subjects.Any(s => s.IsDirty)) return true;   // 저장 성공
@@ -652,27 +576,23 @@ public sealed class MainViewModel : ObservableObject
 
     private void SaveGrades()
     {
-        try
+        var path = _workspace.GradeFilePath;
+        if (path is null)
         {
-            var path = _gradeFilePath;
-            if (path is null)
+            var dlg = new SaveFileDialog
             {
-                var dlg = new SaveFileDialog
-                {
-                    Filter = "Excel|*.xlsx",
-                    FileName = "성적.xlsx",
-                    InitialDirectory = AppPaths.EnsureWorkspace(),
-                };
-                if (dlg.ShowDialog() != true) return;
-                path = dlg.FileName;
-                _gradeFilePath = path;
-                ExcelName = Path.GetFileName(path);
-            }
-            GradeWorkbookWriter.Write(path, Subjects.Select(s => s.Snapshot()).ToList());
-            foreach (var s in Subjects) s.MarkSaved();
-            Log($"성적 저장: {Path.GetFileName(path)}");
+                Filter = "Excel|*.xlsx",
+                FileName = "성적.xlsx",
+                InitialDirectory = AppPaths.EnsureWorkspace(),
+            };
+            if (dlg.ShowDialog() != true) return;
+            path = dlg.FileName;
         }
-        catch (Exception ex) { ShowError($"저장 실패: {ex.Message}"); }
+        var error = _workspace.SaveGrades(Subjects.Select(s => s.Snapshot()).ToList(), path);
+        if (error is not null) { ShowError($"저장 실패: {error}"); return; }
+        ExcelName = Path.GetFileName(path);
+        foreach (var s in Subjects) s.MarkSaved();
+        Log($"성적 저장: {Path.GetFileName(path)}");
     }
 
     public async Task RunSubjectAsync(SubjectSheet sheet, bool dryRun)

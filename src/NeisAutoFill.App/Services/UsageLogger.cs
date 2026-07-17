@@ -11,7 +11,7 @@ namespace NeisAutoFill.App.Services;
 /// </summary>
 public sealed class UsageLogger(GeneratorSettingsStore settings)
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    private static HttpClient Http => AppHttp.Short;
 
     private string ClientName => $"NeisAutoFill ({Environment.UserName})";
 

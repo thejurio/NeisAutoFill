@@ -20,7 +20,7 @@ public sealed record GenJob(
 public sealed class GenerationQueue
 {
     private const int MaxConcurrent = 2;
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(120) };
+    private static HttpClient Http => AppHttp.Long;   // 생성 호출은 김 (GAS)
 
     private readonly GeneratorSettingsStore _settings;
     private readonly NarrativeStore _store;
