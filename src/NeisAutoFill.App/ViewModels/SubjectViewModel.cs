@@ -65,14 +65,14 @@ public sealed class SubjectViewModel : ObservableObject
             _main.NotifyGradesEdited();    // 디바운스 자동 저장 예약
         };
 
-        RunCommand = new AsyncRelayCommand(() => _main.RunSubjectAsync(Sheet, dryRun: false));
+        RunCommand = new AsyncRelayCommand(() => _main.RunSubjectAsync(Snapshot(), dryRun: false));
         CancelCommand = new RelayCommand(() => _main.Cancel());
     }
 
-    /// <summary>현재 표 상태로 과목 시트를 재구성 (편집 반영).</summary>
-    public SubjectSheet Sheet
+    /// <summary>현재 표 상태의 스냅샷 (호출 시점 기준 — 이후 편집은 반영되지 않는다).
+    /// 긴 작업(전과목 입력 등)은 시작 시 한 번 받아 고정해서 쓸 것.</summary>
+    public SubjectSheet Snapshot()
     {
-        get
         {
             var students = new List<Student>();
             foreach (DataRow row in Grid.Rows)

@@ -78,8 +78,12 @@ public sealed class MainViewModel : ObservableObject
         _showCriteriaPanel = appState.State.ShowCriteriaPanel;
 
         RestoreLastFiles();           // 최근 사용 자료 자동 로드 (없으면 조용히 넘어감)
-        _ = AutoConnectLoopAsync();   // 앱 시작부터 자동 연결·재연결 (이미 열린 브라우저도 자동 포착)
+        // 앱 시작부터 자동 연결·재연결 (이미 열린 브라우저도 자동 포착). 종료 시 함께 정리
+        Application.Current.Exit += (_, _) => _connectLoopCts.Cancel();
+        _ = AutoConnectLoopAsync(_connectLoopCts.Token);
     }
+
+    private readonly CancellationTokenSource _connectLoopCts = new();
 
     // ── 최근 파일 · 자동 로드 ──────────────────
 
@@ -106,9 +110,9 @@ public sealed class MainViewModel : ObservableObject
     /// 백그라운드 자동 연결 루프. 안 붙어 있으면 조용히 attach 시도(이미 열린 attach 가능 브라우저 자동 포착),
     /// 붙어 있으면 생존 확인해 끊기면 재연결. 사용자가 [② 연결] 을 따로 누를 필요가 없다.
     /// </summary>
-    private async Task AutoConnectLoopAsync()
+    private async Task AutoConnectLoopAsync(CancellationToken ct)
     {
-        while (true)
+        while (!ct.IsCancellationRequested)
         {
             try
             {
@@ -116,19 +120,20 @@ public sealed class MainViewModel : ObservableObject
                 {
                     try
                     {
-                        await _engine.AttachAsync().ConfigureAwait(false);
+                        await _engine.AttachAsync(ct).ConfigureAwait(false);
                         Ui(() => { SetConnected(true); Log("브라우저 자동 연결됨."); });
                     }
-                    catch { /* 아직 attach 가능한 브라우저 없음 — 조용히 재시도 */ }
+                    catch (Exception ex) { Diag.Swallow(ex, "자동연결 attach"); }   // 아직 attach 가능한 브라우저 없음 — 조용히 재시도
                 }
                 else if (!await _engine.IsAliveAsync().ConfigureAwait(false))
                 {
                     Ui(() => { SetConnected(false); Log("브라우저 연결이 끊어졌습니다. 재연결을 시도합니다."); });
                 }
             }
-            catch { /* 루프는 어떤 경우에도 죽지 않는다 */ }
+            catch (Exception ex) { Diag.Swallow(ex, "자동연결 루프"); }   // 루프는 어떤 경우에도 죽지 않는다
 
-            await Task.Delay(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            try { await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
         }
     }
 
@@ -161,7 +166,7 @@ public sealed class MainViewModel : ObservableObject
         // 평가계획서에 명단이 없으면 열려 있는 성적파일의 학생 명단을 재사용
         var roster = _roster;
         if (roster.Count == 0 && Subjects.Count > 0)
-            roster = Subjects[0].Sheet.Students.Select(s => (s.No, s.Name)).ToList();
+            roster = Subjects[0].Snapshot().Students.Select(s => (s.No, s.Name)).ToList();
 
         var vm = new PlanEditorViewModel(_plans, roster, _scales.Active,
             importer: async (path, progress) => await new Generator.GasPlanImporter(ImportHttp, _generatorSettings.Options)
@@ -238,11 +243,9 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public sealed record CriteriaLevelView(string Grade, string Text);
-    public sealed record CriteriaDomainView(string Domain, string? Achievement, IReadOnlyList<CriteriaLevelView> Levels);
-
-    private IReadOnlyList<CriteriaDomainView> _criteriaPanelItems = Array.Empty<CriteriaDomainView>();
-    public IReadOnlyList<CriteriaDomainView> CriteriaPanelItems
+    private IReadOnlyList<CriteriaPanelBuilder.DomainView> _criteriaPanelItems =
+        Array.Empty<CriteriaPanelBuilder.DomainView>();
+    public IReadOnlyList<CriteriaPanelBuilder.DomainView> CriteriaPanelItems
     {
         get => _criteriaPanelItems;
         private set => SetProperty(ref _criteriaPanelItems, value);
@@ -251,32 +254,21 @@ public sealed class MainViewModel : ObservableObject
     private string _criteriaPanelStatus = "";
     public string CriteriaPanelStatus { get => _criteriaPanelStatus; set => SetProperty(ref _criteriaPanelStatus, value); }
 
-    /// <summary>현재 과목 탭의 평가계획(영역·등급별 기준)을 패널용으로 재구성.</summary>
+    /// <summary>현재 과목 탭의 평가계획(영역·등급별 기준)을 패널용으로 재구성 (구성 로직은 Core/CriteriaPanelBuilder).</summary>
     private void RefreshCriteriaPanel()
     {
         var subjectName = SelectedSubject?.SubjectName;
         var plan = subjectName is null ? null : _plans.FirstOrDefault(p => p.SubjectName == subjectName);
         if (plan is null)
         {
-            CriteriaPanelItems = Array.Empty<CriteriaDomainView>();
+            CriteriaPanelItems = Array.Empty<CriteriaPanelBuilder.DomainView>();
             CriteriaPanelStatus = subjectName is null
                 ? "성적파일을 불러오면 표시됩니다."
                 : $"'{subjectName}' 평가계획이 없습니다.\n[📝 명단·계획]에서 입력하거나 평가계획서를 불러오세요.";
             return;
         }
 
-        var labels = _scales.Active.Levels.Select(l => l.Label).ToList();
-        CriteriaPanelItems = plan.Domains.Select(domain =>
-        {
-            var levels = labels
-                .Select(g => plan.Criteria.TryGetValue((domain, g), out var e)
-                    ? new CriteriaLevelView(g, e.Text) : null)
-                .Where(v => v is not null).Cast<CriteriaLevelView>().ToList();
-            var ach = labels
-                .Select(g => plan.Criteria.TryGetValue((domain, g), out var e) ? e.Achievement : null)
-                .FirstOrDefault(a => !string.IsNullOrEmpty(a));
-            return new CriteriaDomainView(domain, ach, levels);
-        }).ToList();
+        CriteriaPanelItems = CriteriaPanelBuilder.Build(plan, _scales.Active);
         CriteriaPanelStatus = "";
     }
 
@@ -366,7 +358,7 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             _generatorVm ??= new GeneratorViewModel(
-                () => Subjects.Select(s => s.Sheet).ToList(),
+                () => Subjects.Select(s => s.Snapshot()).ToList(),
                 () => _plans,
                 _scales, _generatorSettings, _narratives, _generationQueue, _narrativeMirror, _engine, Log);
             _generatorVm.RefreshSubjects();   // 메인에서 로드된 성적·평가계획을 자동 반영
@@ -458,7 +450,7 @@ public sealed class MainViewModel : ObservableObject
 
         foreach (var subj in Subjects)
         {
-            var oldSheet = subj.Sheet;   // 미저장 편집 포함 현재 상태
+            var oldSheet = subj.Snapshot();   // 미저장 편집 포함 현재 상태
             // 영역은 계획이 있으면 계획을 따르고, 없으면 기존 유지. 명단 변경은 모든 탭에 적용.
             var areas = planByName.TryGetValue(subj.SubjectName, out var plan) ? plan.Domains : oldSheet.Areas;
             var newSheet = SheetSynchronizer.BuildSheet(subj.SubjectName, areas, oldSheet, _roster);
@@ -483,7 +475,7 @@ public sealed class MainViewModel : ObservableObject
         ExcelName = Path.GetFileName(_gradeFilePath);
         try
         {
-            GradeWorkbookWriter.Write(_gradeFilePath, Subjects.Select(s => s.Sheet).ToList());
+            GradeWorkbookWriter.Write(_gradeFilePath, Subjects.Select(s => s.Snapshot()).ToList());
             _appState.TouchGrade(_gradeFilePath);
             OnPropertyChanged(nameof(RecentEntries));
             Log($"성적표를 명단·평가계획에 맞춰 갱신: {ExcelName} (기존 성적은 번호·이름 기준 보존)");
@@ -556,7 +548,7 @@ public sealed class MainViewModel : ObservableObject
         if (_gradeFilePath is null || !Subjects.Any(s => s.IsDirty)) return;
         try
         {
-            GradeWorkbookWriter.Write(_gradeFilePath, Subjects.Select(s => s.Sheet).ToList());
+            GradeWorkbookWriter.Write(_gradeFilePath, Subjects.Select(s => s.Snapshot()).ToList());
             foreach (var s in Subjects) s.MarkSaved();
             Log($"자동 저장됨: {Path.GetFileName(_gradeFilePath)}");
         }
@@ -651,7 +643,7 @@ public sealed class MainViewModel : ObservableObject
         if (dlg.ShowDialog() != true) return;
         try
         {
-            GradeWorkbookWriter.Write(dlg.FileName, Subjects.Select(s => s.Sheet).ToList());
+            GradeWorkbookWriter.Write(dlg.FileName, Subjects.Select(s => s.Snapshot()).ToList());
             Log($"성적 내보내기: {dlg.FileName}");
             MessageBox.Show($"내보냈습니다.\n{dlg.FileName}", "완료", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -676,7 +668,7 @@ public sealed class MainViewModel : ObservableObject
                 _gradeFilePath = path;
                 ExcelName = Path.GetFileName(path);
             }
-            GradeWorkbookWriter.Write(path, Subjects.Select(s => s.Sheet).ToList());
+            GradeWorkbookWriter.Write(path, Subjects.Select(s => s.Snapshot()).ToList());
             foreach (var s in Subjects) s.MarkSaved();
             Log($"성적 저장: {Path.GetFileName(path)}");
         }
@@ -768,7 +760,7 @@ public sealed class MainViewModel : ObservableObject
             ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.");
             return;
         }
-        var allSheets = Subjects.Select(s => s.Sheet).ToList();
+        var allSheets = Subjects.Select(s => s.Snapshot()).ToList();
         if (!allSheets.Any(s => s.Students.Any(st => st.Grades.Count > 0)))
         { ShowError("입력할 성적이 없습니다. 성적표에 등급을 먼저 입력해 주세요."); return; }
 

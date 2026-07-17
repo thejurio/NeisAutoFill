@@ -45,6 +45,8 @@ public sealed class NarrativeStore
         if (_map.Remove((subject, no, name))) { Save(); Changed?.Invoke(); }
     }
 
+    // NOTE: 저장은 의도적으로 동기·즉시 — 생성 완료분이 어떤 시점에 꺼져도 보존된다는 보장이
+    // 배치 중 쓰기 횟수 절약보다 중요 (디바운스 검토 후 기각, 2026-07-17 리팩토링계획 B4).
     private void Save()
     {
         try
