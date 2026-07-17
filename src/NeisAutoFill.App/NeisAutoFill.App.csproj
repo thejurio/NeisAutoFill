@@ -18,7 +18,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <!-- 자동업데이트 버전 비교 기준 — 릴리스 때 올릴 것 (GitHub 릴리스 태그 v1.0.0 과 일치) -->
-    <Version>1.2.2</Version>
+    <Version>1.3.0</Version>
     <AssemblyTitle>NEIS 교과평가 자동입력기</AssemblyTitle>
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
   </PropertyGroup>
