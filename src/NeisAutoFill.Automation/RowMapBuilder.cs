@@ -107,15 +107,20 @@ public sealed class RowMapBuilder(IPage page, GridScroller scroller)
 
         if (vscroll is { } vend) { await scroller.ScrollProxyAsync(vend.bar, 0); await Task.Delay(Timings.AfterScroll, ct); }
 
-        // 진단: 화면 행 지도 전체 (rowindex → 번호/성명/영역). 엑셀 영역 순서와 비교용.
-        foreach (var idx in map.Keys.OrderBy(k => k))
+        // 행 지도 전체 덤프는 문제가 있을 때만 (정상 실행 시 로그를 학생 수만큼 채우지 않는다)
+        bool hasProblem = rawArea.Count > 0 || map.Count < expected;
+        if (hasProblem)
         {
-            var m = map[idx];
-            log($"    행{idx}: {m.No}번 {m.Name} 영역='{m.Area}'");
+            log($"  ⚠ 행 파악 불완전 ({map.Count}/{expected}) — 아래는 화면에서 읽은 행 전체입니다 (문의 시 이 로그를 전달):");
+            foreach (var idx in map.Keys.OrderBy(k => k))
+            {
+                var m = map[idx];
+                log($"    행{idx}: {m.No}번 {m.Name} 영역='{m.Area}'");
+            }
+            // 영역 파싱 실패 행(오버레이 아님)의 원본 라벨 — 이름 있는데 영역만 못 읽은 경우
+            foreach (var idx in rawArea.Keys.OrderBy(k => k))
+                log($"    ⚠ 행{idx} 영역 파싱 실패 원본='{rawArea[idx]}'");
         }
-        // 영역 파싱 실패 행(오버레이 아님)의 원본 라벨 — 이름 있는데 영역만 못 읽은 경우
-        foreach (var idx in rawArea.Keys.OrderBy(k => k))
-            log($"    ⚠ 행{idx} 영역 파싱 실패 원본='{rawArea[idx]}'");
 
         return map;
     }

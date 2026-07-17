@@ -77,6 +77,8 @@ public sealed class MainViewModel : ObservableObject
         OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
         RunAllSubjectsCommand = new AsyncRelayCommand(RunAllSubjectsAsync);
         InspectCommand = new AsyncRelayCommand(InspectAsync);
+        ExportGradesCommand = new RelayCommand(ExportGrades);
+        HelpCommand = new RelayCommand(OpenHelp);
 
         _showCriteriaPanel = appState.State.ShowCriteriaPanel;
 
@@ -369,15 +371,21 @@ public sealed class MainViewModel : ObservableObject
 
     private void OpenScaleEditor()
     {
-        var win = new ScaleEditorWindow(new ScaleEditorViewModel(_scales))
+        var win = new SettingsWindow(new SettingsViewModel(_scales, _generatorSettings))
         {
             Owner = Application.Current.MainWindow,
         };
-        if (win.ShowDialog() == true)
-        {
-            OnPropertyChanged(nameof(ActiveScaleSummary));
-            Log($"평가척도 적용: {ActiveScaleSummary}");
-        }
+        if (win.ShowDialog() != true) return;
+
+        // 지역·척도가 바뀌었을 수 있으므로 전부 재반영
+        _selectedRegion = NeisRegions.Find(_generatorSettings.Options.NeisRegionCode);
+        _engineOptions.NeisUrl = _selectedRegion.Url;
+        OnPropertyChanged(nameof(SelectedRegion));
+        OnPropertyChanged(nameof(ActiveScaleSummary));
+        OnPropertyChanged(nameof(GradeLabels));
+        OnPropertyChanged(nameof(BulkGradeLabels));
+        RefreshCriteriaPanel();
+        Log($"설정 적용: 척도 {ActiveScaleSummary} · 지역 {_selectedRegion.Name}");
     }
 
     public string VersionText => "v" + (System.Reflection.Assembly.GetExecutingAssembly()
@@ -659,6 +667,52 @@ public sealed class MainViewModel : ObservableObject
         if (r == MessageBoxResult.Yes) SaveGrades();
         else foreach (var s in Subjects) s.MarkSaved();   // 저장 안 함 → dirty 해제
         return true;
+    }
+
+    public ICommand HelpCommand { get; private set; } = null!;
+
+    /// <summary>사용법 페이지 열기 — URL 은 settings.json 의 HelpUrl (배포 시 기본값으로 구움).</summary>
+    private void OpenHelp()
+    {
+        var url = _generatorSettings.Options.HelpUrl?.Trim();
+        if (string.IsNullOrEmpty(url))
+        {
+            MessageBox.Show("사용법 안내 페이지를 준비 중입니다.", "도움말",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch (Exception ex) { ShowError($"도움말 페이지를 열지 못했습니다: {ex.Message}"); }
+    }
+
+    public ICommand ExportGradesCommand { get; private set; } = null!;
+
+    /// <summary>현재 성적표 전체를 사용자가 고른 위치에 엑셀로 내보내기 (작업 파일과 별개 사본).</summary>
+    private void ExportGrades()
+    {
+        if (Subjects.Count == 0)
+        {
+            ShowError("내보낼 성적이 없습니다. 성적을 먼저 준비해 주세요.");
+            return;
+        }
+        var dlg = new SaveFileDialog
+        {
+            Filter = "Excel|*.xlsx",
+            FileName = $"성적_{DateTime.Now:yyyyMMdd}.xlsx",
+            Title = "성적 엑셀 내보내기",
+            InitialDirectory = AppPaths.EnsureWorkspace(),
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            GradeWorkbookWriter.Write(dlg.FileName, Subjects.Select(s => s.Sheet).ToList());
+            Log($"성적 내보내기: {dlg.FileName}");
+            MessageBox.Show($"내보냈습니다.\n{dlg.FileName}", "완료", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex) { ShowError($"내보내기 실패: {ex.Message}"); }
     }
 
     private void SaveGrades()

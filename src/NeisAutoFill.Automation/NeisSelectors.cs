@@ -67,14 +67,27 @@ public static partial class NeisSelectors
     public static partial Regex AreaRegex();
 }
 
-/// <summary>§4.3 실기기에서 안정 동작이 확인된 타이밍 상수.</summary>
+/// <summary>§4.3 실기기에서 안정 동작이 확인된 타이밍 상수.
+/// 기본(배율 1.0)이 검증된 최고 속도 — 설정의 자동클릭 속도(보통/느림)는 배율만 올린다 (느린 PC 안정용).</summary>
 public static class Timings
 {
-    public static readonly TimeSpan AfterOptionClick = TimeSpan.FromMilliseconds(300);
-    public static readonly TimeSpan AfterScroll = TimeSpan.FromMilliseconds(400);
-    public static readonly TimeSpan AfterScrollIntoView = TimeSpan.FromMilliseconds(200);
-    public static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(400);
-    public static readonly TimeSpan PopupPollTimeout = TimeSpan.FromMilliseconds(2500);
-    public static readonly TimeSpan PopupPollStep = TimeSpan.FromMilliseconds(150);
-    public static readonly TimeSpan WheelStep = TimeSpan.FromMilliseconds(50);
+    private static double _multiplier = 1.0;
+
+    /// <summary>"fast"=1.0(기본) / "normal"=1.6 / "slow"=2.5</summary>
+    public static void SetSpeed(string speed) => _multiplier = speed switch
+    {
+        "slow" => 2.5,
+        "normal" => 1.6,
+        _ => 1.0,
+    };
+
+    public static TimeSpan AfterOptionClick => Ms(300);
+    public static TimeSpan AfterScroll => Ms(400);
+    public static TimeSpan AfterScrollIntoView => Ms(200);
+    public static TimeSpan RetryDelay => Ms(400);
+    public static TimeSpan PopupPollTimeout => Ms(2500);
+    public static TimeSpan PopupPollStep => Ms(150);
+    public static TimeSpan WheelStep => Ms(50);
+
+    private static TimeSpan Ms(int baseMs) => TimeSpan.FromMilliseconds(baseMs * _multiplier);
 }

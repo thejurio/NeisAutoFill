@@ -86,15 +86,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- 설정 -->
-            <Expander Grid.Row="3" Header="⚙ 설정" Margin="14,6,14,0" FontSize="12" Foreground="{StaticResource Sub}">
-                <DockPanel Margin="4,8">
-                    <TextBlock Text="바이트 제한" Width="80" VerticalAlignment="Center" FontSize="12"/>
-                    <TextBlock DockPanel.Dock="Right" Text=" (나이스 입력 전 UTF-8 바이트 사전검사, 0 = 검사 안 함)"
-                               VerticalAlignment="Center" Foreground="#94A3B8" FontSize="11"/>
-                    <TextBox Text="{Binding MaxNarrativeBytes, UpdateSourceTrigger=LostFocus}" Width="80" Height="28" VerticalContentAlignment="Center"/>
-                </DockPanel>
-            </Expander>
+            <!-- 설정은 메인 화면 [⚙ 설정]으로 통합 (AI 분량·톤·바이트 제한) -->
 
             <!-- 학생 목록 -->
             <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" Padding="14,10">

@@ -42,6 +42,7 @@ public partial class App : Application
 
         var provider = services.BuildServiceProvider();
         provider.GetRequiredService<NarrativeMirror>();   // store 변경 구독 시작 (서술문.xlsx 자동 미러)
+        Automation.Timings.SetSpeed(provider.GetRequiredService<GeneratorSettingsStore>().Options.ClickSpeed);
         provider.GetRequiredService<MainWindow>().Show();
 
         // 자동업데이트 확인 (백그라운드 — 설정에 UpdateRepo 가 있을 때만 동작)

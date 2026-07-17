@@ -66,7 +66,7 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
                 == MessageBoxResult.Yes);
             if (!ok) return;
 
-            await DownloadAndRestartAsync(zipUrl);
+            await DownloadAndRestartAsync(zipUrl, latest);
         }
         catch (Exception)
         {
@@ -74,18 +74,73 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
         }
     }
 
-    private async Task DownloadAndRestartAsync(string zipUrl)
+    private async Task DownloadAndRestartAsync(string zipUrl, Version latest)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "NeisAutoFill_Update");
-        if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
-        Directory.CreateDirectory(tempRoot);
+        // 진행 창 — 사용자가 업데이트에 동의한 뒤이므로 화면에 명시적으로 보여준다
+        UpdateWindow? win = null;
+        await Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            win = new UpdateWindow(latest.ToString(3));
+            win.Show();
+        });
+        void Report(string status, double? percent) =>
+            Application.Current.Dispatcher.Invoke(() => win!.Report(status, percent));
 
-        var zipPath = Path.Combine(tempRoot, "update.zip");
-        var extractDir = Path.Combine(tempRoot, "files");
+        try
+        {
+            var tempRoot = Path.Combine(Path.GetTempPath(), "NeisAutoFill_Update");
+            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
+            Directory.CreateDirectory(tempRoot);
 
-        var bytes = await Http.GetByteArrayAsync(zipUrl);
-        await File.WriteAllBytesAsync(zipPath, bytes);
-        ZipFile.ExtractToDirectory(zipPath, extractDir);
+            var zipPath = Path.Combine(tempRoot, "update.zip");
+            var extractDir = Path.Combine(tempRoot, "files");
+
+            // 스트리밍 다운로드 — 진행률 % 표시
+            Report("다운로드 중... 0%", 0);
+            using (var response = await Http.GetAsync(zipUrl, HttpCompletionOption.ResponseHeadersRead))
+            {
+                response.EnsureSuccessStatusCode();
+                var total = response.Content.Headers.ContentLength;
+                await using var src = await response.Content.ReadAsStreamAsync();
+                await using var dst = File.Create(zipPath);
+                var buffer = new byte[81920];
+                long done = 0; int read; int lastPct = -1;
+                while ((read = await src.ReadAsync(buffer)) > 0)
+                {
+                    await dst.WriteAsync(buffer.AsMemory(0, read));
+                    done += read;
+                    if (total is { } t)
+                    {
+                        int pct = (int)(done * 100 / t);
+                        if (pct != lastPct)
+                        {
+                            lastPct = pct;
+                            Report($"다운로드 중... {pct}% ({done / 1048576.0:F1}/{t / 1048576.0:F1} MB)", pct);
+                        }
+                    }
+                    else Report($"다운로드 중... {done / 1048576.0:F1} MB", null);
+                }
+            }
+
+            Report("압축 푸는 중...", null);
+            await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, extractDir));
+            await ApplyAndRestartAsync(tempRoot, extractDir, Report);
+        }
+        catch (Exception ex)
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                win!.Close();
+                MessageBox.Show(
+                    $"업데이트에 실패했습니다: {ex.Message}\n프로그램은 현재 버전으로 계속 사용할 수 있습니다.",
+                    "업데이트 실패", MessageBoxButton.OK, MessageBoxImage.Warning);
+            });
+        }
+    }
+
+    private static async Task ApplyAndRestartAsync(string tempRoot, string extractDir, Action<string, double?> report)
+    {
+        report("적용 준비 중... 곧 재시작됩니다", null);
 
         // zip 안에 단일 최상위 폴더가 있으면 그 내부를 소스로
         var dirs = Directory.GetDirectories(extractDir);

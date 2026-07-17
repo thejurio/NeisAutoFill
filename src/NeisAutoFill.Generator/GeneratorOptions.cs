@@ -13,9 +13,24 @@ public sealed record GeneratorOptions
     /// <summary>서술문 나이스 입력 시 UTF-8 바이트 제한 사전검사 (0 = 검사 안 함).</summary>
     public int MaxNarrativeBytes { get; init; } = 0;
 
+    /// <summary>생성문 목표 글자 수 (0 = AI 자율).</summary>
+    public int TargetChars { get; init; } = 0;
+
+    /// <summary>서술문에 반영할 최대 영역 수 (0 = 전체).</summary>
+    public int MaxDomains { get; init; } = 0;
+
+    /// <summary>전체 서술 톤 지시문 (비우면 기본 톤). 단계별 톤은 평가척도의 AI 뉘앙스에서.</summary>
+    public string TonePrompt { get; init; } = "";
+
+    /// <summary>자동클릭 속도: fast(현재 기본)/normal/slow — 느린 PC 안정용.</summary>
+    public string ClickSpeed { get; init; } = "fast";
+
     /// <summary>나이스 접속 지역 (교육청 코드, 기본 전북).</summary>
     public string NeisRegionCode { get; init; } = "jbe";
 
     /// <summary>자동업데이트용 GitHub 저장소 ("owner/repo"). 비우면 업데이트 확인 안 함.</summary>
     public string UpdateRepo { get; init; } = "thejurio/NeisAutoFill";
+
+    /// <summary>❓ 도움말 버튼이 여는 사용법 페이지 URL. 비우면 "준비 중" 안내.</summary>
+    public string HelpUrl { get; init; } = "";
 }

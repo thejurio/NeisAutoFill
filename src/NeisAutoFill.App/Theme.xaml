@@ -323,8 +323,9 @@
         <Setter Property="Background" Value="White"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="RowBackground" Value="White"/>
-        <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+        <Setter Property="GridLinesVisibility" Value="All"/>
         <Setter Property="HorizontalGridLinesBrush" Value="#EEF2F7"/>
+        <Setter Property="VerticalGridLinesBrush" Value="#F6F8FB"/>
         <Setter Property="HeadersVisibility" Value="Column"/>
         <Setter Property="RowHeight" Value="34"/>
         <Setter Property="Foreground" Value="{StaticResource Ink}"/>

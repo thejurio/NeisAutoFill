@@ -52,7 +52,7 @@ public sealed class ScaleEditorViewModel : ObservableObject
     private LevelItem? _selectedLevel;
     public LevelItem? SelectedLevel { get => _selectedLevel; set => SetProperty(ref _selectedLevel, value); }
 
-    public IReadOnlyList<int> LevelCountOptions { get; } = new[] { 2, 3, 4, 5, 6, 7 };
+    public IReadOnlyList<int> LevelCountOptions { get; } = new[] { 2, 3, 4, 5 };
 
     /// <summary>단계 수. 콤보로 바꾸면 목록이 그만큼 늘거나 준다 (기존 이름 보존).</summary>
     public int LevelCount

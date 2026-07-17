@@ -1,0 +1,22 @@
+<Window x:Class="NeisAutoFill.App.UpdateWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="업데이트" Width="400" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" WindowStartupLocation="CenterScreen"
+        Topmost="True" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
+        FontFamily="{StaticResource UiFont}">
+    <Border BorderBrush="{StaticResource Neis}" BorderThickness="1.5" Background="White" CornerRadius="0">
+        <StackPanel Margin="30,26">
+            <TextBlock Text="🔄" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+            <TextBlock x:Name="TitleText" Text="새 버전으로 업데이트 중" FontWeight="Bold" FontSize="14.5"
+                       Foreground="{StaticResource Ink}" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="StatusText" Text="준비 중..." FontSize="11.5" Foreground="{StaticResource Sub}"
+                       HorizontalAlignment="Center" Margin="0,6,0,14"/>
+            <ProgressBar x:Name="Bar" Height="6" Width="300" IsIndeterminate="True"
+                         Minimum="0" Maximum="100"
+                         Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"/>
+            <TextBlock Text="완료되면 프로그램이 자동으로 재시작됩니다" FontSize="10.5" Foreground="#94A3B8"
+                       HorizontalAlignment="Center" Margin="0,10,0,0"/>
+        </StackPanel>
+    </Border>
+</Window>

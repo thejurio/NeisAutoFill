@@ -161,10 +161,22 @@ public sealed class GeneratorViewModel : ObservableObject
         var scale = _scales.Active;
         foreach (var st in sheet.Students)
         {
-            var domains = EvaluationAssembler.BuildDomainPoints(st, sheet.Areas, plan, scale);
+            var domains = CapDomains(EvaluationAssembler.BuildDomainPoints(st, sheet.Areas, plan, scale));
             if (domains.Count > 0)
                 yield return new GenJob(sheet.SubjectName, st.No, st.Name, domains, st.SpecialNote, scale);
         }
+    }
+
+    /// <summary>⚙ 설정의 '최대 영역 수' 적용 — 초과하면 무작위로 N개 선정 (0 = 전체).
+    /// 선정된 영역은 원래 순서를 유지해 서술문 흐름이 자연스럽게.</summary>
+    private IReadOnlyList<DomainPoint> CapDomains(IReadOnlyList<DomainPoint> domains)
+    {
+        int max = _settings.Options.MaxDomains;
+        if (max <= 0 || domains.Count <= max) return domains;
+        return Enumerable.Range(0, domains.Count)
+            .OrderBy(_ => Random.Shared.Next()).Take(max)   // 무작위 N개
+            .OrderBy(i => i)                                 // 원래 순서 복원
+            .Select(i => domains[i]).ToList();
     }
 
     /// <summary>서술문 엑셀(과목별 시트)을 읽어 저장소에 반영 — 엑셀에서 직접 고친 내용 되가져오기.</summary>
@@ -440,7 +452,7 @@ public sealed class GeneratorViewModel : ObservableObject
         _plans = _getPlans();
         PlanStatus = _plans.Count > 0
             ? $"평가계획: {string.Join(", ", _plans.Select(p => $"{p.SubjectName} {p.Domains.Count}영역"))}"
-            : "(평가계획서 미로드 — 메인 화면 [평가계획서 열기]로 불러오면 평가기준이 서술문에 반영됩니다)";
+            : "(평가계획 없음 — 메인 [📝 명단·계획]에서 입력하거나 불러오면 평가기준이 서술문에 반영됩니다)";
 
         SubjectNames.Clear();
         foreach (var s in _getSheets()) SubjectNames.Add(s.SubjectName);
@@ -466,7 +478,7 @@ public sealed class GeneratorViewModel : ObservableObject
         var fresh = new List<StudentGenItem>();
         foreach (var st in sheet.Students)
         {
-            var domains = EvaluationAssembler.BuildDomainPoints(st, sheet.Areas, plan, _scales.Active);
+            var domains = CapDomains(EvaluationAssembler.BuildDomainPoints(st, sheet.Areas, plan, _scales.Active));
             if (domains.Count == 0) continue;   // 등급이 하나도 없는 학생은 제외 (DooEval 동작과 동일)
             var item = new StudentGenItem(this, sheet.SubjectName, st, domains);
             if (previous.TryGetValue((st.No, st.Name), out var prev))

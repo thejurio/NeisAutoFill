@@ -30,7 +30,9 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
             studentName, subjectName,
             domains.Select(d => new GasDomain(d.DomainName, d.Grade, d.CriteriaText, d.Achievement ?? "")).ToList(),
             subjectNote ?? "",
-            scale.Levels.ToDictionary(l => l.Label, l => PromptBuilder.ResolveNuance(l.Label, scale)));
+            scale.Levels.ToDictionary(l => l.Label, l => PromptBuilder.ResolveNuance(l.Label, scale)),
+            options.TargetChars,
+            options.TonePrompt ?? "");
 
         using var response = await http.PostAsJsonAsync(options.GasUrl, request, Json, ct);
         response.EnsureSuccessStatusCode();
@@ -60,7 +62,9 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
         string SubjectName,
         List<GasDomain> Domains,
         string SubjectNote,
-        Dictionary<string, string> ScaleNuances);
+        Dictionary<string, string> ScaleNuances,
+        int TargetChars,
+        string TonePrompt);
 
     private sealed record GasDomain(
         string DomainName, string Grade, string CriteriaText, string Achievement);

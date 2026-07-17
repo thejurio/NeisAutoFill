@@ -54,47 +54,41 @@
                 <!-- ===== 툴바 ===== -->
                 <Border Grid.Row="0" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
                     <DockPanel Margin="14,10">
-                        <!-- 오른쪽: 지역 + 설정 -->
+                        <!-- 오른쪽: 나이스 접속·연결 상태 + 설정 -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <TextBlock Text="지역" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,4,0"/>
-                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Regions}" SelectedItem="{Binding SelectedRegion}"
-                                      DisplayMemberPath="Name" MinWidth="128" Margin="0,0,10,0"/>
+                            <!-- 화면 진단 버튼 — 셀렉터 실측 때만 임시로 주석 해제해 사용 (InspectCommand 는 유지됨)
                             <Button Style="{StaticResource GhostButton}" Content="🔎 진단" Command="{Binding InspectCommand}" Margin="0,0,6,0"
                                     ToolTip="현재 나이스 화면 구조를 읽기 전용으로 덤프합니다 (%AppData%\NeisAutoFill\dom_inspect_*.txt)"/>
-                            <Button Style="{StaticResource GhostButton}" Content="⚙ 설정" Command="{Binding OpenScaleEditorCommand}"/>
-                        </StackPanel>
-                        <!-- 왼쪽: 자료 / 접속 / 생성기 -->
-                        <StackPanel Orientation="Horizontal">
-                            <Button Style="{StaticResource AccentGhostButton}" Content="📁 자료 준비" Command="{Binding OpenDataPrepCommand}" Margin="0,0,6,0"/>
-                            <Button Style="{StaticResource GhostButton}" Content="📝 명단·계획" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
-                                <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}"/>
-                                <Button Style="{StaticResource GhostButtonRight}" Content="▼" Click="Recent_Click" ToolTip="최근 파일"/>
-                            </StackPanel>
-                            <Border Width="1" Background="{StaticResource Line}" Margin="4,2"/>
-                            <Button Style="{StaticResource PrimaryButton}" Content="① NEIS 접속" Command="{Binding LaunchEdgeCommand}" Margin="6,0,6,0"/>
-                            <Border Background="{StaticResource Panel}" CornerRadius="7" Padding="10,0" Margin="0,0,6,0">
+                            -->
+                            <Button Style="{StaticResource PrimaryButton}" Content="① NEIS 접속" Command="{Binding LaunchEdgeCommand}" Margin="0,0,4,0"/>
+                            <Border Background="{StaticResource Panel}" CornerRadius="7" Padding="10,0" Margin="0,0,10,0">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <Ellipse Width="8" Height="8" Fill="{Binding ConnectionBrush}" Margin="0,0,6,0"/>
                                     <TextBlock Text="{Binding ConnectionText}" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Ink}"/>
                                 </StackPanel>
                             </Border>
-                            <Button Style="{StaticResource GhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}"/>
+                            <Button Style="{StaticResource GhostButton}" Content="⚙ 설정" Command="{Binding OpenScaleEditorCommand}" Margin="0,0,4,0"
+                                    ToolTip="AI 서술문(글자 수·톤) · 평가 단계 · 교육청 · 자동클릭 속도"/>
+                            <Button Style="{StaticResource GhostButton}" Content="❓" Command="{Binding HelpCommand}" Padding="9,7"
+                                    ToolTip="사용법 안내 페이지 열기"/>
+                        </StackPanel>
+                        <!-- 왼쪽: 자료 편집·입출력 + 서술문 생성 -->
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource GhostButton}" Content="📝 명단·계획" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                                <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}"/>
+                                <Button Style="{StaticResource GhostButtonRight}" Content="▼" Click="Recent_Click" ToolTip="최근 파일"/>
+                            </StackPanel>
+                            <Button Style="{StaticResource GhostButton}" Content="📤 내보내기" Command="{Binding ExportGradesCommand}" Margin="0,0,6,0"
+                                    ToolTip="현재 성적표 전체를 원하는 위치에 엑셀 파일로 내보냅니다"/>
+                            <Border Width="1" Background="{StaticResource Line}" Margin="4,2"/>
+                            <Button Style="{StaticResource AccentGhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}" Margin="6,0,0,0"
+                                    ToolTip="AI 서술문 생성·나이스 입력 창을 엽니다"/>
                         </StackPanel>
                     </DockPanel>
                 </Border>
 
-                <!-- ===== 로드 상태 요약줄 ===== -->
-                <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="14,7">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="평가계획서" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding PlanName}" Foreground="{StaticResource Ink}" FontSize="11.5" FontWeight="Medium" Margin="0,0,16,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="성적파일" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding ExcelName}" Foreground="{StaticResource Ink}" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center"/>
-                        <TextBlock Text="   ·   척도" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding ActiveScaleSummary}" Foreground="{StaticResource Neis}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
+                <!-- (로드 상태 요약줄 제거 — 작업공간 자동 저장 체제에서 파일명 표시는 불필요) -->
 
                 <!-- ===== 과목 탭 + 성적표 ===== -->
                 <TabControl Grid.Row="2" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
