@@ -33,11 +33,14 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
         progress?.Report("문서 내용 추출 중...");
         var extraction = await RunStaAsync(() => PlanFileExtractor.Extract(filePath));
 
+        // 이번 인식에서 실제로 쓴 API 키(뒤 4자리)들 — 요약 로그 F열에 모아 넣는다
+        var usedKeys = new SortedSet<string>(StringComparer.Ordinal);
+
         progress?.Report("문서의 과목 목록 확인 중...");
         IReadOnlyList<string> subjects;
         try
         {
-            subjects = await ListSubjectsAsync(extraction, ct);
+            subjects = await ListSubjectsAsync(extraction, usedKeys, ct);
         }
         catch
         {
@@ -47,34 +50,70 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
         if (subjects.Count == 0)
         {
             progress?.Report("전체 문서 분석 중...");
-            return await ParseSubjectAsync(extraction, scale, onlySubject: null, ct);
+            try
+            {
+                var whole = await ParseSubjectAsync(extraction, scale, onlySubject: null, usedKeys, ct);
+                await LogImportAsync("SUCCESS", $"{whole.Count}과목 인식 (통짜)", usedKeys, ct);
+                return whole;
+            }
+            catch
+            {
+                await LogImportAsync("FAIL", "과목 목록·통짜 인식 모두 실패", usedKeys, ct);
+                throw;
+            }
         }
 
         var plans = new List<SubjectPlan>();
-        var failedSubjects = new List<string>();
+        var failedAt = new List<int>();   // 실패한 과목의 순번(1-based)
         for (int i = 0; i < subjects.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
             progress?.Report($"'{subjects[i]}' 분석 중... ({i + 1}/{subjects.Count} 과목)");
             try
             {
-                plans.AddRange(await ParseSubjectAsync(extraction, scale, subjects[i], ct));
+                plans.AddRange(await ParseSubjectAsync(extraction, scale, subjects[i], usedKeys, ct));
             }
             catch
             {
-                failedSubjects.Add(subjects[i]);   // 한 과목 실패해도 나머지는 계속
+                failedAt.Add(i + 1);   // 한 과목 실패해도 나머지는 계속
             }
         }
 
+        // 사용 기록: 과목별이 아니라 전체 1건
+        if (failedAt.Count == 0)
+            await LogImportAsync("SUCCESS", $"{subjects.Count}과목 인식", usedKeys, ct);
+        else
+            await LogImportAsync("FAIL",
+                $"{subjects.Count - failedAt.Count}/{subjects.Count} 인식, " +
+                $"{string.Join("·", failedAt)}번째 실패", usedKeys, ct);
+
         if (plans.Count == 0)
             throw new InvalidOperationException("문서에서 평가계획을 인식하지 못했습니다. 파일이 평가기준이 담긴 계획서인지 확인해 주세요.");
-        if (failedSubjects.Count > 0)
-            progress?.Report($"⚠ 일부 과목 인식 실패: {string.Join(", ", failedSubjects)} — 나머지는 정상 인식됨");
+        if (failedAt.Count > 0)
+            progress?.Report($"⚠ {subjects.Count}과목 중 {failedAt.Count}과목 인식 실패 — 나머지는 정상 인식됨");
         return plans;
     }
 
+    /// <summary>평가계획 인식 전체 결과 1건 기록 (실패해도 무시 — 인식 자체엔 영향 없음).</summary>
+    private async Task LogImportAsync(string result, string info, IReadOnlyCollection<string> usedKeys, CancellationToken ct)
+    {
+        try
+        {
+            var payload = new
+            {
+                action = "logPlanImport",
+                clientName = $"NeisAutoFill ({Environment.UserName})",
+                result,
+                info,
+                keyHint = string.Join(",", usedKeys),   // 실제로 쓴 키 뒤 4자리 → F열
+            };
+            using var _ = await http.PostAsJsonAsync(options.GasUrl, payload, Json, ct);
+        }
+        catch { /* 기록 실패는 무시 */ }
+    }
+
     private async Task<IReadOnlyList<string>> ListSubjectsAsync(
-        PlanFileExtractor.Extraction extraction, CancellationToken ct)
+        PlanFileExtractor.Extraction extraction, ISet<string> usedKeys, CancellationToken ct)
     {
         var payload = new
         {
@@ -88,6 +127,7 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
         var body = await response.Content.ReadAsStringAsync(ct);
         var result = JsonSerializer.Deserialize<GasListResponse>(body, Json);
         if (result is null || !result.Ok || result.Subjects is null) return Array.Empty<string>();
+        if (!string.IsNullOrEmpty(result.KeyHint)) usedKeys.Add(result.KeyHint);
         // 창의적 체험활동류는 클라이언트에서도 한 번 더 거른다
         return result.Subjects
             .Where(s => !string.IsNullOrWhiteSpace(s))
@@ -96,7 +136,7 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
     }
 
     private async Task<IReadOnlyList<SubjectPlan>> ParseSubjectAsync(
-        PlanFileExtractor.Extraction extraction, GradeScale scale, string? onlySubject, CancellationToken ct)
+        PlanFileExtractor.Extraction extraction, GradeScale scale, string? onlySubject, ISet<string> usedKeys, CancellationToken ct)
     {
         var payload = new
         {
@@ -110,6 +150,9 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
         using var response = await http.PostAsJsonAsync(options.GasUrl, payload, Json, ct);
         response.EnsureSuccessStatusCode();
         var body = await response.Content.ReadAsStringAsync(ct);
+        // 인식에 쓴 키(F열용)를 먼저 뽑아두고 — 본 파싱은 예외를 던질 수 있으므로 그 전에
+        var hint = JsonSerializer.Deserialize<GasParseResponse>(body, Json)?.KeyHint;
+        if (!string.IsNullOrEmpty(hint)) usedKeys.Add(hint);
         return ParseResponse(body, scale);
     }
 
@@ -182,8 +225,8 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
         return tcs.Task;
     }
 
-    private sealed record GasListResponse(bool Ok, string? Error, List<string>? Subjects);
-    private sealed record GasParseResponse(bool Ok, string? Error, List<GasSubject>? Subjects);
+    private sealed record GasListResponse(bool Ok, string? Error, List<string>? Subjects, string? KeyHint);
+    private sealed record GasParseResponse(bool Ok, string? Error, List<GasSubject>? Subjects, string? KeyHint);
     private sealed record GasSubject(string? SubjectName, List<GasDomain>? Domains);
     private sealed record GasDomain(string? DomainName, string? Achievement, Dictionary<string, string>? Criteria);
 }

@@ -18,6 +18,9 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    /// <summary>직전 생성에서 GAS 가 실제로 쓴 API 키의 뒤 4자리 (배치 사용 로그 F열용). 없으면 빈 문자열.</summary>
+    public string LastKeyHint { get; private set; } = "";
+
     public async Task<string> GenerateAsync(
         string studentName, string subjectName,
         IReadOnlyList<DomainPoint> domains, string? subjectNote,
@@ -54,6 +57,7 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
             throw new InvalidOperationException("생성기 서버 응답 파싱 실패");
         if (!result.Ok)
             throw new InvalidOperationException(result.Error ?? "생성기 서버 오류 (상세 없음)");
+        LastKeyHint = result.KeyHint ?? "";
         return (result.Text ?? "").Trim();
     }
 
@@ -72,5 +76,6 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
     private sealed record GasResponse(
         bool Ok,
         string? Text,
-        string? Error);
+        string? Error,
+        string? KeyHint);
 }

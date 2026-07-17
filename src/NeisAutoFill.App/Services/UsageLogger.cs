@@ -18,9 +18,9 @@ public sealed class UsageLogger(GeneratorSettingsStore settings)
     public Task LogStartupAsync(string version) =>
         PostAsync(new { action = "startup", version, clientName = ClientName });
 
-    /// <summary>생성 배치 시작 기록 (예: "국어 24명 · 수학 20명").</summary>
-    public Task LogBatchAsync(string info) =>
-        PostAsync(new { action = "logBatch", info, clientName = ClientName });
+    /// <summary>생성 배치 완료 기록 (예: "국어 24명 · 수학 20명"). keyHint=실제로 쓴 키 뒤 4자리(들) → F열.</summary>
+    public Task LogBatchAsync(string info, string keyHint = "") =>
+        PostAsync(new { action = "logBatch", info, keyHint, clientName = ClientName });
 
     private async Task PostAsync(object payload)
     {

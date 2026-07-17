@@ -30,6 +30,10 @@ public sealed class GenerationQueue
     private int _workers;
     private CancellationTokenSource _cts = new();
 
+    // 배치 사용 로그(완료 시 1건) — 과목별 인원 누계 + 실제로 쓴 키 뒤 4자리
+    private readonly Dictionary<string, int> _batchCounts = new();
+    private readonly SortedSet<string> _batchKeys = new(StringComparer.Ordinal);
+
     private readonly UsageLogger _usage;
 
     public GenerationQueue(GeneratorSettingsStore settings, NarrativeStore store, UsageLogger usage)
@@ -69,9 +73,19 @@ public sealed class GenerationQueue
         int added = 0;
         lock (_gate)
         {
-            if (_pending.Count == 0 && _workers == 0) { Done = 0; Failed = 0; Total = 0; }   // 새 배치
+            if (_pending.Count == 0 && _workers == 0)   // 새 배치 — 카운터·로그 누계 초기화
+            {
+                Done = 0; Failed = 0; Total = 0;
+                _batchCounts.Clear();
+                _batchKeys.Clear();
+            }
             if (_cts.IsCancellationRequested) _cts = new CancellationTokenSource();
-            foreach (var j in list) { _pending.Enqueue(j); added++; }
+            foreach (var j in list)
+            {
+                _pending.Enqueue(j);
+                added++;
+                _batchCounts[j.Subject] = _batchCounts.GetValueOrDefault(j.Subject) + 1;
+            }
             Total += added;
             while (_workers < MaxConcurrent && _pending.Count > _workers)
             {
@@ -80,10 +94,7 @@ public sealed class GenerationQueue
             }
         }
         if (added == 0) return;
-
-        // 사용 기록: 학생당이 아니라 배치당 1건 (예: "국어 24명 · 수학 20명")
-        var info = string.Join(" · ", list.GroupBy(j => j.Subject).Select(g => $"{g.Key} {g.Count()}명"));
-        _ = _usage.LogBatchAsync(info);
+        // 사용 기록은 학생당이 아니라 배치당 1건 — 실제로 쓴 키를 알아야 하므로 완료 시(WorkerLoop) 전송
         RaiseState();
     }
 
@@ -124,6 +135,8 @@ public sealed class GenerationQueue
                 text = await gen.GenerateAsync(job.Name, job.Subject, job.Domains, job.Note, job.Scale, ct);
                 ok = !string.IsNullOrWhiteSpace(text);
                 if (!ok) text = "서버가 빈 서술문을 반환했습니다.";
+                if (!string.IsNullOrEmpty(gen.LastKeyHint))
+                    lock (_gate) _batchKeys.Add(gen.LastKeyHint);   // 이 배치에서 실제로 쓴 키
             }
             catch (OperationCanceledException) { text = "중지됨"; }
             catch (Exception ex) { text = ex.Message; }
@@ -137,9 +150,24 @@ public sealed class GenerationQueue
                 StateChanged?.Invoke();
                 if (!IsBusy)
                     Log?.Invoke($"서술문 생성 배치 완료: 성공 {Done} / 실패 {Failed}");
+                if (Total > 0 && Done + Failed >= Total)
+                    SendBatchLog();   // 배치당 1건 — F열에 실제로 쓴 키 (워커 타이밍과 무관하게 마지막 완료 시)
             });
         }
         RaiseState();
+    }
+
+    /// <summary>배치 완료 시 사용 기록 1건 전송 (예: "국어 24명 · 수학 20명", F열=쓴 키들).</summary>
+    private void SendBatchLog()
+    {
+        string info, keyHint;
+        lock (_gate)
+        {
+            if (_batchCounts.Count == 0) return;
+            info = string.Join(" · ", _batchCounts.Select(kv => $"{kv.Key} {kv.Value}명"));
+            keyHint = string.Join(",", _batchKeys);
+        }
+        _ = _usage.LogBatchAsync(info, keyHint);
     }
 
     private void RaiseState()
