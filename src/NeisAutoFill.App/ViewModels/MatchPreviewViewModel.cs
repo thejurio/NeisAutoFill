@@ -32,39 +32,22 @@ public sealed class MatchPreviewViewModel : ObservableObject
         studentOptions.AddRange(sheet.Students.Select(s => s.Name));
         foreach (var (no, name) in issues.UnmatchedStudents)
         {
-            var suggestion = Suggest(name, sheet.Students.Select(s => s.Name).ToList());
+            var suggestion = SimilaritySuggester.Suggest(name, sheet.Students.Select(s => s.Name).ToList());
             StudentMaps.Add(new MapItem($"{no}번 {name}", name, studentOptions,
                 suggestion ?? ExcludeLabel, suggestion is not null));
         }
 
         // ── 영역 확인 — 화면 순서대로 "어떤 영역의 성적을 넣을지" 하나씩 고른다 ──
-        // (이름이 같은 영역은 자동으로 골라두고, 나머지는 남는 영역을 순서대로 제안)
         var areaOptions = new List<string> { ExcludeLabel };
         areaOptions.AddRange(sheet.Areas);
 
-        int rows = issues.RowsPerStudent;
-        var defaults = new string?[rows];
-        var autoPicked = new bool[rows];
-        var used = new HashSet<string>();
-        for (int i = 0; i < rows; i++)   // 1차: 화면 영역명과 같은 이름이 있으면 자동 선택
-        {
-            var screenArea = i < issues.ScreenAreas.Count ? issues.ScreenAreas[i] : null;
-            if (screenArea is not null && sheet.Areas.Contains(screenArea) && used.Add(screenArea))
-            {
-                defaults[i] = screenArea;
-                autoPicked[i] = true;
-            }
-        }
-        var remaining = sheet.Areas.Where(a => !used.Contains(a)).ToList();
-        int r = 0;
-        for (int i = 0; i < rows; i++)   // 2차: 남은 위치엔 남은 영역을 순서대로 제안 (모자라면 '입력 안 함')
-            defaults[i] ??= r < remaining.Count ? remaining[r++] : ExcludeLabel;
-
-        for (int i = 0; i < rows; i++)
+        var assigned = SimilaritySuggester.AssignAreasByOrder(
+            issues.ScreenAreas.Cast<string?>().ToList(), issues.RowsPerStudent, sheet.Areas);
+        for (int i = 0; i < assigned.Count; i++)
         {
             var screenArea = i < issues.ScreenAreas.Count ? issues.ScreenAreas[i] : "(이름 확인 안 됨)";
             OrderMaps.Add(new MapItem($"화면 {i + 1}번째 · {screenArea}", screenArea,
-                areaOptions, defaults[i]!, autoPicked[i]));
+                areaOptions, assigned[i].Area ?? ExcludeLabel, assigned[i].AutoPicked));
         }
 
         HasStudentIssues = StudentMaps.Count > 0;
@@ -115,39 +98,7 @@ public sealed class MatchPreviewViewModel : ObservableObject
             NameMap: nameMap.Count > 0 ? nameMap : null);
     }
 
-    /// <summary>간단 유사도 제안 — 정규화 후 포함/편집거리 1 이내.</summary>
-    private static string? Suggest(string source, IReadOnlyList<string> candidates)
-    {
-        var s = NameNormalizerLite(source);
-        string? best = null;
-        int bestScore = int.MaxValue;
-        foreach (var c in candidates)
-        {
-            var t = NameNormalizerLite(c);
-            int score;
-            if (s == t) score = 0;
-            else if (t.Contains(s) || s.Contains(t)) score = 1;
-            else score = Levenshtein(s, t) <= 1 ? 2 : int.MaxValue;
-            if (score < bestScore) { bestScore = score; best = c; }
-        }
-        return bestScore <= 2 ? best : null;
-    }
-
-    private static string NameNormalizerLite(string s) =>
-        new(s.Where(ch => !char.IsWhiteSpace(ch) && ch != '·' && ch != '.').ToArray());
-
-    private static int Levenshtein(string a, string b)
-    {
-        if (Math.Abs(a.Length - b.Length) > 1) return 99;
-        var d = new int[a.Length + 1, b.Length + 1];
-        for (int i = 0; i <= a.Length; i++) d[i, 0] = i;
-        for (int j = 0; j <= b.Length; j++) d[0, j] = j;
-        for (int i = 1; i <= a.Length; i++)
-            for (int j = 1; j <= b.Length; j++)
-                d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
-                    d[i - 1, j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
-        return d[a.Length, b.Length];
-    }
+    // 유사도·기본값 선택 로직은 Core/Matching/SimilaritySuggester (순수, 테스트됨)
 }
 
 /// <summary>매핑 한 줄: 화면 항목 → 엑셀 항목 선택.</summary>

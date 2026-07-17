@@ -517,14 +517,15 @@ public sealed class MainViewModel : ObservableObject
             var oldSheet = subj.Sheet;   // 미저장 편집 포함 현재 상태
             // 영역은 계획이 있으면 계획을 따르고, 없으면 기존 유지. 명단 변경은 모든 탭에 적용.
             var areas = planByName.TryGetValue(subj.SubjectName, out var plan) ? plan.Domains : oldSheet.Areas;
-            var newSheet = BuildSheetFromRoster(subj.SubjectName, areas, oldSheet);
-            if (SheetShapeEquals(oldSheet, newSheet)) { rebuilt.Add(subj); continue; }
+            var newSheet = SheetSynchronizer.BuildSheet(subj.SubjectName, areas, oldSheet, _roster);
+            if (SheetSynchronizer.ShapeEquals(oldSheet, newSheet)) { rebuilt.Add(subj); continue; }
             rebuilt.Add(new SubjectViewModel(this, newSheet));
             changed = true;
         }
         foreach (var plan in _plans.Where(p => !currentNames.Contains(p.SubjectName)))
         {
-            rebuilt.Add(new SubjectViewModel(this, BuildSheetFromRoster(plan.SubjectName, plan.Domains, null)));
+            rebuilt.Add(new SubjectViewModel(this,
+                SheetSynchronizer.BuildSheet(plan.SubjectName, plan.Domains, null, _roster)));
             changed = true;
         }
         if (!changed) return;
@@ -549,63 +550,7 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>명단 순서대로 학생을 배치한 과목 시트 생성. 기존 시트가 있으면 성적·특기사항 이월.
-    /// 명단이 비어 있으면 기존 학생을 유지한다 (영역 변경만 반영).</summary>
-    private SubjectSheet BuildSheetFromRoster(string subjectName, IReadOnlyList<string> areas, SubjectSheet? old)
-    {
-        var renameMap = BuildAreaRenameMap(old?.Areas, areas);
-
-        if (_roster.Count == 0)
-            return new SubjectSheet(subjectName, areas,
-                old?.Students.Select(s => Carry(s.No, s.Name, s, renameMap)).ToList() ?? new List<Student>());
-
-        var byKey = old?.Students.ToDictionary(s => (s.No, s.Name)) ?? new();
-        var byName = new Dictionary<string, Student>();
-        if (old is not null)
-            foreach (var s in old.Students) byName[s.Name] = s;
-
-        var students = _roster.Select(r =>
-        {
-            var prev = byKey.TryGetValue((r.No, r.Name), out var p1) ? p1
-                     : byName.TryGetValue(r.Name, out var p2) ? p2 : null;   // 번호가 바뀐 학생도 이름으로 이월
-            return Carry(r.No, r.Name, prev, renameMap);
-        }).ToList();
-
-        return new SubjectSheet(subjectName, areas, students);
-    }
-
-    /// <summary>
-    /// 영역 개명 감지 (옛 이름 → 새 이름). 영역 개수가 같을 때, 같은 위치의 이름이 바뀌었고
-    /// 옛 이름이 새 목록에 더 이상 없으면 개명으로 본다 — 성적이 새 이름을 따라가게 한다.
-    /// (개수가 다르면 추가/삭제와 뒤섞여 모호하므로 이름 일치만 이월)
-    /// </summary>
-    private static Dictionary<string, string>? BuildAreaRenameMap(
-        IReadOnlyList<string>? oldAreas, IReadOnlyList<string> newAreas)
-    {
-        if (oldAreas is null || oldAreas.Count != newAreas.Count) return null;
-        Dictionary<string, string>? map = null;
-        for (int i = 0; i < newAreas.Count; i++)
-        {
-            if (oldAreas[i] != newAreas[i] && !newAreas.Contains(oldAreas[i]))
-                (map ??= new())[oldAreas[i]] = newAreas[i];
-        }
-        return map;
-    }
-
-    /// <summary>학생 성적 이월 — 개명된 영역은 새 이름 키로 옮긴다.</summary>
-    private static Student Carry(string no, string name, Student? prev, Dictionary<string, string>? renameMap)
-    {
-        var grades = new Dictionary<string, string>();
-        if (prev is not null)
-            foreach (var (area, grade) in prev.Grades)
-                grades[renameMap is not null && renameMap.TryGetValue(area, out var renamed) ? renamed : area] = grade;
-        return new Student(no, name, grades, prev?.SpecialNote);
-    }
-
-    /// <summary>영역 구성과 학생(번호,이름) 목록이 같은지 — 같으면 표를 다시 만들지 않는다.</summary>
-    private static bool SheetShapeEquals(SubjectSheet a, SubjectSheet b) =>
-        a.Areas.SequenceEqual(b.Areas) &&
-        a.Students.Select(s => (s.No, s.Name)).SequenceEqual(b.Students.Select(s => (s.No, s.Name)));
+    // 명단·계획 → 시트 반영 규칙은 Core/SheetSynchronizer (순수 로직, 테스트됨)
 
     /// <summary>
     /// 성적표가 안 열려 있는데 평가계획+명단이 준비되면, 성적표를 앱에서 바로 만들어
