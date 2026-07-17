@@ -10,6 +10,15 @@ public sealed class RelayCommand(Action execute, Func<bool>? canExecute = null) 
     public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
 
+/// <summary>파라미터를 받는 커맨드.</summary>
+public sealed class RelayCommand<T>(Action<T?> execute, Func<T?, bool>? canExecute = null) : ICommand
+{
+    public event EventHandler? CanExecuteChanged;
+    public bool CanExecute(object? parameter) => canExecute?.Invoke((T?)parameter) ?? true;
+    public void Execute(object? parameter) => execute((T?)parameter);
+    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
 /// <summary>비동기 커맨드. 실행 중 재진입 방지.</summary>
 public sealed class AsyncRelayCommand(Func<Task> execute, Func<bool>? canExecute = null) : ICommand
 {

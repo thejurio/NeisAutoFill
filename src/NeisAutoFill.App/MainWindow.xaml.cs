@@ -57,6 +57,46 @@ public partial class MainWindow : Window
         LogBox.ScrollToEnd();
     }
 
+    /// <summary>[최근 ▾] 버튼 — 최근 사용한 평가계획서·성적파일 목록을 메뉴로 표시.</summary>
+    private void Recent_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu();
+        var entries = _vm.RecentEntries;
+
+        if (entries.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "최근 파일 없음", IsEnabled = false });
+        }
+        else
+        {
+            foreach (var group in new[] { true, false })   // 평가계획서 먼저, 성적파일 다음
+            {
+                var items = entries.Where(x => x.IsPlan == group).ToList();
+                if (items.Count == 0) continue;
+                menu.Items.Add(new MenuItem
+                {
+                    Header = group ? "평가계획서" : "성적파일",
+                    IsEnabled = false,
+                    FontWeight = FontWeights.Bold,
+                });
+                foreach (var (path, display, _) in items)
+                    menu.Items.Add(new MenuItem
+                    {
+                        Header = display,
+                        ToolTip = path,
+                        Command = _vm.OpenRecentCommand,
+                        CommandParameter = path,
+                    });
+                menu.Items.Add(new Separator());
+            }
+            if (menu.Items[^1] is Separator) menu.Items.RemoveAt(menu.Items.Count - 1);
+        }
+
+        menu.PlacementTarget = (UIElement)sender;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
     /// <summary>성적 표 컬럼 생성: 번호/이름은 읽기전용, 영역(등급)은 척도 드롭다운, 특기사항은 텍스트.</summary>
     private void Grid_AutoGeneratingColumn(object sender, DataGridAutoGeneratingColumnEventArgs e)
     {

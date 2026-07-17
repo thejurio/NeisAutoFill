@@ -30,6 +30,7 @@ public partial class App : Application
         services.AddSingleton<INeisEngine, NeisEngine>();
         services.AddSingleton<IScaleStore>(_ => new JsonScaleStore(AppPaths.ScalesJson));
         services.AddSingleton<GeneratorSettingsStore>();
+        services.AddSingleton<AppStateStore>();
         services.AddSingleton(_ => new NarrativeStore(AppPaths.NarrativesJson));
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();

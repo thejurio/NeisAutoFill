@@ -21,21 +21,32 @@ public sealed class MainViewModel : ObservableObject
     private readonly IScaleStore _scales;
     private readonly GeneratorSettingsStore _generatorSettings;
     private readonly NarrativeStore _narratives;
+    private readonly AppStateStore _appState;
     private readonly IProgress<ProgressInfo> _progress;
     private CancellationTokenSource? _cts;
     private GeneratorViewModel? _generatorVm;   // 생성 결과 보존을 위해 단일 인스턴스 유지
 
     private readonly Automation.EngineOptions _engineOptions;
+    private readonly System.Windows.Threading.DispatcherTimer _autoSaveTimer;
 
     public MainViewModel(INeisEngine engine, IScaleStore scales,
         GeneratorSettingsStore generatorSettings, NarrativeStore narratives,
+        AppStateStore appState,
         Automation.EngineOptions engineOptions)
     {
         _engine = engine;
         _scales = scales;
         _generatorSettings = generatorSettings;
         _narratives = narratives;
+        _appState = appState;
         _engineOptions = engineOptions;
+
+        // 편집 후 2초 조용하면 자동 저장 (파일 잠금 등 실패 시 dirty 유지 → 다음 편집·종료 때 재시도)
+        _autoSaveTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2),
+        };
+        _autoSaveTimer.Tick += (_, _) => { _autoSaveTimer.Stop(); AutoSaveGrades(); };
 
         // 저장된 지역 복원 → 접속 주소 반영
         _selectedRegion = NeisRegions.Find(generatorSettings.Options.NeisRegionCode);
@@ -53,8 +64,30 @@ public sealed class MainViewModel : ObservableObject
         SaveStep2TemplateCommand = new RelayCommand(SaveStep2Template);
         OpenDataPrepCommand = new RelayCommand(() =>
             new DataPrepWindow(this) { Owner = Application.Current.MainWindow }.ShowDialog());
+        OpenRecentCommand = new RelayCommand<string>(p => { if (p is not null) LoadExcel(p); });
 
+        RestoreLastFiles();           // 최근 사용 자료 자동 로드 (없으면 조용히 넘어감)
         _ = AutoConnectLoopAsync();   // 앱 시작부터 자동 연결·재연결 (이미 열린 브라우저도 자동 포착)
+    }
+
+    // ── 최근 파일 · 자동 로드 ──────────────────
+
+    public ICommand OpenRecentCommand { get; }
+
+    /// <summary>최근 파일 메뉴 항목 (실존 파일만, 평가계획서·성적파일 구분).</summary>
+    public IReadOnlyList<(string Path, string Display, bool IsPlan)> RecentEntries =>
+        _appState.ExistingRecentPlans().Select(p => (p, Path.GetFileName(p), true))
+        .Concat(_appState.ExistingRecentGrades().Select(p => (p, Path.GetFileName(p), false)))
+        .ToList();
+
+    /// <summary>시작 시 마지막으로 쓰던 평가계획서·성적파일을 복원. 실패는 로그만 (팝업 없음).</summary>
+    private void RestoreLastFiles()
+    {
+        var plan = _appState.State.LastPlanPath;
+        if (plan is not null && File.Exists(plan)) LoadPlan(plan, silent: true);
+
+        var grades = _appState.State.LastGradePath;
+        if (grades is not null && File.Exists(grades)) LoadGrades(grades, silent: true);
     }
 
     /// <summary>
@@ -116,18 +149,24 @@ public sealed class MainViewModel : ObservableObject
         if (dlg.ShowDialog() == true) LoadPlan(dlg.FileName);
     }
 
-    private void LoadPlan(string path)
+    private void LoadPlan(string path, bool silent = false)
     {
         try
         {
             _plans = PlanWorkbookLoader.Load(path, _scales.Active);
             _roster = PlanWorkbookLoader.LoadRoster(path);
             PlanName = Path.GetFileName(path);
+            _appState.TouchPlan(path);
+            OnPropertyChanged(nameof(RecentEntries));
             Log($"평가계획서 로드: {PlanName} " +
                 $"({string.Join(", ", _plans.Select(p => $"{p.SubjectName} {p.Domains.Count}영역"))}" +
                 (_roster.Count > 0 ? $" / 명단 {_roster.Count}명)" : ")"));
         }
-        catch (Exception ex) { ShowError($"평가계획서 오류: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            if (silent) Log($"⚠ 최근 평가계획서를 다시 열지 못했습니다: {ex.Message}");
+            else ShowError($"평가계획서 오류: {ex.Message}");
+        }
     }
 
     private void SaveStep1Template()
@@ -137,6 +176,7 @@ public sealed class MainViewModel : ObservableObject
             Filter = "Excel|*.xlsx",
             FileName = "평가계획서_양식.xlsx",
             Title = "평가계획서 양식 저장",
+            InitialDirectory = AppPaths.EnsureWorkspace(),
         };
         if (dlg.ShowDialog() != true) return;
         try
@@ -160,6 +200,7 @@ public sealed class MainViewModel : ObservableObject
             Filter = "Excel|*.xlsx",
             FileName = $"성적입력양식_{_plans.Count}개과목.xlsx",
             Title = "성적입력 양식 저장",
+            InitialDirectory = AppPaths.EnsureWorkspace(),
         };
         if (dlg.ShowDialog() != true) return;
         try
@@ -304,7 +345,7 @@ public sealed class MainViewModel : ObservableObject
 
     private string? _gradeFilePath;   // 편집 저장 대상
 
-    private void LoadGrades(string path)
+    private void LoadGrades(string path, bool silent = false)
     {
         if (!ConfirmSaveIfDirty()) return;   // 기존 편집 보호
         try
@@ -317,18 +358,56 @@ public sealed class MainViewModel : ObservableObject
             SelectedSubject = Subjects.FirstOrDefault();   // 첫 과목 탭 자동 선택
             ExcelName = Path.GetFileName(path);
             _gradeFilePath = path;
+            _appState.TouchGrade(path);
+            OnPropertyChanged(nameof(RecentEntries));
             Log($"성적파일 로드: {ExcelName} ({string.Join(", ", sheets.Select(s => s.SubjectName))})");
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex)
+        {
+            if (silent) Log($"⚠ 최근 성적파일을 다시 열지 못했습니다: {ex.Message}");
+            else ShowError(ex.Message);
+        }
     }
 
-    /// <summary>수정된 성적이 있으면 저장 여부를 묻는다. true=계속 진행, false=취소.</summary>
+    // ── 자동 저장 ──────────────────────────────
+
+    /// <summary>성적 표 편집 알림 (SubjectViewModel 에서 호출) — 디바운스 타이머 재시작.</summary>
+    public void NotifyGradesEdited()
+    {
+        _autoSaveTimer.Stop();
+        _autoSaveTimer.Start();
+    }
+
+    /// <summary>편집이 잦아들면 저장 대상 파일에 조용히 저장. 실패(파일 잠금 등)는 로그만 남기고 dirty 유지.</summary>
+    private void AutoSaveGrades()
+    {
+        if (_gradeFilePath is null || !Subjects.Any(s => s.IsDirty)) return;
+        try
+        {
+            GradeWorkbookWriter.Write(_gradeFilePath, Subjects.Select(s => s.Sheet).ToList());
+            foreach (var s in Subjects) s.MarkSaved();
+            Log($"자동 저장됨: {Path.GetFileName(_gradeFilePath)}");
+        }
+        catch (Exception ex)
+        {
+            Log($"⚠ 자동 저장 실패 ({ex.Message}) — 파일이 엑셀에서 열려 있으면 닫아 주세요. 다음 편집·종료 때 다시 시도합니다.");
+        }
+    }
+
+    /// <summary>수정된 성적이 있으면 저장을 시도하고, 자동 저장이 불가능할 때만 묻는다. true=계속 진행, false=취소.</summary>
     public bool ConfirmSaveIfDirty()
     {
         if (!Subjects.Any(s => s.IsDirty)) return true;
 
+        // 저장 대상 파일이 있으면 조용히 자동 저장 (평소 자동 저장과 같은 동작)
+        if (_gradeFilePath is not null)
+        {
+            AutoSaveGrades();
+            if (!Subjects.Any(s => s.IsDirty)) return true;   // 저장 성공
+        }
+
         var r = MessageBox.Show(
-            "수정한 성적이 있습니다. 엑셀 파일에 저장할까요?",
+            "수정한 성적이 있는데 자동 저장하지 못했습니다. 엑셀 파일에 저장할까요?",
             "저장 확인", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         if (r == MessageBoxResult.Cancel) return false;
         if (r == MessageBoxResult.Yes) SaveGrades();
@@ -343,7 +422,12 @@ public sealed class MainViewModel : ObservableObject
             var path = _gradeFilePath;
             if (path is null)
             {
-                var dlg = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = "성적.xlsx" };
+                var dlg = new SaveFileDialog
+                {
+                    Filter = "Excel|*.xlsx",
+                    FileName = "성적.xlsx",
+                    InitialDirectory = AppPaths.EnsureWorkspace(),
+                };
                 if (dlg.ShowDialog() != true) return;
                 path = dlg.FileName;
                 _gradeFilePath = path;

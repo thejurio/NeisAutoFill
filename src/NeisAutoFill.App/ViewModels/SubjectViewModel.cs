@@ -50,7 +50,11 @@ public sealed class SubjectViewModel : ObservableObject
             Grid.Rows.Add(row);
         }
 
-        Grid.ColumnChanged += (_, _) => IsDirty = true;   // 사용자 편집 감지
+        Grid.ColumnChanged += (_, _) =>
+        {
+            IsDirty = true;                // 사용자 편집 감지
+            _main.NotifyGradesEdited();    // 디바운스 자동 저장 예약
+        };
 
         RunCommand = new AsyncRelayCommand(() => _main.RunSubjectAsync(Sheet, dryRun: false));
         CancelCommand = new RelayCommand(() => _main.Cancel());

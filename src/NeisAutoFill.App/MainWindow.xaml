@@ -55,6 +55,7 @@
                     <StackPanel Orientation="Horizontal">
                         <Button Style="{StaticResource AccentGhostButton}" Content="📁 자료 준비" Command="{Binding OpenDataPrepCommand}" Margin="0,0,6,0"/>
                         <Button Style="{StaticResource GhostButton}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource GhostButton}" Content="🕘 최근 ▾" Click="Recent_Click" Margin="0,0,6,0"/>
                         <Border Width="1" Background="{StaticResource Line}" Margin="4,2"/>
                         <Button Style="{StaticResource PrimaryButton}" Content="① NEIS 접속" Command="{Binding LaunchEdgeCommand}" Margin="6,0,6,0"/>
                         <Border Background="{StaticResource Panel}" CornerRadius="7" Padding="10,0" Margin="0,0,6,0">
