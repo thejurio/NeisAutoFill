@@ -11,6 +11,8 @@
     <app:StringToVisibilityConverter x:Key="StringToVis"/>
     <app:GreaterThanZeroConverter x:Key="GreaterThanZero"/>
     <app:InvertBoolConverter x:Key="InvertBool"/>
+    <app:TrueToCollapsedConverter x:Key="TrueToCollapsed"/>
+    <app:ZeroToVisibleConverter x:Key="ZeroToVis"/>
     <app:EmptyToDashConverter x:Key="EmptyDash"/>
 
     <!-- ==== NEIS 팔레트 (실측 #3175FF) ==== -->
@@ -35,7 +37,7 @@
     <!-- ==== 주요 버튼 (파랑) ==== -->
     <Style x:Key="PrimaryButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Foreground" Value="White"/>
         <Setter Property="Background" Value="{StaticResource Neis}"/>
@@ -64,7 +66,7 @@
     <!-- ==== 보조 버튼 (아웃라인) ==== -->
     <Style x:Key="GhostButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontWeight" Value="Medium"/>
         <Setter Property="Foreground" Value="#475569"/>
         <Setter Property="Background" Value="White"/>
@@ -147,7 +149,7 @@
     <!-- 아웃라인 토글 (켜지면 파란 톤) -->
     <Style x:Key="GhostToggle" TargetType="ToggleButton">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontWeight" Value="Medium"/>
         <Setter Property="Foreground" Value="#475569"/>
         <Setter Property="Background" Value="White"/>
@@ -293,7 +295,7 @@
     <!-- ==== 탭 (밑줄형) ==== -->
     <Style x:Key="UnderlineTab" TargetType="TabItem">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontSize" Value="13"/>
         <Setter Property="Foreground" Value="{StaticResource Sub}"/>
         <Setter Property="Template">
             <Setter.Value>

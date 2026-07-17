@@ -24,6 +24,26 @@ public sealed class EmptyToDashConverter : IValueConverter
         value?.ToString() == "–" ? "" : value?.ToString() ?? "";
 }
 
+/// <summary>true → Collapsed (요소 숨김). 연결되면 접속 버튼 숨기기 등.</summary>
+public sealed class TrueToCollapsedConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>개수 0 → Visible (빈 상태 안내 표시), 그 외 Collapsed.</summary>
+public sealed class ZeroToVisibleConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is int n && n == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>bool 반전.</summary>
 public sealed class InvertBoolConverter : IValueConverter
 {

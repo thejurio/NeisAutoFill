@@ -11,6 +11,7 @@ public sealed class AppState
     public List<string> RecentGradeFiles { get; set; } = new();
     public List<string> RecentPlanFiles { get; set; } = new();
     public bool ShowCriteriaPanel { get; set; }
+    public bool LogExpanded { get; set; }
 }
 
 /// <summary>

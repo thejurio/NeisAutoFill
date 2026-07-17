@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private readonly MainViewModel _vm;
 
     private const double CriteriaPanelWidth = 300;
+    private const double LogPanelHeight = 170;
     private readonly GradeGridController _gradeGrid;
 
     public MainWindow(MainViewModel vm)
@@ -22,13 +23,16 @@ public partial class MainWindow : Window
         _gradeGrid = new GradeGridController(vm);
         StateChanged += (_, _) => UpdateMaxGlyph();
 
-        // 성취기준 패널: 창을 옆으로 확장 — 본문이 구겨지지 않는다 (최대화 상태는 그대로)
+        // 패널 토글은 창을 바깥으로 확장 — 본문(성적표)이 구겨지지 않는다 (최대화 상태는 그대로)
         if (_vm.ShowCriteriaPanel) Width += CriteriaPanelWidth;   // 저장된 켜짐 상태 복원분
+        if (_vm.LogExpanded) Height += LogPanelHeight;
         _vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName != nameof(MainViewModel.ShowCriteriaPanel)) return;
             if (WindowState != WindowState.Normal) return;
-            Width = Math.Max(MinWidth, Width + (_vm.ShowCriteriaPanel ? CriteriaPanelWidth : -CriteriaPanelWidth));
+            if (e.PropertyName == nameof(MainViewModel.ShowCriteriaPanel))
+                Width = Math.Max(MinWidth, Width + (_vm.ShowCriteriaPanel ? CriteriaPanelWidth : -CriteriaPanelWidth));
+            else if (e.PropertyName == nameof(MainViewModel.LogExpanded))
+                Height = Math.Max(MinHeight, Height + (_vm.LogExpanded ? LogPanelHeight : -LogPanelHeight));
         };
     }
 

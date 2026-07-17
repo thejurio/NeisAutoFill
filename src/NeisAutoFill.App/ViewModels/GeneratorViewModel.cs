@@ -405,7 +405,7 @@ public sealed class GeneratorViewModel : ObservableObject
         _plans = _getPlans();
         PlanStatus = _plans.Count > 0
             ? $"평가계획: {string.Join(", ", _plans.Select(p => $"{p.SubjectName} {p.Domains.Count}영역"))}"
-            : "(평가계획 없음 — 메인 [📝 명단·계획]에서 입력하거나 불러오면 평가기준이 서술문에 반영됩니다)";
+            : "(평가계획 없음 — 메인 [📁 자료 준비]에서 입력하거나 불러오면 평가기준이 서술문에 반영됩니다)";
 
         SubjectNames.Clear();
         foreach (var s in _getSheets()) SubjectNames.Add(s.SubjectName);

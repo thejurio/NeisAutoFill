@@ -79,6 +79,7 @@ public sealed class MainViewModel : ObservableObject
         HelpCommand = new AsyncRelayCommand(OpenHelpAsync);
 
         _showCriteriaPanel = appState.State.ShowCriteriaPanel;
+        _logExpanded = appState.State.LogExpanded;
 
         RestoreLastFiles();           // 최근 사용 자료 자동 로드 (없으면 조용히 넘어감)
         // 앱 시작부터 자동 연결·재연결 (이미 열린 브라우저도 자동 포착). 종료 시 함께 정리
@@ -140,6 +141,15 @@ public sealed class MainViewModel : ObservableObject
     {
         ConnectionText = on ? "연결됨" : "미연결";
         ConnectionBrush = new SolidColorBrush(on ? Color.FromRgb(0x22, 0xC5, 0x5E) : Color.FromRgb(0xEF, 0x44, 0x44));
+        IsConnected = on;
+    }
+
+    private bool _isConnected;
+    /// <summary>나이스 연결 여부 — 입력 버튼 활성/[NEIS 접속] 버튼 표시 제어 (U3·U5).</summary>
+    public bool IsConnected
+    {
+        get => _isConnected;
+        private set => SetProperty(ref _isConnected, value);
     }
 
 
@@ -245,7 +255,7 @@ public sealed class MainViewModel : ObservableObject
             CriteriaPanelItems = Array.Empty<CriteriaPanelBuilder.DomainView>();
             CriteriaPanelStatus = subjectName is null
                 ? "성적파일을 불러오면 표시됩니다."
-                : $"'{subjectName}' 평가계획이 없습니다.\n[📝 명단·계획]에서 입력하거나 평가계획서를 불러오세요.";
+                : $"'{subjectName}' 평가계획이 없습니다.\n[📁 자료 준비]에서 입력하거나 평가계획서를 불러오세요.";
             return;
         }
 
@@ -359,6 +369,30 @@ public sealed class MainViewModel : ObservableObject
     {
         _log.AppendLine(s);
         LogText = _log.ToString();
+
+        // 상태줄 (U2): 마지막 로그 한 줄 + 문제(⚠/✗/오류) 시 색 변경으로 확인 유도
+        LastLogLine = s;
+        bool problem = s.Contains('⚠') || s.Contains('✗') || s.Contains("오류") || s.Contains("실패");
+        LastLogBrush = new SolidColorBrush(problem ? Color.FromRgb(0xB4, 0x53, 0x09) : Color.FromRgb(0x64, 0x74, 0x8B));
+    }
+
+    private string _lastLogLine = "준비됨";
+    public string LastLogLine { get => _lastLogLine; set => SetProperty(ref _lastLogLine, value); }
+
+    private Brush _lastLogBrush = new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B));
+    public Brush LastLogBrush { get => _lastLogBrush; set => SetProperty(ref _lastLogBrush, value); }
+
+    private bool _logExpanded;
+    /// <summary>로그 전체 펼침 (기본 접힘 — 상태줄만). state.json 에 유지.</summary>
+    public bool LogExpanded
+    {
+        get => _logExpanded;
+        set
+        {
+            if (!SetProperty(ref _logExpanded, value)) return;
+            _appState.State.LogExpanded = value;
+            _appState.Save();
+        }
     }
 
     private void LaunchEdge()
