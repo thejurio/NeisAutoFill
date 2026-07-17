@@ -83,14 +83,15 @@ public sealed class MainViewModel : ObservableObject
         .Concat(_appState.ExistingRecentGrades().Select(p => (p, Path.GetFileName(p), false)))
         .ToList();
 
-    /// <summary>시작 시 마지막으로 쓰던 평가계획서·성적파일을 복원. 실패는 로그만 (팝업 없음).</summary>
+    /// <summary>시작 시 마지막으로 쓰던 성적파일·평가계획서를 복원. 실패는 로그만 (팝업 없음).
+    /// 성적을 먼저 열어야 평가계획 로드가 성적표를 새로 만들지 않는다.</summary>
     private void RestoreLastFiles()
     {
-        var plan = _appState.State.LastPlanPath;
-        if (plan is not null && File.Exists(plan)) LoadPlan(plan, silent: true);
-
         var grades = _appState.State.LastGradePath;
         if (grades is not null && File.Exists(grades)) LoadGrades(grades, silent: true);
+
+        var plan = _appState.State.LastPlanPath;
+        if (plan is not null && File.Exists(plan)) LoadPlan(plan, silent: true);
     }
 
     /// <summary>
@@ -145,7 +146,12 @@ public sealed class MainViewModel : ObservableObject
 
     private void OpenPlanEditor()
     {
-        var vm = new PlanEditorViewModel(_plans, _roster, _scales.Active);
+        // 평가계획서에 명단이 없으면 열려 있는 성적파일의 학생 명단을 재사용
+        var roster = _roster;
+        if (roster.Count == 0 && Subjects.Count > 0)
+            roster = Subjects[0].Sheet.Students.Select(s => (s.No, s.Name)).ToList();
+
+        var vm = new PlanEditorViewModel(_plans, roster, _scales.Active);
         var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
         if (win.ShowDialog() != true) return;
 
@@ -192,6 +198,7 @@ public sealed class MainViewModel : ObservableObject
             Log($"평가계획서 로드: {PlanName} " +
                 $"({string.Join(", ", _plans.Select(p => $"{p.SubjectName} {p.Domains.Count}영역"))}" +
                 (_roster.Count > 0 ? $" / 명단 {_roster.Count}명)" : ")"));
+            SyncGradeTableWithPlan();   // 성적표 없으면 생성, 있으면 명단·영역 변경 동기화 (성적 보존)
         }
         catch (Exception ex)
         {
@@ -314,6 +321,10 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>성적 표 드롭다운 편집용 등급 라벨 (빈칸 선택 허용).</summary>
     public IReadOnlyList<string> GradeLabels =>
         new[] { "" }.Concat(_scales.Active.Levels.Select(l => l.Label)).ToList();
+
+    /// <summary>일괄 입력 버튼용 등급 라벨 (빈칸 제외).</summary>
+    public IReadOnlyList<string> BulkGradeLabels =>
+        _scales.Active.Levels.Select(l => l.Label).ToList();
 
     // ── 지역 선택 (시도 교육청 나이스 주소) ──
     public IReadOnlyList<NeisRegion> Regions => NeisRegions.All;
@@ -453,6 +464,132 @@ public sealed class MainViewModel : ObservableObject
             if (silent) Log($"⚠ 최근 성적파일을 다시 열지 못했습니다: {ex.Message}");
             else ShowError(ex.Message);
         }
+    }
+
+    /// <summary>
+    /// 평가계획·명단이 바뀌면 열려 있는 성적표를 그에 맞춘다.
+    /// 성적표가 없으면 새로 만들고, 있으면 학생 추가/삭제·영역 변경·새 과목을 반영하되
+    /// 기존 학생의 성적·특기사항은 (번호,이름) 기준으로 보존한다.
+    /// </summary>
+    private void SyncGradeTableWithPlan()
+    {
+        if (Subjects.Count == 0) { EnsureGradeTableFromPlan(); return; }
+        if (_roster.Count == 0 && _plans.Count == 0) return;
+
+        bool changed = false;
+        var planByName = _plans.ToDictionary(p => p.SubjectName);
+        var currentNames = Subjects.Select(s => s.SubjectName).ToHashSet();
+        var rebuilt = new List<SubjectViewModel>();
+
+        foreach (var subj in Subjects)
+        {
+            var oldSheet = subj.Sheet;   // 미저장 편집 포함 현재 상태
+            // 영역은 계획이 있으면 계획을 따르고, 없으면 기존 유지. 명단 변경은 모든 탭에 적용.
+            var areas = planByName.TryGetValue(subj.SubjectName, out var plan) ? plan.Domains : oldSheet.Areas;
+            var newSheet = BuildSheetFromRoster(subj.SubjectName, areas, oldSheet);
+            if (SheetShapeEquals(oldSheet, newSheet)) { rebuilt.Add(subj); continue; }
+            rebuilt.Add(new SubjectViewModel(this, newSheet));
+            changed = true;
+        }
+        foreach (var plan in _plans.Where(p => !currentNames.Contains(p.SubjectName)))
+        {
+            rebuilt.Add(new SubjectViewModel(this, BuildSheetFromRoster(plan.SubjectName, plan.Domains, null)));
+            changed = true;
+        }
+        if (!changed) return;
+
+        var selected = SelectedSubject?.SubjectName;
+        Subjects.Clear();
+        foreach (var vm in rebuilt) Subjects.Add(vm);
+        SelectedSubject = Subjects.FirstOrDefault(s => s.SubjectName == selected) ?? Subjects.FirstOrDefault();
+
+        _gradeFilePath ??= Path.Combine(AppPaths.EnsureWorkspace(), "성적.xlsx");
+        ExcelName = Path.GetFileName(_gradeFilePath);
+        try
+        {
+            GradeWorkbookWriter.Write(_gradeFilePath, Subjects.Select(s => s.Sheet).ToList());
+            _appState.TouchGrade(_gradeFilePath);
+            OnPropertyChanged(nameof(RecentEntries));
+            Log($"성적표를 명단·평가계획에 맞춰 갱신: {ExcelName} (기존 성적은 번호·이름 기준 보존)");
+        }
+        catch (Exception ex)
+        {
+            Log($"⚠ 성적표 갱신 저장 실패 ({ex.Message}) — 편집·종료 때 다시 시도합니다.");
+        }
+    }
+
+    /// <summary>명단 순서대로 학생을 배치한 과목 시트 생성. 기존 시트가 있으면 성적·특기사항 이월.
+    /// 명단이 비어 있으면 기존 학생을 유지한다 (영역 변경만 반영).</summary>
+    private SubjectSheet BuildSheetFromRoster(string subjectName, IReadOnlyList<string> areas, SubjectSheet? old)
+    {
+        if (_roster.Count == 0)
+            return new SubjectSheet(subjectName, areas, old?.Students ?? new List<Student>());
+
+        var byKey = old?.Students.ToDictionary(s => (s.No, s.Name)) ?? new();
+        var byName = new Dictionary<string, Student>();
+        if (old is not null)
+            foreach (var s in old.Students) byName[s.Name] = s;
+
+        var students = _roster.Select(r =>
+        {
+            var prev = byKey.TryGetValue((r.No, r.Name), out var p1) ? p1
+                     : byName.TryGetValue(r.Name, out var p2) ? p2 : null;   // 번호가 바뀐 학생도 이름으로 이월
+            return new Student(r.No, r.Name,
+                prev is null ? new Dictionary<string, string>() : new Dictionary<string, string>(prev.Grades),
+                prev?.SpecialNote);
+        }).ToList();
+
+        return new SubjectSheet(subjectName, areas, students);
+    }
+
+    /// <summary>영역 구성과 학생(번호,이름) 목록이 같은지 — 같으면 표를 다시 만들지 않는다.</summary>
+    private static bool SheetShapeEquals(SubjectSheet a, SubjectSheet b) =>
+        a.Areas.SequenceEqual(b.Areas) &&
+        a.Students.Select(s => (s.No, s.Name)).SequenceEqual(b.Students.Select(s => (s.No, s.Name)));
+
+    /// <summary>
+    /// 성적표가 안 열려 있는데 평가계획+명단이 준비되면, 성적표를 앱에서 바로 만들어
+    /// 작업공간 성적.xlsx 로 저장한다 — 엑셀 양식을 따로 채우지 않아도 처음부터 앱만으로 진행 가능.
+    /// 같은 파일이 이미 있으면 (지난 세션 성적 보호) 만들지 않고 그 파일을 연다.
+    /// </summary>
+    private void EnsureGradeTableFromPlan()
+    {
+        if (_plans.Count == 0 || _roster.Count == 0 || Subjects.Count > 0) return;
+
+        var path = Path.Combine(AppPaths.EnsureWorkspace(), "성적.xlsx");
+        if (File.Exists(path))
+        {
+            Log("작업공간에 기존 성적.xlsx 가 있어 그 파일을 엽니다. (새로 만들려면 파일을 옮기거나 지우세요)");
+            LoadGrades(path, silent: true);
+            if (Subjects.Count > 0) SyncGradeTableWithPlan();   // 파일이 현재 명단·계획과 다르면 맞춘다
+            return;
+        }
+
+        var students = _roster
+            .Select(r => new Student(r.No, r.Name, new Dictionary<string, string>(), null))
+            .ToList();
+        var sheets = _plans
+            .Select(p => new SubjectSheet(p.SubjectName, p.Domains, students))
+            .ToList();
+
+        try
+        {
+            GradeWorkbookWriter.Write(path, sheets);
+        }
+        catch (Exception ex)
+        {
+            Log($"⚠ 성적표 파일 생성 실패: {ex.Message}");
+            return;
+        }
+
+        Subjects.Clear();
+        foreach (var s in sheets) Subjects.Add(new SubjectViewModel(this, s));
+        SelectedSubject = Subjects.FirstOrDefault();
+        _gradeFilePath = path;
+        ExcelName = Path.GetFileName(path);
+        _appState.TouchGrade(path);
+        OnPropertyChanged(nameof(RecentEntries));
+        Log($"평가계획·명단으로 성적표 생성: {ExcelName} ({sheets.Count}과목 × {students.Count}명) — 편집하면 자동 저장됩니다.");
     }
 
     // ── 자동 저장 ──────────────────────────────

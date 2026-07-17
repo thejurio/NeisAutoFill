@@ -95,6 +95,52 @@
         <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
+    <!-- 스플릿 버튼 (좌: 본체 / 우: ▾ 드롭다운) — 붙여서 하나처럼 보이게 -->
+    <Style x:Key="GhostButtonLeft" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="7,0,0,7"
+                            BorderBrush="{StaticResource Line}" BorderThickness="1,1,0,1"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource Panel}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="GhostButtonRight" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+        <Setter Property="Padding" Value="7,7"/>
+        <Setter Property="FontSize" Value="9"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="0,7,7,0"
+                            BorderBrush="{StaticResource Line}" BorderThickness="1"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource Panel}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- 아웃라인 토글 (켜지면 파란 톤) -->
     <Style x:Key="GhostToggle" TargetType="ToggleButton">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>

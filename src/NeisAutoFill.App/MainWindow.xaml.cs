@@ -171,13 +171,80 @@ public partial class MainWindow : Window
 
     // ── 성적표 다중 셀 편집 (복사/붙여넣기·일괄 지정) ──────────────
 
+    private DataGrid? _activeGradeGrid;   // 탭 콘텐츠는 재사용되므로 그리드 인스턴스는 하나
+
     /// <summary>표 우클릭 메뉴: 선택 셀 일괄 등급 지정. 척도 변경 대응을 위해 열 때마다 항목 재구성.</summary>
     private void GradeGrid_Loaded(object sender, RoutedEventArgs e)
     {
         var grid = (DataGrid)sender;
+        _activeGradeGrid = grid;
         if (grid.ContextMenu is not null) return;   // 탭 전환 재로드 시 중복 생성 방지
         grid.ContextMenu = new ContextMenu();
+        RebuildGradeMenu(grid);
         grid.ContextMenuOpening += (_, _) => RebuildGradeMenu(grid);
+    }
+
+    // ── 일괄 입력 바 ──────────────────────────
+
+    private void BulkAssign_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeGradeGrid is not null && ((Button)sender).Content is string label)
+            ApplyToSelectedAreaCells(_activeGradeGrid, label);
+    }
+
+    private void BulkClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeGradeGrid is not null) ApplyToSelectedAreaCells(_activeGradeGrid, "");
+    }
+
+    private void SelectAllCells_Click(object sender, RoutedEventArgs e)
+    {
+        if (_activeGradeGrid is null) return;
+        _activeGradeGrid.Focus();
+        _activeGradeGrid.SelectAllCells();
+    }
+
+    /// <summary>이름 셀 클릭 → 그 학생의 모든 영역 선택 / 영역 헤더 클릭 → 전 학생의 그 영역 선택.
+    /// Ctrl 을 누르고 클릭하면 기존 선택에 추가.</summary>
+    private void GradeGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var grid = (DataGrid)sender;
+        if (grid.DataContext is not SubjectViewModel vm) return;
+        bool additive = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+
+        // 컬럼 헤더 클릭 → 해당 영역 컬럼 전체 선택
+        if (FindAncestor<System.Windows.Controls.Primitives.DataGridColumnHeader>(e.OriginalSource) is { } header)
+        {
+            var name = header.Column?.Header?.ToString();
+            if (name is null || !vm.Areas.Contains(name)) return;   // 영역 컬럼만
+            grid.Focus();
+            if (!additive) grid.SelectedCells.Clear();
+            foreach (var item in grid.Items)
+                if (item is System.Data.DataRowView)
+                    grid.SelectedCells.Add(new DataGridCellInfo(item, header.Column));
+            e.Handled = true;
+            return;
+        }
+
+        // 이름 셀 클릭 → 그 학생 행의 모든 영역 선택
+        if (FindAncestor<DataGridCell>(e.OriginalSource) is { } cell &&
+            cell.Column?.Header?.ToString() == "이름" && cell.DataContext is System.Data.DataRowView row)
+        {
+            grid.Focus();
+            if (!additive) grid.SelectedCells.Clear();
+            foreach (var col in grid.Columns)
+                if (vm.Areas.Contains(col.Header?.ToString() ?? ""))
+                    grid.SelectedCells.Add(new DataGridCellInfo(row, col));
+            e.Handled = true;
+        }
+    }
+
+    private static T? FindAncestor<T>(object source) where T : DependencyObject
+    {
+        var current = source as DependencyObject;
+        while (current is not null and not T)
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+        return current as T;
     }
 
     private void RebuildGradeMenu(DataGrid grid)

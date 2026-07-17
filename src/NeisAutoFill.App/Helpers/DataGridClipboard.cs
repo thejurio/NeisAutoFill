@@ -21,12 +21,41 @@ public static class DataGridClipboard
         var rows = ClipboardTable.Parse(Clipboard.ContainsText() ? Clipboard.GetText() : null);
         if (rows.Length == 0) return (0, 0);
 
-        // 붙여넣기 기준점 (현재 셀). 새 행 플레이스홀더면 마지막 행 다음부터.
-        int startRow = grid.CurrentCell.Item is DataRowView drv
-            ? table.Rows.IndexOf(drv.Row)
-            : table.Rows.Count;
+        var selected = grid.SelectedCells
+            .Where(c => c.IsValid && c.Item is DataRowView && c.Column is not null)
+            .ToList();
+
+        // 값 하나를 여러 셀에 붙여넣기 → 엑셀처럼 선택된 셀 전체를 그 값으로 채운다
+        if (rows.Length == 1 && rows[0].Length == 1 && selected.Count > 1)
+        {
+            var value = rows[0][0];
+            int filled = 0, refused = 0;
+            foreach (var cell in selected)
+            {
+                var name = cell.Column.Header?.ToString() ?? "";
+                if (cell.Column.IsReadOnly || !table.Columns.Contains(name) ||
+                    (validate is not null && !validate(name, value))) { refused++; continue; }
+                ((DataRowView)cell.Item).Row[name] = value;
+                filled++;
+            }
+            return (filled, refused);
+        }
+
+        // 붙여넣기 기준점: 선택 영역의 좌상단 (없으면 현재 셀, 그것도 없으면 표 끝)
+        int startRow, startCol;
+        if (selected.Count > 0)
+        {
+            startRow = selected.Min(c => table.Rows.IndexOf(((DataRowView)c.Item).Row));
+            startCol = selected.Min(c => c.Column.DisplayIndex);
+        }
+        else
+        {
+            startRow = grid.CurrentCell.Item is DataRowView drv
+                ? table.Rows.IndexOf(drv.Row)
+                : table.Rows.Count;
+            startCol = grid.CurrentCell.Column?.DisplayIndex ?? 0;
+        }
         if (startRow < 0) startRow = table.Rows.Count;
-        int startCol = grid.CurrentCell.Column?.DisplayIndex ?? 0;
 
         // 화면 컬럼 순서(DisplayIndex) → 헤더 문자열 (= DataTable 컬럼명)
         var columns = grid.Columns.OrderBy(c => c.DisplayIndex).ToList();

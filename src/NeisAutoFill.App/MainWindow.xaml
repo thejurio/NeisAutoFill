@@ -55,8 +55,10 @@
                     <StackPanel Orientation="Horizontal">
                         <Button Style="{StaticResource AccentGhostButton}" Content="📁 자료 준비" Command="{Binding OpenDataPrepCommand}" Margin="0,0,6,0"/>
                         <Button Style="{StaticResource GhostButton}" Content="📝 명단·계획" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"/>
-                        <Button Style="{StaticResource GhostButton}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}" Margin="0,0,6,0"/>
-                        <Button Style="{StaticResource GhostButton}" Content="🕘 최근 ▾" Click="Recent_Click" Margin="0,0,6,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                            <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}"/>
+                            <Button Style="{StaticResource GhostButtonRight}" Content="▼" Click="Recent_Click" ToolTip="최근 파일"/>
+                        </StackPanel>
                         <Border Width="1" Background="{StaticResource Line}" Margin="4,2"/>
                         <Button Style="{StaticResource PrimaryButton}" Content="① NEIS 접속" Command="{Binding LaunchEdgeCommand}" Margin="6,0,6,0"/>
                         <Border Background="{StaticResource Panel}" CornerRadius="7" Padding="10,0" Margin="0,0,6,0">
@@ -102,20 +104,39 @@
                     <TabControl.ContentTemplate>
                         <DataTemplate DataType="{x:Type vm:SubjectViewModel}">
                             <DockPanel Margin="14,10,14,0">
-                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10" LastChildFill="False">
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False">
                                     <Button DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}" Content="▶ 입력 시작 (저장은 수동)" Command="{Binding RunCommand}" Margin="0,0,6,0"/>
                                     <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="■ 중지" Command="{Binding CancelCommand}" Margin="0,0,12,0"/>
                                     <TextBlock DockPanel.Dock="Left" Text="{Binding AreasText}" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12"/>
                                     <ToggleButton DockPanel.Dock="Right" Style="{StaticResource GhostToggle}" Content="📖 성취기준"
                                                   IsChecked="{Binding DataContext.ShowCriteriaPanel, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                 </DockPanel>
+                                <!-- 선택 셀 일괄 입력 바 -->
+                                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="선택 셀 일괄 입력:" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,8,0"/>
+                                    <ItemsControl ItemsSource="{Binding DataContext.BulkGradeLabels, RelativeSource={RelativeSource AncestorType=Window}}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource GhostButton}" Content="{Binding}" Padding="10,4"
+                                                        Margin="0,0,4,0" Click="BulkAssign_Click"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Style="{StaticResource GhostButton}" Content="지우기" Padding="10,4" Margin="0,0,10,0" Click="BulkClear_Click"/>
+                                    <Button Style="{StaticResource GhostButton}" Content="☑ 전체 선택" Padding="10,4" Click="SelectAllCells_Click"/>
+                                    <TextBlock Text="   이름 클릭=그 학생 전체, 영역 제목 클릭=그 영역 전체 선택" VerticalAlignment="Center" Foreground="#94A3B8" FontSize="11"/>
+                                </StackPanel>
                                 <DataGrid ItemsSource="{Binding GridView}" AutoGenerateColumns="True"
                                           Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
                                           IsReadOnly="False" CanUserAddRows="False" CanUserDeleteRows="False"
                                           CanUserSortColumns="False" CanUserReorderColumns="False"
                                           SelectionUnit="CellOrRowHeader" SelectionMode="Extended" ClipboardCopyMode="ExcludeHeader"
                                           AutoGeneratingColumn="Grid_AutoGeneratingColumn"
-                                          Loaded="GradeGrid_Loaded" PreviewKeyDown="GradeGrid_PreviewKeyDown"/>
+                                          Loaded="GradeGrid_Loaded" PreviewKeyDown="GradeGrid_PreviewKeyDown"
+                                          PreviewMouseLeftButtonDown="GradeGrid_PreviewMouseLeftButtonDown"/>
                             </DockPanel>
                         </DataTemplate>
                     </TabControl.ContentTemplate>

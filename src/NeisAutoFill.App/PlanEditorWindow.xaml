@@ -66,6 +66,10 @@
                 <DockPanel Grid.Column="2">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Style="{StaticResource AccentGhostButton}" Content="📄 평가계획 불러오기" IsEnabled="False"
+                                    ToolTipService.ShowOnDisabled="True"
+                                    ToolTip="이지에듀·스쿨마스터 평가계획서(PDF/HWP)를 넣으면 AI가 자동 입력합니다 — 다음 업데이트에서 지원 예정"
+                                    Margin="0,0,10,0"/>
                             <Button Style="{StaticResource GhostButton}" Content="＋ 과목" Command="{Binding AddSubjectCommand}" Margin="0,0,4,0"/>
                             <Button Style="{StaticResource GhostButton}" Content="🗑 과목 삭제" Command="{Binding RemoveSubjectCommand}"/>
                         </StackPanel>
