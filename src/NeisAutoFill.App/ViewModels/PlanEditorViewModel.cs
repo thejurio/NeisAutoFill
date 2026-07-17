@@ -35,6 +35,8 @@ public sealed class PlanEditorViewModel : ObservableObject
         RemoveSubjectCommand = new RelayCommand(RemoveSubject, () => SelectedSubject is not null);
         AddRosterRowCommand = new RelayCommand(() => Roster.Add(new RosterRow()));
         RemoveRosterRowCommand = new RelayCommand(RemoveRosterRow, () => SelectedRosterRow is not null);
+        ClearRosterCommand = new RelayCommand(ClearRoster);
+        ClearAllPlansCommand = new RelayCommand(ClearAllPlans);
 
         // 이름 입력 시 자동 번호 부여를 위해 행 추가/제거 때 감시를 붙인다
         Roster.CollectionChanged += (_, e) =>
@@ -55,6 +57,23 @@ public sealed class PlanEditorViewModel : ObservableObject
 
     public ObservableCollection<RosterRow> Roster { get; } = new();
     public ObservableCollection<PlanSubjectEdit> Subjects { get; } = new();
+
+    public ICommand ClearRosterCommand { get; }
+    public ICommand ClearAllPlansCommand { get; }
+
+    /// <summary>학생 명단 전부 비우기 (빈 입력 행만 남김).</summary>
+    private void ClearRoster()
+    {
+        Roster.Clear();
+        while (Roster.Count < EmptyRosterRows) Roster.Add(new RosterRow());
+    }
+
+    /// <summary>모든 과목·평가계획 비우기.</summary>
+    private void ClearAllPlans()
+    {
+        Subjects.Clear();
+        SelectedSubject = null;
+    }
 
     /// <summary>
     /// 이름을 입력하면 번호가 빈 행에 다음 번호를 자동 부여.

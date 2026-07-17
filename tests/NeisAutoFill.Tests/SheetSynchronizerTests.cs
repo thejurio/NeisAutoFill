@@ -80,16 +80,28 @@ public class SheetSynchronizerTests
     }
 
     [Fact]
-    public void 명단이_비면_기존_학생_유지하고_영역만_반영()
+    public void 명단_정보가_없으면_기존_학생_유지하고_영역만_반영()
     {
         var old = Sheet(St("1", "김하늘", ("듣기", "잘함")));
 
         var s = SheetSynchronizer.BuildSheet("국어", new[] { "듣기", "쓰기" }, old,
-            new List<(string, string)>());
+            new List<(string, string)>(), rosterAuthoritative: false);
 
         Assert.Single(s.Students);
         Assert.Equal(new[] { "듣기", "쓰기" }, s.Areas);
         Assert.Equal("잘함", s.Students[0].Grades["듣기"]);
+    }
+
+    [Fact]
+    public void 사용자가_명단을_전부_지우면_학생도_전부_삭제()   // ★ 2026-07-18 실사용 버그 재발 방지
+    {
+        var old = Sheet(St("1", "김하늘", ("듣기", "잘함")), St("2", "이준서"));
+
+        var s = SheetSynchronizer.BuildSheet("국어", old.Areas, old,
+            new List<(string, string)>(), rosterAuthoritative: true);
+
+        Assert.Empty(s.Students);
+        Assert.Equal(old.Areas, s.Areas);
     }
 
     [Fact]

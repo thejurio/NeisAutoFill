@@ -7,7 +7,8 @@ namespace NeisAutoFill.Core;
 /// 규칙:
 ///  - 명단 변경(추가/삭제/번호변경)은 모든 과목에 적용, 성적은 (번호,이름)→이름 순으로 이월
 ///  - 영역은 계획이 있으면 계획을 따르고, 개수가 같은 개명은 위치 기준으로 성적을 따라가게 함
-///  - 명단이 비어 있으면 기존 학생 유지 (영역 변경만 반영)
+///  - 빈 명단: rosterAuthoritative=false 면 정보 없음으로 보고 기존 학생 유지,
+///    true 면(사용자가 명단을 실제로 비움 — 명단 시트가 존재) 전원 삭제로 반영
 /// </summary>
 public static class SheetSynchronizer
 {
@@ -16,11 +17,12 @@ public static class SheetSynchronizer
         string subjectName,
         IReadOnlyList<string> areas,
         SubjectSheet? old,
-        IReadOnlyList<(string No, string Name)> roster)
+        IReadOnlyList<(string No, string Name)> roster,
+        bool rosterAuthoritative = false)
     {
         var renameMap = BuildAreaRenameMap(old?.Areas, areas);
 
-        if (roster.Count == 0)
+        if (roster.Count == 0 && !rosterAuthoritative)
             return new SubjectSheet(subjectName, areas,
                 old?.Students.Select(s => Carry(s.No, s.Name, s, renameMap)).ToList() ?? new List<Student>());
 

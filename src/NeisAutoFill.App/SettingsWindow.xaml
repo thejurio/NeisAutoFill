@@ -54,6 +54,12 @@
                                 <RadioButton Content="보통" IsChecked="{Binding SpeedNormal}" FontSize="12" Margin="0,0,16,0"/>
                                 <RadioButton Content="느림" IsChecked="{Binding SpeedSlow}" FontSize="12"/>
                             </StackPanel>
+
+                            <TextBlock Text="초기화" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,24,0,4"/>
+                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                       Text="설정·명단·성적·서술문을 모두 지우고 처음 실행한 상태로 되돌립니다. 되돌릴 수 없으니 필요한 자료는 미리 [내보내기] 해 두세요."/>
+                            <Button Style="{StaticResource GhostButton}" Content="🗑 처음 상태로 초기화" Click="Reset_Click"
+                                    HorizontalAlignment="Left" Foreground="#B91C1C"/>
                         </StackPanel>
                     </DockPanel>
                 </TabItem>

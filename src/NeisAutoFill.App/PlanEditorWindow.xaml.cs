@@ -37,6 +37,32 @@ public partial class PlanEditorWindow : Window
         PlanGrid.CommitEdit(DataGridEditingUnit.Row, true);
     }
 
+    // ── 초기화 ────────────────────────────
+
+    private void ClearRoster_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show("학생 명단을 모두 지웁니다.\n(평가계획과 이미 입력한 성적은 그대로입니다)",
+                "명단 비우기", MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK)
+            _vm.ClearRosterCommand.Execute(null);
+    }
+
+    private void PlanDeleteMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { ContextMenu: { } menu } el)
+        {
+            menu.PlacementTarget = el;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
+    }
+
+    private void ClearAllPlans_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show("모든 과목의 평가계획을 지웁니다.\n(학생 명단과 이미 입력한 성적은 그대로입니다)",
+                "전체 평가계획 비우기", MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK)
+            _vm.ClearAllPlansCommand.Execute(null);
+    }
+
     // ── 명단 ──────────────────────────────
 
     private void PasteRoster_Click(object sender, RoutedEventArgs e)

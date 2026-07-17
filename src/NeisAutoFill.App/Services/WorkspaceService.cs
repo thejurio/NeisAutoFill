@@ -16,6 +16,10 @@ public sealed class WorkspaceService(IScaleStore scales, AppStateStore appState)
     // ── 상태 ─────────────────────────────
     public IReadOnlyList<SubjectPlan> Plans { get; private set; } = Array.Empty<SubjectPlan>();
     public IReadOnlyList<(string No, string Name)> Roster { get; private set; } = Array.Empty<(string, string)>();
+
+    /// <summary>명단이 확정 정보인지 — 계획서에 [학생명단] 시트가 있으면 그 내용(비어 있어도)이 전부.
+    /// 사용자가 명단을 전부 지운 경우를 "정보 없음"과 구분한다.</summary>
+    public bool RosterAuthoritative { get; private set; }
     public string? GradeFilePath { get; private set; }
     public string? PlanFilePath { get; private set; }
 
@@ -57,6 +61,7 @@ public sealed class WorkspaceService(IScaleStore scales, AppStateStore appState)
         {
             Plans = PlanWorkbookLoader.Load(path, scales.Active);
             Roster = PlanWorkbookLoader.LoadRoster(path);
+            RosterAuthoritative = PlanWorkbookLoader.HasRosterSheet(path);
             PlanFilePath = path;
             appState.TouchPlan(path);
             return null;
@@ -101,7 +106,7 @@ public sealed class WorkspaceService(IScaleStore scales, AppStateStore appState)
     /// </summary>
     public IReadOnlyList<SubjectSheet>? ComputeSync(IReadOnlyList<SubjectSheet> current)
     {
-        if (Roster.Count == 0 && Plans.Count == 0) return null;
+        if (Roster.Count == 0 && Plans.Count == 0 && !RosterAuthoritative) return null;
 
         bool changed = false;
         var planByName = Plans.ToDictionary(p => p.SubjectName);
@@ -111,14 +116,14 @@ public sealed class WorkspaceService(IScaleStore scales, AppStateStore appState)
         foreach (var sheet in current)
         {
             var areas = planByName.TryGetValue(sheet.SubjectName, out var plan) ? plan.Domains : sheet.Areas;
-            var newSheet = SheetSynchronizer.BuildSheet(sheet.SubjectName, areas, sheet, Roster);
+            var newSheet = SheetSynchronizer.BuildSheet(sheet.SubjectName, areas, sheet, Roster, RosterAuthoritative);
             if (SheetSynchronizer.ShapeEquals(sheet, newSheet)) { rebuilt.Add(sheet); continue; }
             rebuilt.Add(newSheet);
             changed = true;
         }
         foreach (var plan in Plans.Where(p => !currentNames.Contains(p.SubjectName)))
         {
-            rebuilt.Add(SheetSynchronizer.BuildSheet(plan.SubjectName, plan.Domains, null, Roster));
+            rebuilt.Add(SheetSynchronizer.BuildSheet(plan.SubjectName, plan.Domains, null, Roster, RosterAuthoritative));
             changed = true;
         }
         return changed ? rebuilt : null;

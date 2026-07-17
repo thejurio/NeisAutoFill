@@ -43,11 +43,14 @@
                     <TextBlock DockPanel.Dock="Top" Text="학생 명단" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}" Margin="0,0,0,6"/>
                     <TextBlock DockPanel.Dock="Top" FontSize="11" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,8"
                                Text="엑셀에서 번호·이름 열을 복사한 뒤 [붙여넣기]를 누르면 명단 전체가 한 번에 입력됩니다."/>
-                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Style="{StaticResource GhostButton}" Content="＋ 행" Command="{Binding AddRosterRowCommand}" Margin="0,0,4,0"/>
-                        <Button Style="{StaticResource GhostButton}" Content="－ 행" Command="{Binding RemoveRosterRowCommand}" Margin="0,0,4,0"/>
-                        <Button Style="{StaticResource AccentGhostButton}" Content="📋 붙여넣기 (전체 교체)" Click="PasteRoster_Click"/>
-                    </StackPanel>
+                    <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" LastChildFill="False">
+                        <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="＋ 행" Command="{Binding AddRosterRowCommand}" Margin="0,0,4,0"/>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="－ 행" Command="{Binding RemoveRosterRowCommand}" Margin="0,0,4,0"/>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource AccentGhostButton}" Content="📋 붙여넣기" Click="PasteRoster_Click"
+                                ToolTip="엑셀에서 번호·이름 열을 복사한 뒤 누르면 명단 전체가 한 번에 입력됩니다 (기존 명단은 교체)"/>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource DangerGhostButton}" Content="🗑 명단 비우기" Click="ClearRoster_Click"
+                                ToolTip="학생 명단을 모두 지웁니다"/>
+                    </DockPanel>
                     <DataGrid x:Name="RosterGrid" ItemsSource="{Binding Roster}" SelectedItem="{Binding SelectedRosterRow}"
                               Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
                               AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
@@ -71,7 +74,14 @@
                                     ToolTip="이지에듀·스쿨마스터 등 평가계획서(PDF/HWP/HWPX)를 넣으면 AI가 인식해 표에 채웁니다"
                                     Margin="0,0,10,0"/>
                             <Button Style="{StaticResource GhostButton}" Content="＋ 과목" Command="{Binding AddSubjectCommand}" Margin="0,0,4,0"/>
-                            <Button Style="{StaticResource GhostButton}" Content="🗑 과목 삭제" Command="{Binding RemoveSubjectCommand}"/>
+                            <Button Style="{StaticResource DangerGhostButton}" Content="🗑 삭제" Click="PlanDeleteMenu_Click">
+                                <Button.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="이 과목 삭제" Command="{Binding RemoveSubjectCommand}"/>
+                                        <MenuItem Header="전체 평가계획 비우기" Click="ClearAllPlans_Click"/>
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="과목" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Sub}" Margin="0,0,6,0"/>

@@ -98,6 +98,13 @@ public static class PlanWorkbookLoader
         return wb.Worksheets.Any(w => w.Name.Trim() == "학생명단");
     }
 
+    /// <summary>평가계획서에 [학생명단] 시트가 있는지 — 있으면 그 내용(비어 있어도)이 명단의 전부다.</summary>
+    public static bool HasRosterSheet(string path)
+    {
+        using var wb = new XLWorkbook(path);
+        return wb.Worksheets.Any(w => w.Name.Trim() == "학생명단");
+    }
+
     /// <summary>평가계획서의 [학생명단] 시트에서 (번호, 이름) 목록을 읽는다. 없으면 빈 목록.</summary>
     public static IReadOnlyList<(string No, string Name)> LoadRoster(string path)
     {
