@@ -18,7 +18,8 @@ public sealed class GradeBadgeConverter : IValueConverter
     private static readonly (Color bg, Color fg) Yellow = (Rgb(0xFE, 0xF9, 0xC3), Rgb(0xA1, 0x62, 0x07));
     private static readonly (Color bg, Color fg) Red = (Rgb(0xFE, 0xE2, 0xE2), Rgb(0xB9, 0x1C, 0x1C));
     private static readonly (Color bg, Color fg) Neutral = (Rgb(0xF1, 0xF5, 0xF9), Rgb(0x47, 0x55, 0x69));
-    private static readonly (Color bg, Color fg) Empty = (Colors.Transparent, Rgb(0x94, 0xA3, 0xB8));
+    // 미입력 — 옅은 주황으로 눈에 띄게 (입력 누락 발견용)
+    private static readonly (Color bg, Color fg) Empty = (Rgb(0xFF, 0xF3, 0xE0), Rgb(0xC2, 0x71, 0x0C));
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {

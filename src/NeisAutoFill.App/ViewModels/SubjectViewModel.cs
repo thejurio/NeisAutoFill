@@ -50,9 +50,18 @@ public sealed class SubjectViewModel : ObservableObject
             Grid.Rows.Add(row);
         }
 
+        Grid.ColumnChanging += (_, e) =>
+        {
+            // 변경 전 값을 실행취소 스택에 기록 (일괄 작업 중이면 한 묶음으로)
+            if (_applyingUndo || e.Row is null || e.Column is null) return;
+            var entry = (e.Row, e.Column.ColumnName, e.Row[e.Column]);
+            if (_batch is not null) _batch.Add(entry);
+            else _undo.Push(new() { entry });
+        };
+
         Grid.ColumnChanged += (_, _) =>
         {
-            IsDirty = true;                // 사용자 편집 감지
+            IsDirty = true;                // 사용자 편집 감지 (실행취소 적용도 편집)
             _main.NotifyGradesEdited();    // 디바운스 자동 저장 예약
         };
 
@@ -85,4 +94,33 @@ public sealed class SubjectViewModel : ObservableObject
     }
 
     public void MarkSaved() => IsDirty = false;
+
+    // ── 실행 취소 (Ctrl+Z) ────────────────────
+    private readonly Stack<List<(DataRow Row, string Col, object? Old)>> _undo = new();
+    private List<(DataRow Row, string Col, object? Old)>? _batch;
+    private bool _applyingUndo;
+
+    /// <summary>일괄 작업(붙여넣기·일괄 지정) 시작 — 이후 변경이 한 번의 Ctrl+Z 로 되돌려진다.</summary>
+    public void BeginBulkEdit() => _batch = new();
+
+    public void EndBulkEdit()
+    {
+        if (_batch is { Count: > 0 }) _undo.Push(_batch);
+        _batch = null;
+    }
+
+    /// <summary>마지막 편집(또는 일괄 작업 전체)을 되돌린다. 되돌린 게 없으면 false.</summary>
+    public bool Undo()
+    {
+        if (_undo.Count == 0) return false;
+        var batch = _undo.Pop();
+        _applyingUndo = true;
+        try
+        {
+            for (int i = batch.Count - 1; i >= 0; i--)
+                batch[i].Row[batch[i].Col] = batch[i].Old ?? "";
+        }
+        finally { _applyingUndo = false; }
+        return true;
+    }
 }

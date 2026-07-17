@@ -139,9 +139,10 @@ public partial class MainWindow : Window
         var badgeFg = (System.Windows.Data.IValueConverter)FindResource("BadgeFg");
         string path = $"[{area}]";
 
-        // 표시 템플릿: 알약 배지
+        // 표시 템플릿: 알약 배지 (미입력은 – 로 표시)
+        var dash = (IValueConverter)FindResource("EmptyDash");
         var text = new FrameworkElementFactory(typeof(TextBlock));
-        text.SetBinding(TextBlock.TextProperty, new Binding(path));
+        text.SetBinding(TextBlock.TextProperty, new Binding(path) { Converter = dash });
         text.SetValue(TextBlock.ForegroundProperty, new Binding(path) { Converter = badgeFg });
         text.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
         text.SetValue(TextBlock.FontSizeProperty, 11.5);
@@ -291,6 +292,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            if (grid.DataContext is SubjectViewModel vz && vz.Undo()) _vm.Log("↩ 실행 취소");
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Delete)
         {
             ApplyToSelectedAreaCells(grid, "");
@@ -316,31 +324,42 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>선택된 영역(등급) 셀에 값을 일괄 적용. 특기사항 셀은 지우기만 허용.</summary>
+    /// <summary>선택된 영역(등급) 셀에 값을 일괄 적용. 특기사항 셀은 지우기만 허용. Ctrl+Z 한 번에 되돌려짐.</summary>
     private void ApplyToSelectedAreaCells(DataGrid grid, string value)
     {
         if (grid.DataContext is not SubjectViewModel vm) return;
         int applied = 0;
-        foreach (var cell in grid.SelectedCells)
+        vm.BeginBulkEdit();
+        try
         {
-            var header = cell.Column?.Header?.ToString();
-            if (header is null || cell.Item is not DataRowView row) continue;
-            bool isArea = vm.Areas.Contains(header);
-            bool isNote = header == SubjectViewModel.NoteColumn;
-            if (!isArea && !(isNote && value == "")) continue;   // 등급값은 영역 셀에만
-            row.Row[header] = value;
-            applied++;
+            foreach (var cell in grid.SelectedCells)
+            {
+                var header = cell.Column?.Header?.ToString();
+                if (header is null || cell.Item is not DataRowView row) continue;
+                bool isArea = vm.Areas.Contains(header);
+                bool isNote = header == SubjectViewModel.NoteColumn;
+                if (!isArea && !(isNote && value == "")) continue;   // 등급값은 영역 셀에만
+                row.Row[header] = value;
+                applied++;
+            }
         }
+        finally { vm.EndBulkEdit(); }
         if (applied > 0)
-            _vm.Log(value == "" ? $"선택 셀 {applied}개 지움" : $"선택 셀 {applied}개 → '{value}'");
+            _vm.Log(value == "" ? $"선택 셀 {applied}개 지움" : $"선택 셀 {applied}개 → '{value}' (Ctrl+Z 로 취소 가능)");
     }
 
-    /// <summary>클립보드 표를 현재 셀 기준으로 붙여넣기. 등급 셀은 척도 라벨만 허용.</summary>
+    /// <summary>클립보드 표를 현재 셀 기준으로 붙여넣기. 등급 셀은 척도 라벨만 허용. Ctrl+Z 한 번에 되돌려짐.</summary>
     private void PasteGrades(DataGrid grid)
     {
         if (grid.DataContext is not SubjectViewModel vm) return;
-        var (applied, skipped) = DataGridClipboard.Paste(grid, vm.Grid, (column, value) =>
-            column == SubjectViewModel.NoteColumn || value == "" || _vm.GradeLabels.Contains(value));
+        vm.BeginBulkEdit();
+        int applied, skipped;
+        try
+        {
+            (applied, skipped) = DataGridClipboard.Paste(grid, vm.Grid, (column, value) =>
+                column == SubjectViewModel.NoteColumn || value == "" || _vm.GradeLabels.Contains(value));
+        }
+        finally { vm.EndBulkEdit(); }
         if (applied == 0 && skipped == 0) return;
         _vm.Log($"붙여넣기: {applied}셀 적용" + (skipped > 0 ? $", {skipped}셀 건너뜀 (허용외 등급·읽기전용)" : ""));
     }

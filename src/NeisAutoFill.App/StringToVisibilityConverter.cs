@@ -14,6 +14,16 @@ public sealed class StringToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>빈 문자열이면 대시(–) 표시 — 미입력 셀 표시용 (표시 전용, 원본 값은 그대로).</summary>
+public sealed class EmptyToDashConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        string.IsNullOrWhiteSpace(value?.ToString()) ? "–" : value!.ToString()!;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value?.ToString() == "–" ? "" : value?.ToString() ?? "";
+}
+
 /// <summary>bool 반전.</summary>
 public sealed class InvertBoolConverter : IValueConverter
 {

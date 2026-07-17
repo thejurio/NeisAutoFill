@@ -47,6 +47,7 @@ public sealed class MainViewModel : ObservableObject
         _engineOptions = engineOptions;
 
         _generationQueue.Log += Log;      // 배치 시작·완료·중지를 메인 로그에도
+        _generationQueue.StateChanged += () => OnPropertyChanged(nameof(GenerationStatus));
         _narrativeMirror.Log += Log;      // 미러 실패 안내
 
         // 편집 후 2초 조용하면 자동 저장 (파일 잠금 등 실패 시 dirty 유지 → 다음 편집·종료 때 재시도)
@@ -388,6 +389,9 @@ public sealed class MainViewModel : ObservableObject
 
     private string _excelName = "성적파일 없음";
     public string ExcelName { get => _excelName; set => SetProperty(ref _excelName, value); }
+
+    /// <summary>백그라운드 서술문 생성 상태 — 메인 하단 상태줄에 상시 표시.</summary>
+    public string GenerationStatus => _generationQueue.Status;
 
     private double _progressValue;
     public double ProgressValue { get => _progressValue; set => SetProperty(ref _progressValue, value); }

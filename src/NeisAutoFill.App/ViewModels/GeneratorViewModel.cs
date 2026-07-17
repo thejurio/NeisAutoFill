@@ -51,6 +51,7 @@ public sealed class GeneratorViewModel : ObservableObject
         _engine = engine;
         _mainLog = mainLog;
 
+        _queue.JobStarted += job => FindItem(job)?.RestoreResult("⏳ 생성 중...");
         _queue.JobFinished += OnJobFinished;
         _queue.StateChanged += () =>
         {
@@ -86,13 +87,15 @@ public sealed class GeneratorViewModel : ObservableObject
     public int QueueProgress => _queue.Done + _queue.Failed;
     public int QueueTotal => Math.Max(_queue.Total, 1);
 
+    /// <summary>현재 화면에 보이는 항목 중 job 과 같은 학생 (다른 과목 화면이면 null).</summary>
+    private StudentGenItem? FindItem(GenJob job) =>
+        job.Subject == SelectedSubject
+            ? Students.FirstOrDefault(s => s.No == job.No && s.Name == job.Name)
+            : null;
+
     /// <summary>큐 완료 콜백 — 화면에 보이는 항목이면 결과 반영 (store 저장은 큐가 이미 함).</summary>
-    private void OnJobFinished(GenJob job, string text, bool ok)
-    {
-        if (job.Subject != SelectedSubject) return;
-        var item = Students.FirstOrDefault(s => s.No == job.No && s.Name == job.Name);
-        item?.RestoreResult(ok ? text : $"[오류] {text}");
-    }
+    private void OnJobFinished(GenJob job, string text, bool ok) =>
+        FindItem(job)?.RestoreResult(ok ? text : $"[오류] {text}");
 
     /// <summary>현재 과목의 (선택된) 학생들을 생성 큐에 넣는다.</summary>
     private void EnqueueVisible(bool onlySelected)

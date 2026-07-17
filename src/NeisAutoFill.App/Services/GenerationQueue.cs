@@ -40,6 +40,8 @@ public sealed class GenerationQueue
         _dispatcher = System.Windows.Application.Current.Dispatcher;
     }
 
+    /// <summary>워커가 작업을 집어 실제 생성을 시작할 때 (UI 스레드) — "대기 중" → "생성 중" 표시용.</summary>
+    public event Action<GenJob>? JobStarted;
     /// <summary>완료/실패 한 건마다 (UI 스레드). ok=true 면 text 는 서술문, false 면 오류 메시지.</summary>
     public event Action<GenJob, string, bool>? JobFinished;
     /// <summary>카운터 변경마다 (UI 스레드).</summary>
@@ -111,6 +113,8 @@ public sealed class GenerationQueue
                 job = _pending.Dequeue();
                 ct = _cts.Token;
             }
+
+            await _dispatcher.InvokeAsync(() => JobStarted?.Invoke(job));
 
             string text;
             bool ok = false;

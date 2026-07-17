@@ -184,10 +184,18 @@
                 </Border>
             </Grid>
 
-            <!-- ===== 진행바 ===== -->
+            <!-- ===== 진행바 + 백그라운드 작업 상태 ===== -->
             <Border Grid.Row="4" Padding="14,8" Background="White">
-                <ProgressBar Height="6" Minimum="0" Maximum="{Binding ProgressMax}" Value="{Binding ProgressValue}"
-                             Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"/>
+                <DockPanel>
+                    <Border DockPanel.Dock="Right" Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="10,3" Margin="10,0,0,0"
+                            Visibility="{Binding GenerationStatus, Converter={StaticResource StringToVis}}">
+                        <TextBlock Text="{Binding GenerationStatus}" FontSize="11.5" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Neis}" VerticalAlignment="Center"/>
+                    </Border>
+                    <ProgressBar Height="6" Minimum="0" Maximum="{Binding ProgressMax}" Value="{Binding ProgressValue}"
+                                 Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"
+                                 VerticalAlignment="Center"/>
+                </DockPanel>
             </Border>
 
             <!-- ===== 로그 ===== -->
