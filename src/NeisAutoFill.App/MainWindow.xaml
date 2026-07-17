@@ -16,15 +16,15 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="40"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="170"/>
             </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
             <!-- ===== 커스텀 타이틀바 (흰 배경 + 하단 파란 라인) ===== -->
-            <Border Grid.Row="0" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
+            <Border Grid.Row="0" Grid.ColumnSpan="2" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
                 <DockPanel LastChildFill="False">
                     <Image Source="app.ico" Width="20" Height="20" Margin="12,0,8,0" DockPanel.Dock="Left" VerticalAlignment="Center"/>
                     <TextBlock DockPanel.Dock="Left" Text="NEIS 교과평가 자동입력기" VerticalAlignment="Center"
@@ -41,61 +41,63 @@
                 </DockPanel>
             </Border>
 
-            <!-- ===== 툴바 ===== -->
-            <Border Grid.Row="1" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
-                <DockPanel Margin="14,10">
-                    <!-- 오른쪽: 지역 + 설정 -->
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <TextBlock Text="지역" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,4,0"/>
-                        <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Regions}" SelectedItem="{Binding SelectedRegion}"
-                                  DisplayMemberPath="Name" MinWidth="128" Margin="0,0,10,0"/>
-                        <Button Style="{StaticResource GhostButton}" Content="🔎 진단" Command="{Binding InspectCommand}" Margin="0,0,6,0"
-                                ToolTip="현재 나이스 화면 구조를 읽기 전용으로 덤프합니다 (%AppData%\NeisAutoFill\dom_inspect_*.txt)"/>
-                        <Button Style="{StaticResource GhostButton}" Content="⚙ 설정" Command="{Binding OpenScaleEditorCommand}"/>
-                    </StackPanel>
-                    <!-- 왼쪽: 자료 / 접속 / 생성기 -->
-                    <StackPanel Orientation="Horizontal">
-                        <Button Style="{StaticResource AccentGhostButton}" Content="📁 자료 준비" Command="{Binding OpenDataPrepCommand}" Margin="0,0,6,0"/>
-                        <Button Style="{StaticResource GhostButton}" Content="📝 명단·계획" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
-                            <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}"/>
-                            <Button Style="{StaticResource GhostButtonRight}" Content="▼" Click="Recent_Click" ToolTip="최근 파일"/>
+            <!-- ===== 본문 (좌측 컬럼 — 성취기준 패널이 켜져도 이 폭은 유지, 창이 옆으로 늘어난다) ===== -->
+            <Grid Grid.Row="1" Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="170"/>
+                </Grid.RowDefinitions>
+
+                <!-- ===== 툴바 ===== -->
+                <Border Grid.Row="0" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                    <DockPanel Margin="14,10">
+                        <!-- 오른쪽: 지역 + 설정 -->
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <TextBlock Text="지역" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,4,0"/>
+                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Regions}" SelectedItem="{Binding SelectedRegion}"
+                                      DisplayMemberPath="Name" MinWidth="128" Margin="0,0,10,0"/>
+                            <Button Style="{StaticResource GhostButton}" Content="🔎 진단" Command="{Binding InspectCommand}" Margin="0,0,6,0"
+                                    ToolTip="현재 나이스 화면 구조를 읽기 전용으로 덤프합니다 (%AppData%\NeisAutoFill\dom_inspect_*.txt)"/>
+                            <Button Style="{StaticResource GhostButton}" Content="⚙ 설정" Command="{Binding OpenScaleEditorCommand}"/>
                         </StackPanel>
-                        <Border Width="1" Background="{StaticResource Line}" Margin="4,2"/>
-                        <Button Style="{StaticResource PrimaryButton}" Content="① NEIS 접속" Command="{Binding LaunchEdgeCommand}" Margin="6,0,6,0"/>
-                        <Border Background="{StaticResource Panel}" CornerRadius="7" Padding="10,0" Margin="0,0,6,0">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Ellipse Width="8" Height="8" Fill="{Binding ConnectionBrush}" Margin="0,0,6,0"/>
-                                <TextBlock Text="{Binding ConnectionText}" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Ink}"/>
+                        <!-- 왼쪽: 자료 / 접속 / 생성기 -->
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource AccentGhostButton}" Content="📁 자료 준비" Command="{Binding OpenDataPrepCommand}" Margin="0,0,6,0"/>
+                            <Button Style="{StaticResource GhostButton}" Content="📝 명단·계획" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                                <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}"/>
+                                <Button Style="{StaticResource GhostButtonRight}" Content="▼" Click="Recent_Click" ToolTip="최근 파일"/>
                             </StackPanel>
-                        </Border>
-                        <Button Style="{StaticResource GhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}" Margin="0,0,6,0"/>
-                        <Button Style="{StaticResource AccentGhostButton}" Content="🚀 전과목 입력" Command="{Binding RunAllSubjectsCommand}"
-                                ToolTip="모든 과목을 순서대로 나이스에 입력합니다. 각 과목 검증 통과 시 자동 [저장] 후 다음 과목으로 넘어갑니다."/>
+                            <Border Width="1" Background="{StaticResource Line}" Margin="4,2"/>
+                            <Button Style="{StaticResource PrimaryButton}" Content="① NEIS 접속" Command="{Binding LaunchEdgeCommand}" Margin="6,0,6,0"/>
+                            <Border Background="{StaticResource Panel}" CornerRadius="7" Padding="10,0" Margin="0,0,6,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse Width="8" Height="8" Fill="{Binding ConnectionBrush}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="{Binding ConnectionText}" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Ink}"/>
+                                </StackPanel>
+                            </Border>
+                            <Button Style="{StaticResource GhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- ===== 로드 상태 요약줄 ===== -->
+                <Border Grid.Row="1" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="14,7">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="평가계획서" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding PlanName}" Foreground="{StaticResource Ink}" FontSize="11.5" FontWeight="Medium" Margin="0,0,16,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="성적파일" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ExcelName}" Foreground="{StaticResource Ink}" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center"/>
+                        <TextBlock Text="   ·   척도" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ActiveScaleSummary}" Foreground="{StaticResource Neis}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </StackPanel>
-                </DockPanel>
-            </Border>
+                </Border>
 
-            <!-- ===== 로드 상태 요약줄 ===== -->
-            <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="14,7">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="평가계획서" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding PlanName}" Foreground="{StaticResource Ink}" FontSize="11.5" FontWeight="Medium" Margin="0,0,16,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="성적파일" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding ExcelName}" Foreground="{StaticResource Ink}" FontSize="11.5" FontWeight="Medium" VerticalAlignment="Center"/>
-                    <TextBlock Text="   ·   척도" Foreground="{StaticResource Sub}" FontSize="11.5" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding ActiveScaleSummary}" Foreground="{StaticResource Neis}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Border>
-
-            <!-- ===== 과목 탭 + 성적표 + 성취기준 패널 ===== -->
-            <Grid Grid.Row="3">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <TabControl Grid.Column="0" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
+                <!-- ===== 과목 탭 + 성적표 ===== -->
+                <TabControl Grid.Row="2" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
                             BorderThickness="0" Background="White" Padding="0" Margin="0">
                     <TabControl.ItemContainerStyle>
                         <Style TargetType="TabItem" BasedOn="{StaticResource UnderlineTab}"/>
@@ -109,7 +111,11 @@
                         <DataTemplate DataType="{x:Type vm:SubjectViewModel}">
                             <DockPanel Margin="14,10,14,0">
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False">
-                                    <Button DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}" Content="▶ 입력 시작 (저장은 수동)" Command="{Binding RunCommand}" Margin="0,0,6,0"/>
+                                    <Button DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}" Content="▶ 이 과목 입력" Command="{Binding RunCommand}" Margin="0,0,6,0"
+                                            ToolTip="현재 과목만 나이스에 입력합니다. 저장은 하지 않으므로 확인 후 나이스에서 직접 [저장]을 누르세요."/>
+                                    <Button DockPanel.Dock="Left" Style="{StaticResource AccentGhostButton}" Content="🚀 전과목 입력"
+                                            Command="{Binding DataContext.RunAllSubjectsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            ToolTip="모든 과목을 순서대로 나이스에 입력합니다. 각 과목 검증 통과 시 자동 [저장] 후 다음 과목으로 넘어갑니다." Margin="0,0,6,0"/>
                                     <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="■ 중지" Command="{Binding CancelCommand}" Margin="0,0,12,0"/>
                                     <TextBlock DockPanel.Dock="Left" Text="{Binding AreasText}" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12"/>
                                     <ToggleButton DockPanel.Dock="Right" Style="{StaticResource GhostToggle}" Content="📖 성취기준"
@@ -146,69 +152,69 @@
                     </TabControl.ContentTemplate>
                 </TabControl>
 
-                <!-- 성취기준 참조 패널 (토글) -->
-                <Border Grid.Column="1" Width="300" BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0"
-                        Background="{StaticResource Panel2}"
-                        Visibility="{Binding ShowCriteriaPanel, Converter={StaticResource BoolToVis}}">
-                    <DockPanel Margin="12,10">
-                        <TextBlock DockPanel.Dock="Top" Text="이 과목의 성취기준·평가기준" FontWeight="Bold" FontSize="12.5"
-                                   Foreground="{StaticResource Ink}" Margin="0,0,0,8"/>
-                        <TextBlock DockPanel.Dock="Top" Text="{Binding CriteriaPanelStatus}" FontSize="11.5"
-                                   Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                   Visibility="{Binding CriteriaPanelStatus, Converter={StaticResource StringToVis}}"/>
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                            <ItemsControl ItemsSource="{Binding CriteriaPanelItems}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1"
-                                                CornerRadius="6" Padding="10,8" Margin="0,0,4,8">
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Domain}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Neis}"/>
-                                                <TextBlock Text="{Binding Achievement}" FontSize="11" Foreground="{StaticResource Sub}"
-                                                           TextWrapping="Wrap" Margin="0,2,0,4"
-                                                           Visibility="{Binding Achievement, Converter={StaticResource StringToVis}}"/>
-                                                <ItemsControl ItemsSource="{Binding Levels}">
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <DockPanel Margin="0,2,0,0">
-                                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Grade}" FontSize="11" FontWeight="SemiBold"
-                                                                           Foreground="{StaticResource Ink}" Width="52" VerticalAlignment="Top"/>
-                                                                <TextBlock Text="{Binding Text}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
-                                                            </DockPanel>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
-                                            </StackPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
+                <!-- ===== 진행바 + 백그라운드 작업 상태 ===== -->
+                <Border Grid.Row="3" Padding="14,8" Background="White">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Right" Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="10,3" Margin="10,0,0,0"
+                                Visibility="{Binding GenerationStatus, Converter={StaticResource StringToVis}}">
+                            <TextBlock Text="{Binding GenerationStatus}" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Neis}" VerticalAlignment="Center"/>
+                        </Border>
+                        <ProgressBar Height="6" Minimum="0" Maximum="{Binding ProgressMax}" Value="{Binding ProgressValue}"
+                                     Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"
+                                     VerticalAlignment="Center"/>
                     </DockPanel>
+                </Border>
+
+                <!-- ===== 로그 ===== -->
+                <Border Grid.Row="4" Background="#0F172A" CornerRadius="0">
+                    <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                             Background="Transparent" Foreground="#CBD5E1" BorderThickness="0"
+                             FontFamily="Consolas" FontSize="11.5" Padding="14,10"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto"
+                             x:Name="LogBox" TextChanged="LogBox_TextChanged"/>
                 </Border>
             </Grid>
 
-            <!-- ===== 진행바 + 백그라운드 작업 상태 ===== -->
-            <Border Grid.Row="4" Padding="14,8" Background="White">
-                <DockPanel>
-                    <Border DockPanel.Dock="Right" Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="10,3" Margin="10,0,0,0"
-                            Visibility="{Binding GenerationStatus, Converter={StaticResource StringToVis}}">
-                        <TextBlock Text="{Binding GenerationStatus}" FontSize="11.5" FontWeight="SemiBold"
-                                   Foreground="{StaticResource Neis}" VerticalAlignment="Center"/>
-                    </Border>
-                    <ProgressBar Height="6" Minimum="0" Maximum="{Binding ProgressMax}" Value="{Binding ProgressValue}"
-                                 Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"
-                                 VerticalAlignment="Center"/>
+            <!-- ===== 성취기준 참조 패널 (우측 전체 높이 — 토글 시 창이 옆으로 확장) ===== -->
+            <Border Grid.Row="1" Grid.Column="1" Width="300" BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0"
+                    Background="{StaticResource Panel2}"
+                    Visibility="{Binding ShowCriteriaPanel, Converter={StaticResource BoolToVis}}">
+                <DockPanel Margin="12,10">
+                    <TextBlock DockPanel.Dock="Top" Text="이 과목의 성취기준·평가기준" FontWeight="Bold" FontSize="12.5"
+                               Foreground="{StaticResource Ink}" Margin="0,0,0,8"/>
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding CriteriaPanelStatus}" FontSize="11.5"
+                               Foreground="{StaticResource Sub}" TextWrapping="Wrap"
+                               Visibility="{Binding CriteriaPanelStatus, Converter={StaticResource StringToVis}}"/>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding CriteriaPanelItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1"
+                                            CornerRadius="6" Padding="10,8" Margin="0,0,4,8">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Domain}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Neis}"/>
+                                            <TextBlock Text="{Binding Achievement}" FontSize="11" Foreground="{StaticResource Sub}"
+                                                       TextWrapping="Wrap" Margin="0,2,0,4"
+                                                       Visibility="{Binding Achievement, Converter={StaticResource StringToVis}}"/>
+                                            <ItemsControl ItemsSource="{Binding Levels}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <DockPanel Margin="0,2,0,0">
+                                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Grade}" FontSize="11" FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource Ink}" Width="52" VerticalAlignment="Top"/>
+                                                            <TextBlock Text="{Binding Text}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                                                        </DockPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </DockPanel>
-            </Border>
-
-            <!-- ===== 로그 ===== -->
-            <Border Grid.Row="5" Background="#0F172A" CornerRadius="0">
-                <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
-                         Background="Transparent" Foreground="#CBD5E1" BorderThickness="0"
-                         FontFamily="Consolas" FontSize="11.5" Padding="14,10"
-                         VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto"
-                         x:Name="LogBox" TextChanged="LogBox_TextChanged"/>
             </Border>
         </Grid>
     </Border>

@@ -14,7 +14,7 @@
             <Border DockPanel.Dock="Top" Height="40" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
                 <DockPanel LastChildFill="False">
                     <Image Source="app.ico" Width="18" Height="18" Margin="12,0,8,0" DockPanel.Dock="Left" VerticalAlignment="Center"/>
-                    <TextBlock DockPanel.Dock="Left" Text="전과목 서술문 생성" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
+                    <TextBlock x:Name="TitleText" DockPanel.Dock="Left" Text="전과목 서술문 생성" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
                     <Button DockPanel.Dock="Right" Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="Cancel_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
                 </DockPanel>
             </Border>
@@ -22,12 +22,12 @@
             <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,10">
                 <DockPanel LastChildFill="False">
                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="취소" IsCancel="True" Padding="18,7"/>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="🚀 생성 시작" Click="Start_Click" Margin="0,0,6,0" Padding="18,7"/>
+                    <Button x:Name="StartButton" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="🚀 생성 시작" Click="Start_Click" Margin="0,0,6,0" Padding="18,7"/>
                 </DockPanel>
             </Border>
 
             <DockPanel Margin="16,12">
-                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,0,0,10"
+                <TextBlock x:Name="DescText" DockPanel.Dock="Top" TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,0,0,10"
                            Text="생성할 과목을 선택하세요. 생성은 백그라운드로 진행되어 창을 닫거나 다른 작업을 해도 계속됩니다. 이미 생성된 서술문은 새 결과로 덮어써집니다."/>
                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
                     <Button Style="{StaticResource GhostButton}" Content="전체 선택" Click="All_Click" Padding="10,4" Margin="0,0,4,0"/>

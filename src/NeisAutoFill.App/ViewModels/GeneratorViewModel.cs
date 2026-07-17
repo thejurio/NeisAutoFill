@@ -288,22 +288,31 @@ public sealed class GeneratorViewModel : ObservableObject
                 "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        var bySubject = CollectNarratives();
-        if (bySubject.Count == 0)
+        var allBySubject = CollectNarratives();
+        if (allBySubject.Count == 0)
         {
             MessageBox.Show("입력할 서술문이 없습니다. 먼저 생성해 주세요.", "안내",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var ok = MessageBox.Show(
-            $"전과목 서술문 자동 입력을 시작합니다.\n\n" +
-            $"대상 과목({bySubject.Count}개): {string.Join(", ", bySubject.Select(kv => $"{kv.Key} {kv.Value.Count}명"))}\n\n" +
-            "★ 각 과목 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고\n" +
-            "   다음 과목으로 넘어갑니다. (실패 과목은 저장하지 않고 중단)\n\n" +
-            "나이스 화면이 [학기말 종합의견] 조회 화면인지 확인한 뒤 계속하세요.",
-            "전과목 서술문 입력 — 과목별 자동 저장 동의", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (ok != MessageBoxResult.Yes) return;
+        // 과목 체크리스트 — 입력할 과목을 고르고, 자동 저장 동의도 이 창에서
+        var picks = allBySubject
+            .Select(kv => new SubjectPick(kv.Key, kv.Value.Count, $"서술문 {kv.Value.Count}명 입력 예정"))
+            .ToList();
+        var win = new BatchGenerateWindow(picks,
+            title: "전과목 서술문 입력",
+            description: "나이스에 입력할 과목을 선택하세요. 나이스 화면이 [학기말 종합의견] 조회 화면인지 확인한 뒤 시작하세요.",
+            startLabel: "🚀 입력 시작",
+            warning: "각 과목 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 과목으로 넘어갑니다. " +
+                     "검증에 실패한 과목은 저장하지 않고 그 자리에서 중단합니다.")
+        { Owner = Application.Current.MainWindow };
+        if (win.ShowDialog() != true) return;
+
+        var chosen = picks.Where(p => p.IsChecked).Select(p => p.Name).ToHashSet();
+        var bySubject = allBySubject.Where(kv => chosen.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+        if (bySubject.Count == 0) return;
 
         var progress = new Progress<Automation.Abstractions.ProgressInfo>(p =>
         {
@@ -552,19 +561,20 @@ public sealed class GeneratorViewModel : ObservableObject
 
 }
 
-/// <summary>전과목 생성 대화상자의 과목 한 줄.</summary>
+/// <summary>과목 선택 대화상자의 과목 한 줄 (전과목 생성·입력 공용).</summary>
 public sealed class SubjectPick : ObservableObject
 {
-    public SubjectPick(string name, int eligibleCount)
+    public SubjectPick(string name, int eligibleCount, string? summary = null)
     {
         Name = name;
         EligibleCount = eligibleCount;
         _isChecked = eligibleCount > 0;
+        Summary = summary ?? (eligibleCount > 0 ? $"{eligibleCount}명 생성 가능" : "생성할 학생 없음 (등급 미입력)");
     }
 
     public string Name { get; }
     public int EligibleCount { get; }
-    public string Summary => EligibleCount > 0 ? $"{EligibleCount}명 생성 가능" : "생성할 학생 없음 (등급 미입력)";
+    public string Summary { get; }
 
     private bool _isChecked;
     public bool IsChecked { get => _isChecked; set => SetProperty(ref _isChecked, value); }

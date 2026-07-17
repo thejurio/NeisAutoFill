@@ -771,19 +771,28 @@ public sealed class MainViewModel : ObservableObject
             ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.");
             return;
         }
-        var sheets = Subjects.Select(s => s.Sheet)
-            .Where(s => s.Students.Any(st => st.Grades.Count > 0)).ToList();
-        if (sheets.Count == 0) { ShowError("입력할 성적이 없습니다. 성적표에 등급을 먼저 입력해 주세요."); return; }
+        var allSheets = Subjects.Select(s => s.Sheet).ToList();
+        if (!allSheets.Any(s => s.Students.Any(st => st.Grades.Count > 0)))
+        { ShowError("입력할 성적이 없습니다. 성적표에 등급을 먼저 입력해 주세요."); return; }
 
-        var ok = MessageBox.Show(
-            $"전과목 자동 입력을 시작합니다.\n\n" +
-            $"대상 과목({sheets.Count}개): {string.Join(", ", sheets.Select(s => s.SubjectName))}\n\n" +
-            "★ 이 모드에서는 각 과목 입력 후 값 검증을 통과하면\n" +
-            "   나이스 [저장]을 자동으로 누르고 다음 과목으로 넘어갑니다.\n" +
-            "   (검증에 실패한 과목은 저장하지 않고 그 자리에서 중단합니다)\n\n" +
-            "나이스 화면이 [교과별 평가] 조회 화면인지 확인한 뒤 계속하세요.",
-            "전과목 자동 입력 — 과목별 자동 저장 동의", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (ok != MessageBoxResult.Yes) return;
+        // 과목 체크리스트 — 입력할 과목을 고르고, 자동 저장 동의도 이 창에서
+        var picks = allSheets.Select(s =>
+        {
+            int n = s.Students.Sum(st => st.Grades.Count(g => !string.IsNullOrWhiteSpace(g.Value)));
+            return new SubjectPick(s.SubjectName, n, n > 0 ? $"등급 {n}건 입력 예정" : "입력할 등급 없음");
+        }).ToList();
+        var win = new BatchGenerateWindow(picks,
+            title: "전과목 나이스 입력",
+            description: "나이스에 입력할 과목을 선택하세요. 나이스 화면이 [교과별 평가] 조회 화면인지 확인한 뒤 시작하세요.",
+            startLabel: "🚀 입력 시작",
+            warning: "각 과목 입력 후 값 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 과목으로 넘어갑니다. " +
+                     "검증에 실패한 과목은 저장하지 않고 그 자리에서 중단합니다.")
+        { Owner = Application.Current.MainWindow };
+        if (win.ShowDialog() != true) return;
+
+        var chosen = picks.Where(p => p.IsChecked).Select(p => p.Name).ToHashSet();
+        var sheets = allSheets.Where(s => chosen.Contains(s.SubjectName)).ToList();
+        if (sheets.Count == 0) return;
 
         _cts = new CancellationTokenSource();
         var summary = new List<string>();

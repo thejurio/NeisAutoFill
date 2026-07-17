@@ -12,11 +12,22 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
 
+    private const double CriteriaPanelWidth = 300;
+
     public MainWindow(MainViewModel vm)
     {
         InitializeComponent();
         DataContext = _vm = vm;
         StateChanged += (_, _) => UpdateMaxGlyph();
+
+        // 성취기준 패널: 창을 옆으로 확장 — 본문이 구겨지지 않는다 (최대화 상태는 그대로)
+        if (_vm.ShowCriteriaPanel) Width += CriteriaPanelWidth;   // 저장된 켜짐 상태 복원분
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(MainViewModel.ShowCriteriaPanel)) return;
+            if (WindowState != WindowState.Normal) return;
+            Width = Math.Max(MinWidth, Width + (_vm.ShowCriteriaPanel ? CriteriaPanelWidth : -CriteriaPanelWidth));
+        };
     }
 
     private void Min_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
