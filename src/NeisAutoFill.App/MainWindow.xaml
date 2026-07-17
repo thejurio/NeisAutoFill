@@ -49,6 +49,8 @@
                         <TextBlock Text="지역" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,4,0"/>
                         <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Regions}" SelectedItem="{Binding SelectedRegion}"
                                   DisplayMemberPath="Name" MinWidth="128" Margin="0,0,10,0"/>
+                        <Button Style="{StaticResource GhostButton}" Content="🔎 진단" Command="{Binding InspectCommand}" Margin="0,0,6,0"
+                                ToolTip="현재 나이스 화면 구조를 읽기 전용으로 덤프합니다 (%AppData%\NeisAutoFill\dom_inspect_*.txt)"/>
                         <Button Style="{StaticResource GhostButton}" Content="⚙ 설정" Command="{Binding OpenScaleEditorCommand}"/>
                     </StackPanel>
                     <!-- 왼쪽: 자료 / 접속 / 생성기 -->
@@ -67,7 +69,9 @@
                                 <TextBlock Text="{Binding ConnectionText}" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Ink}"/>
                             </StackPanel>
                         </Border>
-                        <Button Style="{StaticResource GhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}"/>
+                        <Button Style="{StaticResource GhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource AccentGhostButton}" Content="🚀 전과목 입력" Command="{Binding RunAllSubjectsCommand}"
+                                ToolTip="모든 과목을 순서대로 나이스에 입력합니다. 각 과목 검증 통과 시 자동 [저장] 후 다음 과목으로 넘어갑니다."/>
                     </StackPanel>
                 </DockPanel>
             </Border>

@@ -79,6 +79,127 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         return null;
     }
 
+    // ── Phase 5.5 전과목 자동 업로드 ────────────────────────────
+    // ★ 버튼·대화상자 셀렉터는 잠정 (NeisSelectors 주석 참조) — 첫 실기기 실행은 반드시 지켜볼 것.
+
+    public async Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default)
+    {
+        var page = RequirePage();
+
+        var current = await GetCurrentSubjectAsync(ct);
+        if (current == subjectName) return (true, "이미 조회됨");
+
+        // 과목 콤보 (보이는 첫 번째)
+        var combos = page.Locator(NeisSelectors.SubjectCombo);
+        ILocator? combo = null;
+        int n = await combos.CountAsync();
+        for (int i = 0; i < n; i++)
+            if (await combos.Nth(i).IsVisibleAsync()) { combo = combos.Nth(i); break; }
+        if (combo is null) return (false, "화면에서 과목 콤보를 찾지 못했습니다 (교과별 평가/종합의견 화면인지 확인)");
+
+        var pick = await _combo!.OpenAndPickAsync(combo, subjectName);
+        if (!pick.Ok) return (false, $"과목 선택 실패: {pick.Reason}");
+
+        var query = await FindButtonAsync(NeisSelectors.QueryButtonName);
+        if (query is null) return (false, "[조회] 버튼을 찾지 못했습니다");
+        await query.ClickAsync();
+
+        // 화면 갱신 대기 — 콤보가 대상 과목을 표시하고 그리드가 다시 잡힐 때까지
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(600, ct);
+            try
+            {
+                if (await GetCurrentSubjectAsync(ct) == subjectName &&
+                    await FindGridAsync(page) is not null)
+                {
+                    await Task.Delay(800, ct);   // 그리드 데이터 렌더 여유
+                    return (true, "");
+                }
+            }
+            catch { /* 갱신 중 일시 오류는 무시하고 재시도 */ }
+        }
+        return (false, "조회 후 화면 갱신을 확인하지 못했습니다");
+    }
+
+    public async Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default)
+    {
+        var save = await FindButtonAsync(NeisSelectors.SaveButtonName);
+        if (save is null) return (false, "[저장] 버튼을 찾지 못했습니다");
+        await save.ClickAsync();
+
+        // 확인("저장하시겠습니까?") → 완료("저장되었습니다") 대화상자 순서로 최대 2개 처리
+        bool anyDialog = false;
+        for (int d = 0; d < 2; d++)
+        {
+            var yes = await WaitDialogYesButtonAsync(TimeSpan.FromSeconds(6), ct);
+            if (yes is null) break;
+            anyDialog = true;
+            await yes.ClickAsync();
+            await Task.Delay(500, ct);
+        }
+        // 대화상자가 하나도 없었어도 클릭 자체는 됐으므로 성공으로 본다 (화면별 차이 허용)
+        return (true, anyDialog ? "" : "대화상자 없음");
+    }
+
+    /// <summary>접근성 이름에 label 이 들어가는 보이는 버튼. GetByRole 우선, 실패 시 수동 스캔.</summary>
+    private async Task<ILocator?> FindButtonAsync(string label)
+    {
+        var page = RequirePage();
+        try
+        {
+            var byRole = page.GetByRole(AriaRole.Button, new() { Name = label }).First;
+            if (await byRole.IsVisibleAsync()) return byRole;
+        }
+        catch { /* 접근성 이름 불일치 → 수동 스캔 */ }
+
+        var candidates = page.Locator(NeisSelectors.AnyButton);
+        int n = await candidates.CountAsync();
+        for (int i = 0; i < n; i++)
+        {
+            var b = candidates.Nth(i);
+            try
+            {
+                if (!await b.IsVisibleAsync()) continue;
+                var name = await b.GetAttributeAsync("aria-label") ?? "";
+                if (name == "") name = (await b.InnerTextAsync()).Trim();
+                if (name.Contains(label)) return b;
+            }
+            catch { /* 스캔 중 사라진 요소는 건너뜀 */ }
+        }
+        return null;
+    }
+
+    /// <summary>대화상자 안의 긍정(확인/예) 버튼이 나타나면 반환. 시간 내 없으면 null.</summary>
+    private async Task<ILocator?> WaitDialogYesButtonAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var page = RequirePage();
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            var buttons = page.Locator(NeisSelectors.DialogButton);
+            int n = 0;
+            try { n = await buttons.CountAsync(); } catch { }
+            for (int i = 0; i < n; i++)
+            {
+                var b = buttons.Nth(i);
+                try
+                {
+                    if (!await b.IsVisibleAsync()) continue;
+                    var name = await b.GetAttributeAsync("aria-label") ?? "";
+                    if (name == "") name = (await b.InnerTextAsync()).Trim();
+                    if (NeisSelectors.DialogYesNames.Any(y => name.Contains(y))) return b;
+                }
+                catch { }
+            }
+            await Task.Delay(300, ct);
+        }
+        return null;
+    }
+
     public async Task<RunReport> RunSubjectAsync(
         SubjectSheet sheet,
         GradeScale scale,

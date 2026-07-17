@@ -75,6 +75,8 @@ public sealed class MainViewModel : ObservableObject
             new DataPrepWindow(this) { Owner = Application.Current.MainWindow }.ShowDialog());
         OpenRecentCommand = new RelayCommand<string>(p => { if (p is not null) LoadExcel(p); });
         OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
+        RunAllSubjectsCommand = new AsyncRelayCommand(RunAllSubjectsAsync);
+        InspectCommand = new AsyncRelayCommand(InspectAsync);
 
         _showCriteriaPanel = appState.State.ShowCriteriaPanel;
 
@@ -705,21 +707,8 @@ public sealed class MainViewModel : ObservableObject
         ProgressValue = 0;
         try
         {
-            // 화면 파악 후 매칭 검토 — 문제 없으면 창 없이 진행, 있으면 미리보기 창에서 사용자 결정
-            Func<MatchContext, Task<MatchDecision?>> resolveMatch = ctx =>
-                Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    var issues = Core.Matching.MatchAnalyzer.Analyze(
-                        ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, sheet.Students, sheet.Areas);
-                    if (issues.Clean)
-                        return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName);
-
-                    var vm = new MatchPreviewViewModel(issues, sheet);
-                    var win = new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow };
-                    return win.ShowDialog() == true ? vm.BuildDecision() : null;
-                }).Task;
-
-            var report = await _engine.RunSubjectAsync(sheet, _scales.Active, dryRun, _progress, resolveMatch, _cts.Token);
+            var report = await _engine.RunSubjectAsync(
+                sheet, _scales.Active, dryRun, _progress, BuildResolveMatch(sheet), _cts.Token);
             Log(new string('=', 50));
             Log($"[{sheet.SubjectName}] {(dryRun ? "검증" : "입력")} 완료: " +
                 $"성공 {report.Done.Count} / 건너뜀 {report.Skipped.Count} / 실패 {report.Failed.Count}");
@@ -755,6 +744,129 @@ public sealed class MainViewModel : ObservableObject
             Log($"오류: {ex.Message}");
             ShowError($"입력 중 오류가 발생했습니다.\n\n{ex.Message}");   // 로그 + 팝업 둘 다
         }
+    }
+
+    /// <summary>화면 파악 후 매칭 검토 콜백 — 문제 없으면 창 없이 진행, 있으면 미리보기 창에서 사용자 결정.</summary>
+    private Func<MatchContext, Task<MatchDecision?>> BuildResolveMatch(SubjectSheet sheet) => ctx =>
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            var issues = Core.Matching.MatchAnalyzer.Analyze(
+                ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, sheet.Students, sheet.Areas);
+            if (issues.Clean)
+                return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName);
+
+            var vm = new MatchPreviewViewModel(issues, sheet);
+            var win = new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow };
+            return win.ShowDialog() == true ? vm.BuildDecision() : null;
+        }).Task;
+
+    // ── 전과목 자동 입력 (Phase 5.5, A안: 과목별 검증 통과 시 자동 저장) ──
+
+    public ICommand RunAllSubjectsCommand { get; private set; } = null!;
+
+    private async Task RunAllSubjectsAsync()
+    {
+        if (!_engine.Connected)
+        {
+            ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.");
+            return;
+        }
+        var sheets = Subjects.Select(s => s.Sheet)
+            .Where(s => s.Students.Any(st => st.Grades.Count > 0)).ToList();
+        if (sheets.Count == 0) { ShowError("입력할 성적이 없습니다. 성적표에 등급을 먼저 입력해 주세요."); return; }
+
+        var ok = MessageBox.Show(
+            $"전과목 자동 입력을 시작합니다.\n\n" +
+            $"대상 과목({sheets.Count}개): {string.Join(", ", sheets.Select(s => s.SubjectName))}\n\n" +
+            "★ 이 모드에서는 각 과목 입력 후 값 검증을 통과하면\n" +
+            "   나이스 [저장]을 자동으로 누르고 다음 과목으로 넘어갑니다.\n" +
+            "   (검증에 실패한 과목은 저장하지 않고 그 자리에서 중단합니다)\n\n" +
+            "나이스 화면이 [교과별 평가] 조회 화면인지 확인한 뒤 계속하세요.",
+            "전과목 자동 입력 — 과목별 자동 저장 동의", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (ok != MessageBoxResult.Yes) return;
+
+        _cts = new CancellationTokenSource();
+        var summary = new List<string>();
+        try
+        {
+            for (int i = 0; i < sheets.Count; i++)
+            {
+                var sheet = sheets[i];
+                Log(new string('─', 50));
+                Log($"[전과목 {i + 1}/{sheets.Count}] '{sheet.SubjectName}' 과목으로 전환 중...");
+                ProgressValue = 0;
+
+                var (selOk, selWhy) = await _engine.SelectSubjectAsync(sheet.SubjectName, _cts.Token);
+                if (!selOk)
+                {
+                    summary.Add($"✗ {sheet.SubjectName}: 과목 전환 실패 — {selWhy}");
+                    break;   // 화면 상태를 모르는 채 계속 가지 않는다
+                }
+
+                var report = await _engine.RunSubjectAsync(
+                    sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
+
+                if (report.Skipped.Any(s => s.Reason == "사용자 취소"))
+                {
+                    summary.Add($"· {sheet.SubjectName}: 사용자 취소 — 저장 안 함");
+                    break;
+                }
+                if (report.Failed.Count > 0)
+                {
+                    summary.Add($"✗ {sheet.SubjectName}: 입력 실패 {report.Failed.Count}건 — 저장하지 않고 중단");
+                    Log($"⚠ '{sheet.SubjectName}' 검증 실패로 저장하지 않았습니다. 나이스에서 값을 확인하세요.");
+                    break;
+                }
+                if (report.Done.Count == 0)
+                {
+                    summary.Add($"· {sheet.SubjectName}: 입력할 값 없음 — 저장 생략");
+                    continue;
+                }
+
+                Log($"[{sheet.SubjectName}] 검증 통과 ({report.Done.Count}건) → 저장 중...");
+                var (saveOk, saveWhy) = await _engine.SaveScreenAsync(_cts.Token);
+                if (!saveOk)
+                {
+                    summary.Add($"✗ {sheet.SubjectName}: 입력 {report.Done.Count}건 완료했으나 저장 실패({saveWhy}) — 중단. " +
+                                "나이스에서 직접 [저장]을 눌러주세요.");
+                    break;
+                }
+                summary.Add($"✓ {sheet.SubjectName}: {report.Done.Count}건 입력·저장" +
+                            (report.Skipped.Count > 0 ? $" (건너뜀 {report.Skipped.Count})" : ""));
+            }
+        }
+        catch (OperationCanceledException) { summary.Add("⛔ 사용자 중지"); }
+        catch (Exception ex)
+        {
+            summary.Add($"✗ 오류: {ex.Message}");
+            Log($"전과목 입력 오류: {ex.Message}");
+        }
+
+        Log(new string('=', 50));
+        Log("전과목 자동 입력 결과:");
+        foreach (var s in summary) Log("  " + s);
+        MessageBox.Show("전과목 자동 입력 결과\n\n" + string.Join("\n", summary),
+            "전과목 입력 완료", MessageBoxButton.OK,
+            summary.Any(s => s.StartsWith("✗")) ? MessageBoxImage.Warning : MessageBoxImage.Information);
+    }
+
+    // ── 화면 진단 (Phase 5.5 셀렉터 실측용 — docs/보관_진단_검증도구.md) ──
+
+    public ICommand InspectCommand { get; private set; } = null!;
+
+    private async Task InspectAsync()
+    {
+        if (!_engine.Connected) { ShowError("나이스 연결 후 사용하세요."); return; }
+        try
+        {
+            var report = await _engine.InspectDomAsync();
+            Log(report);
+            AppPaths.EnsureRoot();
+            var file = Path.Combine(AppPaths.Root, $"dom_inspect_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
+            File.WriteAllText(file, report);
+            Log($"진단 리포트 저장: {file}");
+        }
+        catch (Exception ex) { Log($"진단 오류: {ex.Message}"); }
     }
 
     public void Cancel() => _cts?.Cancel();

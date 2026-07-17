@@ -66,6 +66,7 @@ public sealed class GeneratorViewModel : ObservableObject
         GenerateSubjectsCommand = new RelayCommand(GenerateSubjects);
         CancelGenerationCommand = new RelayCommand(() => _queue.CancelAll());
         UploadCommand = new AsyncRelayCommand(() => UploadAsync(dryRun: false));
+        UploadAllCommand = new AsyncRelayCommand(UploadAllAsync);
         SaveCommand = new RelayCommand(() =>
         {
             if (_mirror.SaveNow())
@@ -252,7 +253,110 @@ public sealed class GeneratorViewModel : ObservableObject
     public ICommand GenerateSubjectsCommand { get; }
     public ICommand CancelGenerationCommand { get; }
     public ICommand UploadCommand { get; }
+    public ICommand UploadAllCommand { get; }
     public ICommand SaveCommand { get; }
+
+    /// <summary>과목별 (번호,이름,서술문) — 화면 캐시 우선, 없으면 저장소. 서술문 있는 과목만.</summary>
+    private Dictionary<string, List<NarrativeEntry>> CollectNarratives()
+    {
+        var result = new Dictionary<string, List<NarrativeEntry>>();
+        foreach (var sheet in _getSheets())
+        {
+            var cached = _itemsBySubject.TryGetValue(sheet.SubjectName, out var items)
+                ? items.ToDictionary(i => (i.No, i.Name))
+                : new Dictionary<(string, string), StudentGenItem>();
+            var rows = new List<NarrativeEntry>();
+            foreach (var st in sheet.Students)
+            {
+                var text = cached.TryGetValue((st.No, st.Name), out var item) && item.HasValidResult
+                    ? item.Result
+                    : _store.Get(sheet.SubjectName, st.No, st.Name);
+                if (!string.IsNullOrWhiteSpace(text))
+                    rows.Add(new NarrativeEntry(st.No, st.Name, text!.Trim()));
+            }
+            if (rows.Count > 0) result[sheet.SubjectName] = rows;
+        }
+        return result;
+    }
+
+    /// <summary>전과목 서술문 자동 입력 (Phase 5.5, A안: 과목별 검증 통과 시 자동 저장).</summary>
+    private async Task UploadAllAsync()
+    {
+        if (!_engine.Connected)
+        {
+            MessageBox.Show("나이스에 아직 연결되지 않았습니다. 메인 화면에서 [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.",
+                "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var bySubject = CollectNarratives();
+        if (bySubject.Count == 0)
+        {
+            MessageBox.Show("입력할 서술문이 없습니다. 먼저 생성해 주세요.", "안내",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var ok = MessageBox.Show(
+            $"전과목 서술문 자동 입력을 시작합니다.\n\n" +
+            $"대상 과목({bySubject.Count}개): {string.Join(", ", bySubject.Select(kv => $"{kv.Key} {kv.Value.Count}명"))}\n\n" +
+            "★ 각 과목 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고\n" +
+            "   다음 과목으로 넘어갑니다. (실패 과목은 저장하지 않고 중단)\n\n" +
+            "나이스 화면이 [학기말 종합의견] 조회 화면인지 확인한 뒤 계속하세요.",
+            "전과목 서술문 입력 — 과목별 자동 저장 동의", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (ok != MessageBoxResult.Yes) return;
+
+        var progress = new Progress<Automation.Abstractions.ProgressInfo>(p =>
+        {
+            if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
+        });
+
+        var summary = new List<string>();
+        int idx = 0;
+        foreach (var (subject, entries) in bySubject)
+        {
+            idx++;
+            _mainLog($"[전과목 서술문 {idx}/{bySubject.Count}] '{subject}' 과목으로 전환 중...");
+            try
+            {
+                var (selOk, selWhy) = await _engine.SelectSubjectAsync(subject);
+                if (!selOk) { summary.Add($"✗ {subject}: 과목 전환 실패 — {selWhy}"); break; }
+
+                var report = await _engine.RunNarrativesAsync(
+                    subject, entries, dryRun: false, _settings.Options.MaxNarrativeBytes, progress);
+
+                if (report.Failed.Count > 0)
+                {
+                    summary.Add($"✗ {subject}: 입력 실패 {report.Failed.Count}건 — 저장하지 않고 중단");
+                    break;
+                }
+                if (report.Done.Count == 0)
+                {
+                    summary.Add($"· {subject}: 입력된 서술문 없음 — 저장 생략");
+                    continue;
+                }
+
+                _mainLog($"[{subject}] 검증 통과 ({report.Done.Count}명) → 저장 중...");
+                var (saveOk, saveWhy) = await _engine.SaveScreenAsync();
+                if (!saveOk)
+                {
+                    summary.Add($"✗ {subject}: 입력 완료했으나 저장 실패({saveWhy}) — 중단. 나이스에서 직접 [저장]을 눌러주세요.");
+                    break;
+                }
+                summary.Add($"✓ {subject}: {report.Done.Count}명 입력·저장" +
+                            (report.Skipped.Count > 0 ? $" (건너뜀 {report.Skipped.Count})" : ""));
+            }
+            catch (Exception ex)
+            {
+                summary.Add($"✗ {subject}: 오류 — {ex.Message}");
+                break;
+            }
+        }
+
+        _mainLog("전과목 서술문 입력 결과: " + string.Join(" / ", summary));
+        MessageBox.Show("전과목 서술문 입력 결과\n\n" + string.Join("\n", summary),
+            "완료", MessageBoxButton.OK,
+            summary.Any(s => s.StartsWith("✗")) ? MessageBoxImage.Warning : MessageBoxImage.Information);
+    }
     public ICommand ExportCommand { get; }
     public ICommand ImportCommand { get; }
     public ICommand DeleteAllCommand { get; }

@@ -40,6 +40,13 @@ public interface INeisEngine
     /// <summary>현재 화면의 교과(과목)명 (§3.2). 없으면 null.</summary>
     Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default);
 
+    /// <summary>화면 상단 과목 콤보로 과목을 전환하고 [조회] 후 갱신을 기다린다 (Phase 5.5).</summary>
+    Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default);
+
+    /// <summary>현재 화면의 [저장] 버튼을 눌러 저장한다 (전과목 자동 업로드 전용 — A안).
+    /// 저장 확인/완료 대화상자가 뜨면 긍정 버튼을 눌러 마무리.</summary>
+    Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default);
+
     /// <summary>한 과목 전체 실행 (§4.1). 저장은 하지 않는다.</summary>
     /// <param name="resolveMatch">
     /// 화면 파악 후 매칭 확정 콜백. 문제(과목·이름·영역 불일치)를 UI 가 검토해 결정을 돌려준다.

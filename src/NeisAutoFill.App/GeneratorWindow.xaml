@@ -66,7 +66,9 @@
                             <Button Style="{StaticResource GhostButton}" Content="🗑 선택 삭제" Command="{Binding DeleteSelectedCommand}"
                                     ToolTip="체크한 학생의 서술문만 지웁니다"/>
                         </StackPanel>
-                        <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="▶ 나이스에 입력" Command="{Binding UploadCommand}"/>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="🚀 전과목 입력" Command="{Binding UploadAllCommand}"
+                                ToolTip="모든 과목의 서술문을 순서대로 나이스에 입력합니다. 각 과목 검증 통과 시 자동 [저장] 후 다음 과목으로 넘어갑니다."/>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource AccentGhostButton}" Content="▶ 이 과목 입력" Command="{Binding UploadCommand}" Margin="0,0,6,0"/>
                     </DockPanel>
                 </StackPanel>
             </Border>
