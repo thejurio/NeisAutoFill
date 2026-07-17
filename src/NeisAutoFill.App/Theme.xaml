@@ -9,6 +9,7 @@
     <!-- 표시 여부 컨버터 -->
     <BooleanToVisibilityConverter x:Key="BoolToVis"/>
     <app:StringToVisibilityConverter x:Key="StringToVis"/>
+    <app:GreaterThanZeroConverter x:Key="GreaterThanZero"/>
 
     <!-- ==== NEIS 팔레트 (실측 #3175FF) ==== -->
     <Color x:Key="NeisColor">#3175FF</Color>

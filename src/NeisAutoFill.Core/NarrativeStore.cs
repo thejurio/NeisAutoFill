@@ -22,19 +22,27 @@ public sealed class NarrativeStore
         Load();
     }
 
+    /// <summary>내용 변경 시 발생 (엑셀 미러 등 후처리용). store 는 UI 스레드에서만 접근한다.</summary>
+    public event Action? Changed;
+
     public string? Get(string subject, string no, string name) =>
         _map.TryGetValue((subject, no, name), out var t) ? t : null;
+
+    /// <summary>전체 항목 (과목·번호·이름·서술문). 엑셀 미러·일괄 내보내기용.</summary>
+    public IReadOnlyList<(string Subject, string No, string Name, string Text)> All() =>
+        _map.Select(kv => (kv.Key.Subject, kv.Key.No, kv.Key.Name, kv.Value)).ToList();
 
     public void Set(string subject, string no, string name, string text)
     {
         if (string.IsNullOrWhiteSpace(text)) _map.Remove((subject, no, name));
         else _map[(subject, no, name)] = text;
         Save();
+        Changed?.Invoke();
     }
 
     public void Remove(string subject, string no, string name)
     {
-        if (_map.Remove((subject, no, name))) Save();
+        if (_map.Remove((subject, no, name))) { Save(); Changed?.Invoke(); }
     }
 
     private void Save()

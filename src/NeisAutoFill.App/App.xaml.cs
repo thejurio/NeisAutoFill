@@ -32,6 +32,8 @@ public partial class App : Application
         services.AddSingleton<GeneratorSettingsStore>();
         services.AddSingleton<AppStateStore>();
         services.AddSingleton(_ => new NarrativeStore(AppPaths.NarrativesJson));
+        services.AddSingleton<GenerationQueue>();
+        services.AddSingleton<NarrativeMirror>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
 
@@ -39,6 +41,7 @@ public partial class App : Application
         services.AddSingleton<UsageLogger>();
 
         var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<NarrativeMirror>();   // store 변경 구독 시작 (서술문.xlsx 자동 미러)
         provider.GetRequiredService<MainWindow>().Show();
 
         // 자동업데이트 확인 (백그라운드 — 설정에 UpdateRepo 가 있을 때만 동작)

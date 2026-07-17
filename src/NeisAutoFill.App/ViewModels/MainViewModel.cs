@@ -29,9 +29,12 @@ public sealed class MainViewModel : ObservableObject
     private readonly Automation.EngineOptions _engineOptions;
     private readonly System.Windows.Threading.DispatcherTimer _autoSaveTimer;
 
+    private readonly GenerationQueue _generationQueue;
+    private readonly NarrativeMirror _narrativeMirror;
+
     public MainViewModel(INeisEngine engine, IScaleStore scales,
         GeneratorSettingsStore generatorSettings, NarrativeStore narratives,
-        AppStateStore appState,
+        AppStateStore appState, GenerationQueue generationQueue, NarrativeMirror narrativeMirror,
         Automation.EngineOptions engineOptions)
     {
         _engine = engine;
@@ -39,7 +42,12 @@ public sealed class MainViewModel : ObservableObject
         _generatorSettings = generatorSettings;
         _narratives = narratives;
         _appState = appState;
+        _generationQueue = generationQueue;
+        _narrativeMirror = narrativeMirror;
         _engineOptions = engineOptions;
+
+        _generationQueue.Log += Log;      // 배치 시작·완료·중지를 메인 로그에도
+        _narrativeMirror.Log += Log;      // 미러 실패 안내
 
         // 편집 후 2초 조용하면 자동 저장 (파일 잠금 등 실패 시 dirty 유지 → 다음 편집·종료 때 재시도)
         _autoSaveTimer = new System.Windows.Threading.DispatcherTimer
@@ -393,7 +401,7 @@ public sealed class MainViewModel : ObservableObject
             _generatorVm ??= new GeneratorViewModel(
                 () => Subjects.Select(s => s.Sheet).ToList(),
                 () => _plans,
-                _scales, _generatorSettings, _narratives, _engine, Log);
+                _scales, _generatorSettings, _narratives, _generationQueue, _engine, Log);
             _generatorVm.RefreshSubjects();   // 메인에서 로드된 성적·평가계획을 자동 반영
             new GeneratorWindow(_generatorVm) { Owner = Application.Current.MainWindow }.Show();
         }
