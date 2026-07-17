@@ -10,6 +10,7 @@ public sealed class AppState
     public string? LastPlanPath { get; set; }
     public List<string> RecentGradeFiles { get; set; } = new();
     public List<string> RecentPlanFiles { get; set; } = new();
+    public bool ShowCriteriaPanel { get; set; }
 }
 
 /// <summary>

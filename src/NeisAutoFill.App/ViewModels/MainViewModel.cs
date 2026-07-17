@@ -65,6 +65,9 @@ public sealed class MainViewModel : ObservableObject
         OpenDataPrepCommand = new RelayCommand(() =>
             new DataPrepWindow(this) { Owner = Application.Current.MainWindow }.ShowDialog());
         OpenRecentCommand = new RelayCommand<string>(p => { if (p is not null) LoadExcel(p); });
+        OpenPlanEditorCommand = new RelayCommand(OpenPlanEditor);
+
+        _showCriteriaPanel = appState.State.ShowCriteriaPanel;
 
         RestoreLastFiles();           // 최근 사용 자료 자동 로드 (없으면 조용히 넘어감)
         _ = AutoConnectLoopAsync();   // 앱 시작부터 자동 연결·재연결 (이미 열린 브라우저도 자동 포착)
@@ -133,8 +136,34 @@ public sealed class MainViewModel : ObservableObject
     // ── 평가계획서 (과목·영역·기준 + 학생명단) ──
     private IReadOnlyList<SubjectPlan> _plans = Array.Empty<SubjectPlan>();
     private IReadOnlyList<(string No, string Name)> _roster = Array.Empty<(string, string)>();
+    private string? _planFilePath;   // 인앱 편집 저장 대상
 
     public IReadOnlyList<SubjectPlan> Plans => _plans;
+
+    // ── 명단·평가계획 인앱 편집 ──────────────
+    public ICommand OpenPlanEditorCommand { get; }
+
+    private void OpenPlanEditor()
+    {
+        var vm = new PlanEditorViewModel(_plans, _roster, _scales.Active);
+        var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
+        if (win.ShowDialog() != true) return;
+
+        var built = vm.Build(out var error);
+        if (built is null) { ShowError(error ?? "편집 내용을 읽지 못했습니다."); return; }
+
+        var path = _planFilePath ?? Path.Combine(AppPaths.EnsureWorkspace(), "평가계획서.xlsx");
+        try
+        {
+            PlanWorkbookWriter.Write(path, built.Value.Plans, built.Value.Roster, _scales.Active);
+            Log($"명단·평가계획 저장: {Path.GetFileName(path)}");
+            LoadPlan(path);   // 저장본을 다시 읽어 반영 (엑셀 직접 수정과 같은 경로)
+        }
+        catch (Exception ex)
+        {
+            ShowError($"평가계획 저장 실패: {ex.Message}\n(파일이 엑셀에서 열려 있으면 닫고 다시 시도하세요)");
+        }
+    }
 
     private string _planName = "평가계획서 없음";
     public string PlanName { get => _planName; set => SetProperty(ref _planName, value); }
@@ -156,8 +185,10 @@ public sealed class MainViewModel : ObservableObject
             _plans = PlanWorkbookLoader.Load(path, _scales.Active);
             _roster = PlanWorkbookLoader.LoadRoster(path);
             PlanName = Path.GetFileName(path);
+            _planFilePath = path;
             _appState.TouchPlan(path);
             OnPropertyChanged(nameof(RecentEntries));
+            RefreshCriteriaPanel();
             Log($"평가계획서 로드: {PlanName} " +
                 $"({string.Join(", ", _plans.Select(p => $"{p.SubjectName} {p.Domains.Count}영역"))}" +
                 (_roster.Count > 0 ? $" / 명단 {_roster.Count}명)" : ")"));
@@ -218,7 +249,62 @@ public sealed class MainViewModel : ObservableObject
     public SubjectViewModel? SelectedSubject
     {
         get => _selectedSubject;
-        set => SetProperty(ref _selectedSubject, value);
+        set { if (SetProperty(ref _selectedSubject, value)) RefreshCriteriaPanel(); }
+    }
+
+    // ── 성취기준 참조 패널 (토글) ──────────────
+    private bool _showCriteriaPanel;
+    public bool ShowCriteriaPanel
+    {
+        get => _showCriteriaPanel;
+        set
+        {
+            if (!SetProperty(ref _showCriteriaPanel, value)) return;
+            _appState.State.ShowCriteriaPanel = value;
+            _appState.Save();
+        }
+    }
+
+    public sealed record CriteriaLevelView(string Grade, string Text);
+    public sealed record CriteriaDomainView(string Domain, string? Achievement, IReadOnlyList<CriteriaLevelView> Levels);
+
+    private IReadOnlyList<CriteriaDomainView> _criteriaPanelItems = Array.Empty<CriteriaDomainView>();
+    public IReadOnlyList<CriteriaDomainView> CriteriaPanelItems
+    {
+        get => _criteriaPanelItems;
+        private set => SetProperty(ref _criteriaPanelItems, value);
+    }
+
+    private string _criteriaPanelStatus = "";
+    public string CriteriaPanelStatus { get => _criteriaPanelStatus; set => SetProperty(ref _criteriaPanelStatus, value); }
+
+    /// <summary>현재 과목 탭의 평가계획(영역·등급별 기준)을 패널용으로 재구성.</summary>
+    private void RefreshCriteriaPanel()
+    {
+        var subjectName = SelectedSubject?.SubjectName;
+        var plan = subjectName is null ? null : _plans.FirstOrDefault(p => p.SubjectName == subjectName);
+        if (plan is null)
+        {
+            CriteriaPanelItems = Array.Empty<CriteriaDomainView>();
+            CriteriaPanelStatus = subjectName is null
+                ? "성적파일을 불러오면 표시됩니다."
+                : $"'{subjectName}' 평가계획이 없습니다.\n[📝 명단·계획]에서 입력하거나 평가계획서를 불러오세요.";
+            return;
+        }
+
+        var labels = _scales.Active.Levels.Select(l => l.Label).ToList();
+        CriteriaPanelItems = plan.Domains.Select(domain =>
+        {
+            var levels = labels
+                .Select(g => plan.Criteria.TryGetValue((domain, g), out var e)
+                    ? new CriteriaLevelView(g, e.Text) : null)
+                .Where(v => v is not null).Cast<CriteriaLevelView>().ToList();
+            var ach = labels
+                .Select(g => plan.Criteria.TryGetValue((domain, g), out var e) ? e.Achievement : null)
+                .FirstOrDefault(a => !string.IsNullOrEmpty(a));
+            return new CriteriaDomainView(domain, ach, levels);
+        }).ToList();
+        CriteriaPanelStatus = "";
     }
 
     /// <summary>현재 활성 척도 요약 (예: "잘함/보통/노력요함").</summary>

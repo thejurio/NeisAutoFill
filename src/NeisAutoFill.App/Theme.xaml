@@ -6,6 +6,10 @@
     <app:GradeBadgeConverter x:Key="BadgeBg" Target="Background"/>
     <app:GradeBadgeConverter x:Key="BadgeFg" Target="Foreground"/>
 
+    <!-- 표시 여부 컨버터 -->
+    <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    <app:StringToVisibilityConverter x:Key="StringToVis"/>
+
     <!-- ==== NEIS 팔레트 (실측 #3175FF) ==== -->
     <Color x:Key="NeisColor">#3175FF</Color>
     <SolidColorBrush x:Key="Neis" Color="#3175FF"/>
@@ -89,6 +93,42 @@
     <Style x:Key="AccentGhostButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
         <Setter Property="Foreground" Value="{StaticResource Neis}"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- 아웃라인 토글 (켜지면 파란 톤) -->
+    <Style x:Key="GhostToggle" TargetType="ToggleButton">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="FontWeight" Value="Medium"/>
+        <Setter Property="Foreground" Value="#475569"/>
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="Padding" Value="14,7"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="7"
+                            BorderBrush="{StaticResource Line}" BorderThickness="1"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource Panel}"/>
+                            <Setter TargetName="b" Property="BorderBrush" Value="#cbd5e1"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource NeisSoft}"/>
+                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Neis}"/>
+                            <Setter Property="Foreground" Value="{StaticResource Neis}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="b" Property="Opacity" Value="0.45"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- 타이틀바 창 제어 버튼 -->

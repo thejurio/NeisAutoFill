@@ -54,6 +54,7 @@
                     <!-- 왼쪽: 자료 / 접속 / 생성기 -->
                     <StackPanel Orientation="Horizontal">
                         <Button Style="{StaticResource AccentGhostButton}" Content="📁 자료 준비" Command="{Binding OpenDataPrepCommand}" Margin="0,0,6,0"/>
+                        <Button Style="{StaticResource GhostButton}" Content="📝 명단·계획" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"/>
                         <Button Style="{StaticResource GhostButton}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}" Margin="0,0,6,0"/>
                         <Button Style="{StaticResource GhostButton}" Content="🕘 최근 ▾" Click="Recent_Click" Margin="0,0,6,0"/>
                         <Border Width="1" Background="{StaticResource Line}" Margin="4,2"/>
@@ -81,34 +82,86 @@
                 </StackPanel>
             </Border>
 
-            <!-- ===== 과목 탭 + 성적표 ===== -->
-            <TabControl Grid.Row="3" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
-                        BorderThickness="0" Background="White" Padding="0" Margin="0">
-                <TabControl.ItemContainerStyle>
-                    <Style TargetType="TabItem" BasedOn="{StaticResource UnderlineTab}"/>
-                </TabControl.ItemContainerStyle>
-                <TabControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type vm:SubjectViewModel}">
-                        <TextBlock Text="{Binding SubjectName}"/>
-                    </DataTemplate>
-                </TabControl.ItemTemplate>
-                <TabControl.ContentTemplate>
-                    <DataTemplate DataType="{x:Type vm:SubjectViewModel}">
-                        <DockPanel Margin="14,10,14,0">
-                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
-                                <Button Style="{StaticResource PrimaryButton}" Content="▶ 입력 시작 (저장은 수동)" Command="{Binding RunCommand}" Margin="0,0,6,0"/>
-                                <Button Style="{StaticResource GhostButton}" Content="■ 중지" Command="{Binding CancelCommand}" Margin="0,0,12,0"/>
-                                <TextBlock Text="{Binding AreasText}" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12"/>
-                            </StackPanel>
-                            <DataGrid ItemsSource="{Binding GridView}" AutoGenerateColumns="True"
-                                      Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
-                                      IsReadOnly="False" CanUserAddRows="False" CanUserDeleteRows="False"
-                                      CanUserSortColumns="False" CanUserReorderColumns="False"
-                                      AutoGeneratingColumn="Grid_AutoGeneratingColumn"/>
-                        </DockPanel>
-                    </DataTemplate>
-                </TabControl.ContentTemplate>
-            </TabControl>
+            <!-- ===== 과목 탭 + 성적표 + 성취기준 패널 ===== -->
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TabControl Grid.Column="0" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
+                            BorderThickness="0" Background="White" Padding="0" Margin="0">
+                    <TabControl.ItemContainerStyle>
+                        <Style TargetType="TabItem" BasedOn="{StaticResource UnderlineTab}"/>
+                    </TabControl.ItemContainerStyle>
+                    <TabControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:SubjectViewModel}">
+                            <TextBlock Text="{Binding SubjectName}"/>
+                        </DataTemplate>
+                    </TabControl.ItemTemplate>
+                    <TabControl.ContentTemplate>
+                        <DataTemplate DataType="{x:Type vm:SubjectViewModel}">
+                            <DockPanel Margin="14,10,14,0">
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10" LastChildFill="False">
+                                    <Button DockPanel.Dock="Left" Style="{StaticResource PrimaryButton}" Content="▶ 입력 시작 (저장은 수동)" Command="{Binding RunCommand}" Margin="0,0,6,0"/>
+                                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="■ 중지" Command="{Binding CancelCommand}" Margin="0,0,12,0"/>
+                                    <TextBlock DockPanel.Dock="Left" Text="{Binding AreasText}" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12"/>
+                                    <ToggleButton DockPanel.Dock="Right" Style="{StaticResource GhostToggle}" Content="📖 성취기준"
+                                                  IsChecked="{Binding DataContext.ShowCriteriaPanel, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                </DockPanel>
+                                <DataGrid ItemsSource="{Binding GridView}" AutoGenerateColumns="True"
+                                          Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
+                                          IsReadOnly="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                                          CanUserSortColumns="False" CanUserReorderColumns="False"
+                                          SelectionUnit="CellOrRowHeader" SelectionMode="Extended" ClipboardCopyMode="ExcludeHeader"
+                                          AutoGeneratingColumn="Grid_AutoGeneratingColumn"
+                                          Loaded="GradeGrid_Loaded" PreviewKeyDown="GradeGrid_PreviewKeyDown"/>
+                            </DockPanel>
+                        </DataTemplate>
+                    </TabControl.ContentTemplate>
+                </TabControl>
+
+                <!-- 성취기준 참조 패널 (토글) -->
+                <Border Grid.Column="1" Width="300" BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0"
+                        Background="{StaticResource Panel2}"
+                        Visibility="{Binding ShowCriteriaPanel, Converter={StaticResource BoolToVis}}">
+                    <DockPanel Margin="12,10">
+                        <TextBlock DockPanel.Dock="Top" Text="이 과목의 성취기준·평가기준" FontWeight="Bold" FontSize="12.5"
+                                   Foreground="{StaticResource Ink}" Margin="0,0,0,8"/>
+                        <TextBlock DockPanel.Dock="Top" Text="{Binding CriteriaPanelStatus}" FontSize="11.5"
+                                   Foreground="{StaticResource Sub}" TextWrapping="Wrap"
+                                   Visibility="{Binding CriteriaPanelStatus, Converter={StaticResource StringToVis}}"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding CriteriaPanelItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1"
+                                                CornerRadius="6" Padding="10,8" Margin="0,0,4,8">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Domain}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource Neis}"/>
+                                                <TextBlock Text="{Binding Achievement}" FontSize="11" Foreground="{StaticResource Sub}"
+                                                           TextWrapping="Wrap" Margin="0,2,0,4"
+                                                           Visibility="{Binding Achievement, Converter={StaticResource StringToVis}}"/>
+                                                <ItemsControl ItemsSource="{Binding Levels}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <DockPanel Margin="0,2,0,0">
+                                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Grade}" FontSize="11" FontWeight="SemiBold"
+                                                                           Foreground="{StaticResource Ink}" Width="52" VerticalAlignment="Top"/>
+                                                                <TextBlock Text="{Binding Text}" FontSize="11" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                                                            </DockPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
 
             <!-- ===== 진행바 ===== -->
             <Border Grid.Row="4" Padding="14,8" Background="White">

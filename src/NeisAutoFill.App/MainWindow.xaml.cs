@@ -1,6 +1,9 @@
-﻿using System.Windows;
+﻿using System.Data;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
+using NeisAutoFill.App.Helpers;
 using NeisAutoFill.App.ViewModels;
 
 namespace NeisAutoFill.App;
@@ -160,8 +163,109 @@ public partial class MainWindow : Window
             Header = area,
             CellTemplate = cellTemplate,
             CellEditingTemplate = editTemplate,
+            ClipboardContentBinding = new Binding(path),   // 다중 셀 Ctrl+C 지원
             Width = 108,
             CanUserSort = false,
         };
+    }
+
+    // ── 성적표 다중 셀 편집 (복사/붙여넣기·일괄 지정) ──────────────
+
+    /// <summary>표 우클릭 메뉴: 선택 셀 일괄 등급 지정. 척도 변경 대응을 위해 열 때마다 항목 재구성.</summary>
+    private void GradeGrid_Loaded(object sender, RoutedEventArgs e)
+    {
+        var grid = (DataGrid)sender;
+        if (grid.ContextMenu is not null) return;   // 탭 전환 재로드 시 중복 생성 방지
+        grid.ContextMenu = new ContextMenu();
+        grid.ContextMenuOpening += (_, _) => RebuildGradeMenu(grid);
+    }
+
+    private void RebuildGradeMenu(DataGrid grid)
+    {
+        var menu = grid.ContextMenu!;
+        menu.Items.Clear();
+        var labels = _vm.GradeLabels.Where(l => l != "").ToList();
+        for (int i = 0; i < labels.Count; i++)
+        {
+            var label = labels[i];
+            var item = new MenuItem
+            {
+                Header = $"선택 셀 → {label}",
+                InputGestureText = i < 9 ? $"{i + 1}" : "",
+            };
+            item.Click += (_, _) => ApplyToSelectedAreaCells(grid, label);
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new Separator());
+        var clear = new MenuItem { Header = "선택 셀 지우기", InputGestureText = "Del" };
+        clear.Click += (_, _) => ApplyToSelectedAreaCells(grid, "");
+        menu.Items.Add(clear);
+    }
+
+    private void GradeGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var grid = (DataGrid)sender;
+        // 셀 편집기(콤보·텍스트박스) 안에서 입력 중이면 개입하지 않는다
+        if (e.OriginalSource is TextBox or ComboBox) return;
+
+        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            PasteGrades(grid);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Delete)
+        {
+            ApplyToSelectedAreaCells(grid, "");
+            e.Handled = true;
+            return;
+        }
+
+        // 숫자 1~9 = 척도 단계 일괄 지정 (여러 셀 선택 후)
+        int digit = e.Key switch
+        {
+            >= Key.D1 and <= Key.D9 => e.Key - Key.D1 + 1,
+            >= Key.NumPad1 and <= Key.NumPad9 => e.Key - Key.NumPad1 + 1,
+            _ => 0,
+        };
+        if (digit > 0 && Keyboard.Modifiers == ModifierKeys.None && grid.SelectedCells.Count > 1)
+        {
+            var labels = _vm.GradeLabels.Where(l => l != "").ToList();
+            if (digit <= labels.Count)
+            {
+                ApplyToSelectedAreaCells(grid, labels[digit - 1]);
+                e.Handled = true;
+            }
+        }
+    }
+
+    /// <summary>선택된 영역(등급) 셀에 값을 일괄 적용. 특기사항 셀은 지우기만 허용.</summary>
+    private void ApplyToSelectedAreaCells(DataGrid grid, string value)
+    {
+        if (grid.DataContext is not SubjectViewModel vm) return;
+        int applied = 0;
+        foreach (var cell in grid.SelectedCells)
+        {
+            var header = cell.Column?.Header?.ToString();
+            if (header is null || cell.Item is not DataRowView row) continue;
+            bool isArea = vm.Areas.Contains(header);
+            bool isNote = header == SubjectViewModel.NoteColumn;
+            if (!isArea && !(isNote && value == "")) continue;   // 등급값은 영역 셀에만
+            row.Row[header] = value;
+            applied++;
+        }
+        if (applied > 0)
+            _vm.Log(value == "" ? $"선택 셀 {applied}개 지움" : $"선택 셀 {applied}개 → '{value}'");
+    }
+
+    /// <summary>클립보드 표를 현재 셀 기준으로 붙여넣기. 등급 셀은 척도 라벨만 허용.</summary>
+    private void PasteGrades(DataGrid grid)
+    {
+        if (grid.DataContext is not SubjectViewModel vm) return;
+        var (applied, skipped) = DataGridClipboard.Paste(grid, vm.Grid, (column, value) =>
+            column == SubjectViewModel.NoteColumn || value == "" || _vm.GradeLabels.Contains(value));
+        if (applied == 0 && skipped == 0) return;
+        _vm.Log($"붙여넣기: {applied}셀 적용" + (skipped > 0 ? $", {skipped}셀 건너뜀 (허용외 등급·읽기전용)" : ""));
     }
 }
