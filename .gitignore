@@ -24,3 +24,8 @@ assets/png/
 assets/DrawIcon.cs
 assets/mockups/
 assets/ref/
+
+# DooClick 등 외부 참고 코드 (공개 제외)
+ref/
+*.zip
+
