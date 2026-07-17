@@ -22,6 +22,7 @@ public sealed class GeneratorViewModel : ObservableObject
     private readonly GeneratorSettingsStore _settings;
     private readonly NarrativeStore _store;                          // 생성 결과 영속화
     private readonly GenerationQueue _queue;                         // 백그라운드 생성
+    private readonly NarrativeMirror _mirror;                        // 서술문.xlsx 저장
     private readonly Automation.Abstractions.INeisEngine _engine;
     private readonly Action<string> _mainLog;                        // 메인 창 로그로도 남김
     private IReadOnlyList<SubjectPlan> _plans = Array.Empty<SubjectPlan>();
@@ -36,6 +37,7 @@ public sealed class GeneratorViewModel : ObservableObject
         GeneratorSettingsStore settings,
         NarrativeStore store,
         GenerationQueue queue,
+        NarrativeMirror mirror,
         Automation.Abstractions.INeisEngine engine,
         Action<string> mainLog)
     {
@@ -45,6 +47,7 @@ public sealed class GeneratorViewModel : ObservableObject
         _settings = settings;
         _store = store;
         _queue = queue;
+        _mirror = mirror;
         _engine = engine;
         _mainLog = mainLog;
 
@@ -62,6 +65,12 @@ public sealed class GeneratorViewModel : ObservableObject
         GenerateSubjectsCommand = new RelayCommand(GenerateSubjects);
         CancelGenerationCommand = new RelayCommand(() => _queue.CancelAll());
         UploadCommand = new AsyncRelayCommand(() => UploadAsync(dryRun: false));
+        SaveCommand = new RelayCommand(() =>
+        {
+            if (_mirror.SaveNow())
+                MessageBox.Show($"저장했습니다.\n{NarrativeMirror.MirrorPath}", "완료",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+        });
         ExportCommand = new RelayCommand(ExportToExcel);
         ImportCommand = new RelayCommand(ImportFromExcel);
         DeleteAllCommand = new RelayCommand(() => Delete(onlySelected: false));
@@ -240,6 +249,7 @@ public sealed class GeneratorViewModel : ObservableObject
     public ICommand GenerateSubjectsCommand { get; }
     public ICommand CancelGenerationCommand { get; }
     public ICommand UploadCommand { get; }
+    public ICommand SaveCommand { get; }
     public ICommand ExportCommand { get; }
     public ICommand ImportCommand { get; }
     public ICommand DeleteAllCommand { get; }

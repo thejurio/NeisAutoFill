@@ -44,23 +44,29 @@ public static class StudentMatcher
         return null;
     }
 
+    /// <param name="areaMap">화면 영역명 → 엑셀 영역명 오버라이드 (값 "" = 그 영역 입력 제외). 이름 기반에서만.</param>
+    /// <param name="nameMap">화면 학생이름 → 엑셀 학생이름 오버라이드 (값 "" = 그 학생 입력 제외).</param>
     public static MatchResult Build(
         IReadOnlyDictionary<int, RowMeta> rowMap,
         IReadOnlyList<Student> students,
         GradeScale scale,
         IReadOnlyList<string> excelAreas,
-        MatchMode mode)
+        MatchMode mode,
+        IReadOnlyDictionary<string, string>? areaMap = null,
+        IReadOnlyDictionary<string, string>? nameMap = null)
     {
         return mode == MatchMode.ByOrder
-            ? BuildByOrder(rowMap, students, scale, excelAreas)
-            : BuildByName(rowMap, students, scale);
+            ? BuildByOrder(rowMap, students, scale, excelAreas, nameMap)
+            : BuildByName(rowMap, students, scale, areaMap, nameMap);
     }
 
     // ── 이름 기반 ─────────────────────────────
     private static MatchResult BuildByName(
         IReadOnlyDictionary<int, RowMeta> rowMap,
         IReadOnlyList<Student> students,
-        GradeScale scale)
+        GradeScale scale,
+        IReadOnlyDictionary<string, string>? areaMap,
+        IReadOnlyDictionary<string, string>? nameMap)
     {
         var (byKey, byName) = BuildLookup(students);
         var todo = new List<GradeTask>();
@@ -74,13 +80,23 @@ public static class StudentMatcher
                 skipped.Add(new SkipItem(no ?? "", name ?? "", area ?? "", "행 파싱 불완전"));
                 continue;
             }
-            var student = Resolve(byKey, byName, no, name);
-            if (student is null)
+            // 영역 오버라이드: 화면 영역명 → 엑셀 영역명 ("" = 사용자 제외)
+            var excelArea = areaMap is not null && areaMap.TryGetValue(area, out var ma) ? ma : area;
+            if (excelArea == "")
             {
-                skipped.Add(new SkipItem(no ?? "", name, area, "엑셀에 학생 없음"));
+                skipped.Add(new SkipItem(no ?? "", name, area, "사용자 제외 (영역)"));
                 continue;
             }
-            var target = (student.Grades.TryGetValue(area, out var g) ? g : "")?.Trim() ?? "";
+            var student = Resolve(byKey, byName, no, name, nameMap);
+            if (student is null)
+            {
+                skipped.Add(new SkipItem(no ?? "", name, area,
+                    nameMap is not null && nameMap.TryGetValue(name, out var mn) && mn == ""
+                        ? "사용자 제외 (학생)" : "엑셀에 학생 없음"));
+                continue;
+            }
+            var target = (student.Grades.TryGetValue(excelArea, out var g) ? g : "")?.Trim() ?? "";
+            // 리포트의 영역명은 화면 기준 (사용자가 화면과 대조 가능)
             if (!AddTaskOrSkip(todo, skipped, idx, no, name, area, target, scale)) { }
         }
         return new MatchResult(todo, skipped, MatchMode.ByName);
@@ -91,11 +107,12 @@ public static class StudentMatcher
         IReadOnlyDictionary<int, RowMeta> rowMap,
         IReadOnlyList<Student> students,
         GradeScale scale,
-        IReadOnlyList<string> excelAreas)
+        IReadOnlyList<string> excelAreas,
+        IReadOnlyDictionary<string, string>? nameMap = null)
     {
         var todo = new List<GradeTask>();
         var skipped = new List<SkipItem>();
-        var groups = GroupByStudent(rowMap, students);
+        var groups = GroupByStudent(rowMap, students, nameMap);
 
         // 학생별 NEIS 행 수 == 엑셀 영역 수 확인 (다르면 정렬 불가 → 중단)
         foreach (var (student, rows) in groups)
@@ -125,6 +142,11 @@ public static class StudentMatcher
             {
                 var row = ordered[k];
                 var excelArea = excelAreas[k];   // 위치로 정렬
+                if (excelArea == "")             // 사용자가 이 위치는 입력 제외 (부분 선택)
+                {
+                    skipped.Add(new SkipItem(row.No, row.Name, row.Area, "사용자 제외 (순서)"));
+                    continue;
+                }
                 var target = (student.Grades.TryGetValue(excelArea, out var g) ? g : "")?.Trim() ?? "";
                 // 로그·리포트엔 NEIS 영역명을 쓴다 (화면과 일치)
                 AddTaskOrSkip(todo, skipped, row.Idx, row.No, row.Name, row.Area, target, scale);
@@ -138,7 +160,8 @@ public static class StudentMatcher
 
     /// <summary>행 지도를 학생별로 묶는다 (엑셀 매칭 실패 행은 제외). 등장 순서 보존.</summary>
     private static List<(Student student, List<RowRef> rows)> GroupByStudent(
-        IReadOnlyDictionary<int, RowMeta> rowMap, IReadOnlyList<Student> students)
+        IReadOnlyDictionary<int, RowMeta> rowMap, IReadOnlyList<Student> students,
+        IReadOnlyDictionary<string, string>? nameMap = null)
     {
         var (byKey, byName) = BuildLookup(students);
         var map = new Dictionary<Student, List<RowRef>>();
@@ -147,7 +170,7 @@ public static class StudentMatcher
         {
             var (no, name, area) = rowMap[idx];
             if (name is null || area is null) continue;
-            var student = Resolve(byKey, byName, no, name);
+            var student = Resolve(byKey, byName, no, name, nameMap);
             if (student is null) continue;
             if (!map.TryGetValue(student, out var list)) { list = new(); map[student] = list; order.Add(student); }
             list.Add(new RowRef(idx, no ?? "", name, area));
@@ -171,8 +194,14 @@ public static class StudentMatcher
 
     private static Student? Resolve(
         Dictionary<(string, string), Student> byKey, Dictionary<string, Student> byName,
-        string? no, string name)
+        string? no, string name, IReadOnlyDictionary<string, string>? nameMap = null)
     {
+        // 사용자 오버라이드: 화면 이름 → 엑셀 이름 ("" = 제외)
+        if (nameMap is not null && nameMap.TryGetValue(name, out var mapped))
+        {
+            if (mapped == "") return null;
+            return byName.TryGetValue(NameNormalizer.Normalize(mapped), out var sm) ? sm : null;
+        }
         var norm = NameNormalizer.Normalize(name);
         if (no is not null && byKey.TryGetValue((no, norm), out var s1)) return s1;
         return byName.TryGetValue(norm, out var s2) ? s2 : null;

@@ -401,7 +401,7 @@ public sealed class MainViewModel : ObservableObject
             _generatorVm ??= new GeneratorViewModel(
                 () => Subjects.Select(s => s.Sheet).ToList(),
                 () => _plans,
-                _scales, _generatorSettings, _narratives, _generationQueue, _engine, Log);
+                _scales, _generatorSettings, _narratives, _generationQueue, _narrativeMirror, _engine, Log);
             _generatorVm.RefreshSubjects();   // 메인에서 로드된 성적·평가계획을 자동 반영
             new GeneratorWindow(_generatorVm) { Owner = Application.Current.MainWindow }.Show();
         }
@@ -692,12 +692,21 @@ public sealed class MainViewModel : ObservableObject
         ProgressValue = 0;
         try
         {
-            Func<string, Task<bool>> confirmOrder = msg =>
+            // 화면 파악 후 매칭 검토 — 문제 없으면 창 없이 진행, 있으면 미리보기 창에서 사용자 결정
+            Func<MatchContext, Task<MatchDecision?>> resolveMatch = ctx =>
                 Application.Current.Dispatcher.InvokeAsync(() =>
-                    MessageBox.Show(msg, "순서 기반 입력 확인", MessageBoxButton.YesNo, MessageBoxImage.Warning)
-                    == MessageBoxResult.Yes).Task;
+                {
+                    var issues = Core.Matching.MatchAnalyzer.Analyze(
+                        ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, sheet.Students, sheet.Areas);
+                    if (issues.Clean)
+                        return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName);
 
-            var report = await _engine.RunSubjectAsync(sheet, _scales.Active, dryRun, _progress, confirmOrder, _cts.Token);
+                    var vm = new MatchPreviewViewModel(issues, sheet);
+                    var win = new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow };
+                    return win.ShowDialog() == true ? vm.BuildDecision() : null;
+                }).Task;
+
+            var report = await _engine.RunSubjectAsync(sheet, _scales.Active, dryRun, _progress, resolveMatch, _cts.Token);
             Log(new string('=', 50));
             Log($"[{sheet.SubjectName}] {(dryRun ? "검증" : "입력")} 완료: " +
                 $"성공 {report.Done.Count} / 건너뜀 {report.Skipped.Count} / 실패 {report.Failed.Count}");

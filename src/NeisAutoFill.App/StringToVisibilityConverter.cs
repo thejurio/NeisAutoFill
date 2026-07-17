@@ -14,6 +14,16 @@ public sealed class StringToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>bool 반전.</summary>
+public sealed class InvertBoolConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is not true;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is not true;
+}
+
 /// <summary>정수가 0보다 크면 true (체크박스 활성화 등).</summary>
 public sealed class GreaterThanZeroConverter : IValueConverter
 {

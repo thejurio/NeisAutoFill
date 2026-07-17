@@ -1,0 +1,112 @@
+<Window x:Class="NeisAutoFill.App.MatchPreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="입력 전 확인" Height="600" Width="620" MinWidth="520" MinHeight="420"
+        WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="CanResize"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" FontFamily="{StaticResource UiFont}">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="40" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Border BorderBrush="#CBD5E1" BorderThickness="1" Background="White">
+        <DockPanel>
+            <Border DockPanel.Dock="Top" Height="40" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
+                <DockPanel LastChildFill="False">
+                    <Image Source="app.ico" Width="18" Height="18" Margin="12,0,8,0" DockPanel.Dock="Left" VerticalAlignment="Center"/>
+                    <TextBlock DockPanel.Dock="Left" Text="입력 전 확인 — 화면과 자료가 완전히 일치하지 않습니다" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="Cancel_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
+                </DockPanel>
+            </Border>
+
+            <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,10">
+                <DockPanel LastChildFill="False">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="취소" IsCancel="True" Padding="18,7"/>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="✔ 이대로 입력 시작" Click="Confirm_Click" Margin="0,0,6,0" Padding="18,7"/>
+                </DockPanel>
+            </Border>
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="16,12">
+
+                    <!-- 과목 불일치 -->
+                    <Border Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="7" Padding="12,10" Margin="0,0,0,12"
+                            Visibility="{Binding HasSubjectWarning, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock FontWeight="Bold" FontSize="12.5" Foreground="#92400E" Text="⚠ 과목이 다릅니다"/>
+                            <TextBlock Text="{Binding SubjectWarning}" FontSize="12" Foreground="#92400E" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                            <CheckBox IsChecked="{Binding SubjectAccepted}" FontSize="12" Foreground="#92400E"
+                                      Content="화면 과목이 달라도 이대로 입력하는 것에 동의합니다"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 학생 매핑 -->
+                    <StackPanel Visibility="{Binding HasStudentIssues, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
+                        <TextBlock Text="화면에 있지만 자료에 없는 학생" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+                        <TextBlock Text="어느 학생의 성적으로 입력할지 선택하세요. '입력 안 함'이면 그 학생은 건너뜁니다." FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,2,0,6"/>
+                        <ItemsControl ItemsSource="{Binding StudentMaps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="10,7" Margin="0,0,0,6">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Display}" FontSize="12.5" VerticalAlignment="Center" MinWidth="150"/>
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding SuggestionNote}" FontSize="11" Foreground="{StaticResource Neis}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" MinWidth="150" HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 영역 매핑 -->
+                    <StackPanel Visibility="{Binding HasAreaIssues, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="평가 영역 매핑" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
+                            <RadioButton Content="영역 이름으로 매핑" IsChecked="{Binding UseNameMode}" FontSize="12" Margin="0,0,14,0"
+                                         IsEnabled="{Binding OrderModeForced, Converter={StaticResource InvertBool}}"/>
+                            <RadioButton Content="화면 순서대로 매핑" IsChecked="{Binding UseOrderMode}" FontSize="12"/>
+                        </StackPanel>
+                        <TextBlock FontSize="11.5" Foreground="#B45309" TextWrapping="Wrap" Margin="0,0,0,6"
+                                   Visibility="{Binding OrderModeForced, Converter={StaticResource BoolToVis}}"
+                                   Text="⚠ 화면에 같은 영역명이 여러 번 나와 이름 매핑이 불가능합니다 — 순서 매핑만 가능합니다."/>
+
+                        <!-- 이름 매핑 목록 -->
+                        <ItemsControl ItemsSource="{Binding AreaMaps}"
+                                      Visibility="{Binding UseNameMode, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="10,7" Margin="0,0,0,6">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Display}" FontSize="12.5" VerticalAlignment="Center" MinWidth="170"/>
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding SuggestionNote}" FontSize="11" Foreground="{StaticResource Neis}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" MinWidth="170" HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 순서 매핑 목록 -->
+                        <StackPanel Visibility="{Binding UseOrderMode, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="화면의 학생별 행 순서에 어떤 엑셀 영역을 입력할지 정하세요. '입력 안 함'은 건너뜁니다."
+                                       FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,0,0,6" TextWrapping="Wrap"/>
+                            <ItemsControl ItemsSource="{Binding OrderMaps}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="10,7" Margin="0,0,0,6">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Display}" FontSize="12.5" VerticalAlignment="Center" MinWidth="170"/>
+                                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" MinWidth="170" HorizontalAlignment="Right"/>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</Window>

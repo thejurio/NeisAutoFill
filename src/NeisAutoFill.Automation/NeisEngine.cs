@@ -84,15 +84,15 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         GradeScale scale,
         bool dryRun,
         IProgress<ProgressInfo> progress,
-        Func<string, Task<bool>>? confirmOrderMode = null,
+        Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null,
         CancellationToken ct = default)
     {
         var page = RequirePage();
         void Log(string m) => progress.Report(new ProgressInfo(m));
 
-        // ★ 안전장치 1: 화면 과목 == 대상 과목 검증
+        // 화면 과목 확인 — 콜백이 없으면 예전처럼 즉시 차단, 있으면 UI 가 결정
         var subject = await GetCurrentSubjectAsync(ct);
-        if (subject != sheet.SubjectName)
+        if (resolveMatch is null && subject != sheet.SubjectName)
             throw new InvalidOperationException(
                 $"화면 교과 '{subject}' ≠ 대상 '{sheet.SubjectName}'. 나이스에서 '{sheet.SubjectName}'를 조회하세요.");
 
@@ -106,31 +106,30 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         var missing = Enumerable.Range(0, expected).Where(i => !rowMap.ContainsKey(i)).ToList();
         Log($"행 파악 {rowMap.Count}/{expected}" + (missing.Count > 0 ? $" (누락: {string.Join(",", missing)})" : ""));
 
-        // 매칭 모드 결정: 이름 기반이 안전하지 않으면 사용자에게 순서 기반 확인
-        var mode = StudentMatcher.MatchMode.ByName;
-        var problem = StudentMatcher.DetectNameProblem(rowMap, sheet.Students, sheet.Areas);
-        if (problem is not null)
+        // 매칭 결정 — UI 콜백이 검토 (문제 없으면 창 없이 즉시, 있으면 미리보기 창)
+        MatchDecision? decision;
+        if (resolveMatch is not null)
         {
-            var msg = $"⚠ 영역명으로 매칭할 수 없는 문제가 있습니다.\n\n" +
-                      $"• 문제: {problem}\n\n" +
-                      "이럴 때는 영역명 대신 '순서대로' 입력할 수 있습니다.\n" +
-                      "(엑셀의 영역 순서와 나이스 화면의 영역 순서가 같아야 정확히 들어갑니다)\n\n" +
-                      "순서대로 입력할까요?\n" +
-                      "[예] 순서대로 진행    [아니오] 중단하고 영역명 확인";
-            bool ok = confirmOrderMode is not null && await confirmOrderMode(msg);
-            if (!ok)
+            decision = await resolveMatch(new MatchContext(subject, sheet.SubjectName, rowMap, missing));
+            if (decision is null)
             {
-                Log($"매칭 문제({problem}) — 사용자가 순서 입력을 취소했습니다.");
+                Log("사용자가 입력을 취소했습니다.");
                 return new RunReport(new List<GradeTask>(),
-                    new List<SkipItem> { new("", "", "", problem + " (순서 입력 취소)") },
+                    new List<SkipItem> { new("", "", "", "사용자 취소") },
                     new List<SkipItem>(), missing);
             }
-            mode = StudentMatcher.MatchMode.ByOrder;
-            Log($"⚠ 이름 매칭 문제({problem}) → 순서 기반 입력으로 진행합니다.");
+        }
+        else
+        {
+            decision = new MatchDecision(StudentMatcher.MatchMode.ByName);
         }
 
-        var (todo, skipped, actualMode, fatal) =
-            StudentMatcher.Build(rowMap, sheet.Students, scale, sheet.Areas, mode);
+        var excelAreas = decision.Mode == StudentMatcher.MatchMode.ByOrder
+            ? decision.OrderedExcelAreas ?? sheet.Areas
+            : sheet.Areas;
+        var (todo, skipped, actualMode, fatal) = StudentMatcher.Build(
+            rowMap, sheet.Students, scale, excelAreas, decision.Mode,
+            decision.AreaMap, decision.NameMap);
         if (fatal is not null)
             throw new InvalidOperationException(fatal);
         Log($"매칭 방식: {(actualMode == StudentMatcher.MatchMode.ByOrder ? "순서 기반" : "이름 기반")} / 입력 대상 {todo.Count}건");
