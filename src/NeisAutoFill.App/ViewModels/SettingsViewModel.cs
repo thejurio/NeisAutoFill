@@ -1,3 +1,4 @@
+using System.IO;
 using NeisAutoFill.App.Mvvm;
 using NeisAutoFill.App.Services;
 using NeisAutoFill.Core;
@@ -51,6 +52,22 @@ public sealed class SettingsViewModel : ObservableObject
     public bool SpeedFast { get => _speedFast; set => SetProperty(ref _speedFast, value); }
     public bool SpeedNormal { get => _speedNormal; set => SetProperty(ref _speedNormal, value); }
     public bool SpeedSlow { get => _speedSlow; set => SetProperty(ref _speedSlow, value); }
+
+    /// <summary>버전·업데이트 날짜 (exe 파일 시각 = 마지막 설치/업데이트 시점).</summary>
+    public string VersionInfo
+    {
+        get
+        {
+            var version = UpdateService.CurrentVersion.ToString(3);
+            try
+            {
+                var exe = Environment.ProcessPath;
+                var date = exe is not null ? File.GetLastWriteTime(exe).ToString("yyyy-MM-dd") : "";
+                return date == "" ? $"버전 v{version}" : $"버전 v{version} · {date} 업데이트";
+            }
+            catch { return $"버전 v{version}"; }
+        }
+    }
 
     /// <summary>검증 후 전체 저장. 실패 시 오류 메시지 반환 (null = 성공).</summary>
     public string? TrySave()

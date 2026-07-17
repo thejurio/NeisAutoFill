@@ -31,6 +31,6 @@ public sealed record GeneratorOptions
     /// <summary>자동업데이트용 GitHub 저장소 ("owner/repo"). 비우면 업데이트 확인 안 함.</summary>
     public string UpdateRepo { get; init; } = "thejurio/NeisAutoFill";
 
-    /// <summary>❓ 도움말 버튼이 여는 사용법 페이지 URL. 비우면 "준비 중" 안내.</summary>
+    /// <summary>❓ 도움말 페이지 URL. 비우면(기본) 프로그램에 내장된 사용설명서.html 을 연다.</summary>
     public string HelpUrl { get; init; } = "";
 }

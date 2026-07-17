@@ -35,23 +35,27 @@
 
                 <!-- ═══ 일반 ═══ -->
                 <TabItem Header="일반">
-                    <StackPanel Margin="10,12" MaxWidth="640" HorizontalAlignment="Left">
-                        <TextBlock Text="나이스 접속" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
-                        <DockPanel Margin="0,6,0,2">
-                            <TextBlock Text="교육청 (지역)" Width="110" VerticalAlignment="Center" FontSize="12"/>
-                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Regions}" SelectedItem="{Binding SelectedRegion}"
-                                      DisplayMemberPath="Name" Width="170" HorizontalAlignment="Left"/>
-                        </DockPanel>
+                    <DockPanel Margin="10,12">
+                        <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersionInfo}" FontSize="11"
+                                   Foreground="#B8C2CE" Margin="0,0,0,2"/>
+                        <StackPanel MaxWidth="640" HorizontalAlignment="Left" VerticalAlignment="Top">
+                            <TextBlock Text="나이스 접속" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+                            <DockPanel Margin="0,6,0,2">
+                                <TextBlock Text="교육청 (지역)" Width="110" VerticalAlignment="Center" FontSize="12"/>
+                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Regions}" SelectedItem="{Binding SelectedRegion}"
+                                          DisplayMemberPath="Name" Width="170" HorizontalAlignment="Left"/>
+                            </DockPanel>
 
-                        <TextBlock Text="자동클릭 속도" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,18,0,4"/>
-                        <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,6"
-                                   Text="'빠름'이 검증된 기본 속도입니다. 나이스 반응이 느린 PC에서 입력이 자주 실패하면 낮춰 보세요."/>
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="빠름 (기본)" IsChecked="{Binding SpeedFast}" FontSize="12" Margin="0,0,16,0"/>
-                            <RadioButton Content="보통" IsChecked="{Binding SpeedNormal}" FontSize="12" Margin="0,0,16,0"/>
-                            <RadioButton Content="느림" IsChecked="{Binding SpeedSlow}" FontSize="12"/>
+                            <TextBlock Text="자동클릭 속도" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,18,0,4"/>
+                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                       Text="'빠름'이 검증된 기본 속도입니다. 나이스 반응이 느린 PC에서 입력이 자주 실패하면 낮춰 보세요."/>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Content="빠름 (기본)" IsChecked="{Binding SpeedFast}" FontSize="12" Margin="0,0,16,0"/>
+                                <RadioButton Content="보통" IsChecked="{Binding SpeedNormal}" FontSize="12" Margin="0,0,16,0"/>
+                                <RadioButton Content="느림" IsChecked="{Binding SpeedSlow}" FontSize="12"/>
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
+                    </DockPanel>
                 </TabItem>
 
                 <!-- ═══ AI 서술문 ═══ -->

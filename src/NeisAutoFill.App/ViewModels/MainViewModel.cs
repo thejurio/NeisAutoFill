@@ -553,8 +553,11 @@ public sealed class MainViewModel : ObservableObject
     /// 명단이 비어 있으면 기존 학생을 유지한다 (영역 변경만 반영).</summary>
     private SubjectSheet BuildSheetFromRoster(string subjectName, IReadOnlyList<string> areas, SubjectSheet? old)
     {
+        var renameMap = BuildAreaRenameMap(old?.Areas, areas);
+
         if (_roster.Count == 0)
-            return new SubjectSheet(subjectName, areas, old?.Students ?? new List<Student>());
+            return new SubjectSheet(subjectName, areas,
+                old?.Students.Select(s => Carry(s.No, s.Name, s, renameMap)).ToList() ?? new List<Student>());
 
         var byKey = old?.Students.ToDictionary(s => (s.No, s.Name)) ?? new();
         var byName = new Dictionary<string, Student>();
@@ -565,12 +568,38 @@ public sealed class MainViewModel : ObservableObject
         {
             var prev = byKey.TryGetValue((r.No, r.Name), out var p1) ? p1
                      : byName.TryGetValue(r.Name, out var p2) ? p2 : null;   // 번호가 바뀐 학생도 이름으로 이월
-            return new Student(r.No, r.Name,
-                prev is null ? new Dictionary<string, string>() : new Dictionary<string, string>(prev.Grades),
-                prev?.SpecialNote);
+            return Carry(r.No, r.Name, prev, renameMap);
         }).ToList();
 
         return new SubjectSheet(subjectName, areas, students);
+    }
+
+    /// <summary>
+    /// 영역 개명 감지 (옛 이름 → 새 이름). 영역 개수가 같을 때, 같은 위치의 이름이 바뀌었고
+    /// 옛 이름이 새 목록에 더 이상 없으면 개명으로 본다 — 성적이 새 이름을 따라가게 한다.
+    /// (개수가 다르면 추가/삭제와 뒤섞여 모호하므로 이름 일치만 이월)
+    /// </summary>
+    private static Dictionary<string, string>? BuildAreaRenameMap(
+        IReadOnlyList<string>? oldAreas, IReadOnlyList<string> newAreas)
+    {
+        if (oldAreas is null || oldAreas.Count != newAreas.Count) return null;
+        Dictionary<string, string>? map = null;
+        for (int i = 0; i < newAreas.Count; i++)
+        {
+            if (oldAreas[i] != newAreas[i] && !newAreas.Contains(oldAreas[i]))
+                (map ??= new())[oldAreas[i]] = newAreas[i];
+        }
+        return map;
+    }
+
+    /// <summary>학생 성적 이월 — 개명된 영역은 새 이름 키로 옮긴다.</summary>
+    private static Student Carry(string no, string name, Student? prev, Dictionary<string, string>? renameMap)
+    {
+        var grades = new Dictionary<string, string>();
+        if (prev is not null)
+            foreach (var (area, grade) in prev.Grades)
+                grades[renameMap is not null && renameMap.TryGetValue(area, out var renamed) ? renamed : area] = grade;
+        return new Student(no, name, grades, prev?.SpecialNote);
     }
 
     /// <summary>영역 구성과 학생(번호,이름) 목록이 같은지 — 같으면 표를 다시 만들지 않는다.</summary>
@@ -671,21 +700,46 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand HelpCommand { get; private set; } = null!;
 
-    /// <summary>사용법 페이지 열기 — URL 은 settings.json 의 HelpUrl (배포 시 기본값으로 구움).</summary>
-    private void OpenHelp()
+    private ManualWindow? _manualWindow;   // 이미 열려 있으면 앞으로만 가져온다
+
+    /// <summary>사용설명서 열기 — 내장 HTML 을 앱 스타일 팝업(WebView2)으로.
+    /// WebView2 런타임이 없는 PC 는 기본 브라우저로 폴백. HelpUrl 이 지정되면 그 주소를 브라우저로.</summary>
+    private async void OpenHelp()
     {
         var url = _generatorSettings.Options.HelpUrl?.Trim();
-        if (string.IsNullOrEmpty(url))
+        if (!string.IsNullOrEmpty(url)) { OpenExternal(url); return; }
+
+        var path = Path.Combine(AppContext.BaseDirectory, "사용설명서.html");
+        if (!File.Exists(path))
         {
-            MessageBox.Show("사용법 안내 페이지를 준비 중입니다.", "도움말",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowError("사용설명서 파일을 찾지 못했습니다. 프로그램을 다시 설치해 주세요.");
             return;
         }
+
+        if (_manualWindow is not null)
+        {
+            _manualWindow.Activate();   // 이미 열림 → 앞으로
+            return;
+        }
+
+        var win = new ManualWindow { Owner = Application.Current.MainWindow };
+        win.Closed += (_, _) => _manualWindow = null;
+        _manualWindow = win;
+        win.Show();
+        if (!await win.InitializeAsync(path))
+        {
+            win.Close();                // WebView2 런타임 없음 → 브라우저 폴백
+            OpenExternal(path);
+        }
+    }
+
+    private static void OpenExternal(string target)
+    {
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target) { UseShellExecute = true });
         }
-        catch (Exception ex) { ShowError($"도움말 페이지를 열지 못했습니다: {ex.Message}"); }
+        catch (Exception ex) { ShowError($"사용설명서를 열지 못했습니다: {ex.Message}"); }
     }
 
     public ICommand ExportGradesCommand { get; private set; } = null!;

@@ -40,70 +40,66 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- 학생 매핑 -->
-                    <StackPanel Visibility="{Binding HasStudentIssues, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
-                        <TextBlock Text="화면에 있지만 자료에 없는 학생" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
-                        <TextBlock Text="어느 학생의 성적으로 입력할지 선택하세요. '입력 안 함'이면 그 학생은 건너뜁니다." FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,2,0,6"/>
+                    <!-- 학생 확인 -->
+                    <StackPanel Visibility="{Binding HasStudentIssues, Converter={StaticResource BoolToVis}}" Margin="0,0,0,14">
+                        <TextBlock Text="👤 내 성적표에 없는 학생이 화면에 있어요" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
+                        <TextBlock Text="이 학생 자리에 누구의 성적을 넣을지 골라 주세요. 넣지 않으려면 '입력 안 함'을 고르면 그 학생은 건너뜁니다."
+                                   FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,3,0,8" TextWrapping="Wrap"/>
                         <ItemsControl ItemsSource="{Binding StudentMaps}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="10,7" Margin="0,0,0,6">
-                                        <DockPanel>
-                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Display}" FontSize="12.5" VerticalAlignment="Center" MinWidth="150"/>
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding SuggestionNote}" FontSize="11" Foreground="{StaticResource Neis}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" MinWidth="150" HorizontalAlignment="Right"/>
-                                        </DockPanel>
+                                    <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="12,8" Margin="0,0,0,6">
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="170"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Display}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="자리에" FontSize="11.5" Foreground="{StaticResource Sub}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <ComboBox Grid.Column="2" Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"/>
+                                                <TextBlock Grid.Column="3" Text="의 성적 입력" FontSize="11.5" Foreground="{StaticResource Sub}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            </Grid>
+                                            <TextBlock Text="{Binding SuggestionNote}" FontSize="11" Foreground="{StaticResource Neis}" Margin="0,4,0,0" HorizontalAlignment="Right"
+                                                       Visibility="{Binding SuggestionNote, Converter={StaticResource StringToVis}}"/>
+                                        </StackPanel>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
 
-                    <!-- 영역 매핑 -->
+                    <!-- 영역 확인 — 화면 순서대로 넣을 영역 고르기 -->
                     <StackPanel Visibility="{Binding HasAreaIssues, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="평가 영역 매핑" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,8">
-                            <RadioButton Content="영역 이름으로 매핑" IsChecked="{Binding UseNameMode}" FontSize="12" Margin="0,0,14,0"
-                                         IsEnabled="{Binding OrderModeForced, Converter={StaticResource InvertBool}}"/>
-                            <RadioButton Content="화면 순서대로 매핑" IsChecked="{Binding UseOrderMode}" FontSize="12"/>
-                        </StackPanel>
-                        <TextBlock FontSize="11.5" Foreground="#B45309" TextWrapping="Wrap" Margin="0,0,0,6"
-                                   Visibility="{Binding OrderModeForced, Converter={StaticResource BoolToVis}}"
-                                   Text="⚠ 화면에 같은 영역명이 여러 번 나와 이름 매핑이 불가능합니다 — 순서 매핑만 가능합니다."/>
-
-                        <!-- 이름 매핑 목록 -->
-                        <ItemsControl ItemsSource="{Binding AreaMaps}"
-                                      Visibility="{Binding UseNameMode, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="📋 평가 영역이 화면과 달라요" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
+                        <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,3,0,8" TextWrapping="Wrap"
+                                   Text="아래는 나이스 화면에 보이는 영역을 위에서부터 순서대로 늘어놓은 것입니다.&#10;각 줄마다 내 성적표의 어떤 영역 성적을 넣을지 골라 주세요. 이름이 같은 영역은 이미 골라져 있습니다.&#10;넣지 않을 줄은 '입력 안 함'을 고르면 건드리지 않고 건너뜁니다."/>
+                        <ItemsControl ItemsSource="{Binding OrderMaps}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="10,7" Margin="0,0,0,6">
-                                        <DockPanel>
-                                            <TextBlock DockPanel.Dock="Left" Text="{Binding Display}" FontSize="12.5" VerticalAlignment="Center" MinWidth="170"/>
-                                            <TextBlock DockPanel.Dock="Right" Text="{Binding SuggestionNote}" FontSize="11" Foreground="{StaticResource Neis}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" MinWidth="170" HorizontalAlignment="Right"/>
-                                        </DockPanel>
+                                    <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="12,8" Margin="0,0,0,6">
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="170"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Display}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="줄에는" FontSize="11.5" Foreground="{StaticResource Sub}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <ComboBox Grid.Column="2" Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"/>
+                                                <TextBlock Grid.Column="3" Text="의 성적 입력" FontSize="11.5" Foreground="{StaticResource Sub}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                            </Grid>
+                                            <TextBlock Text="{Binding SuggestionNote}" FontSize="11" Foreground="{StaticResource Neis}" Margin="0,4,0,0" HorizontalAlignment="Right"
+                                                       Visibility="{Binding SuggestionNote, Converter={StaticResource StringToVis}}"/>
+                                        </StackPanel>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-
-                        <!-- 순서 매핑 목록 -->
-                        <StackPanel Visibility="{Binding UseOrderMode, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="화면의 학생별 행 순서에 어떤 엑셀 영역을 입력할지 정하세요. '입력 안 함'은 건너뜁니다."
-                                       FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,0,0,6" TextWrapping="Wrap"/>
-                            <ItemsControl ItemsSource="{Binding OrderMaps}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="10,7" Margin="0,0,0,6">
-                                            <DockPanel>
-                                                <TextBlock DockPanel.Dock="Left" Text="{Binding Display}" FontSize="12.5" VerticalAlignment="Center" MinWidth="170"/>
-                                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" MinWidth="170" HorizontalAlignment="Right"/>
-                                            </DockPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
