@@ -12,5 +12,6 @@ public interface IEvaluationGenerator
         IReadOnlyList<DomainPoint> domains,
         string? subjectNote,
         GradeScale scale,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? variationHint = null);   // "다르게 다시 생성" 시 표현을 달리하라는 추가 지시
 }

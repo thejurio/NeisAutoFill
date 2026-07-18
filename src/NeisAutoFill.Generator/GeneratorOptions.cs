@@ -33,4 +33,7 @@ public sealed record GeneratorOptions
 
     /// <summary>❓ 도움말 페이지 URL. 비우면(기본) 프로그램에 내장된 사용설명서.html 을 연다.</summary>
     public string HelpUrl { get; init; } = "";
+
+    /// <summary>서술문 품질 점검(바이트 표시·복붙 의심 경고) 표시 여부. 기본 켜짐.</summary>
+    public bool ShowNarrativeQuality { get; init; } = true;
 }

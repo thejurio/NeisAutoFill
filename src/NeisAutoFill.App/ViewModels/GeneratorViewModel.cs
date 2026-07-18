@@ -59,6 +59,7 @@ public sealed class GeneratorViewModel : ObservableObject
             OnPropertyChanged(nameof(IsGenerating));
             OnPropertyChanged(nameof(QueueProgress));
             OnPropertyChanged(nameof(QueueTotal));
+            if (!_queue.IsBusy) RefreshQuality();   // 배치가 끝나 idle 이 되면 품질 점검
         };
 
         GenerateAllCommand = new RelayCommand(() => EnqueueVisible(onlySelected: false));
@@ -479,6 +480,51 @@ public sealed class GeneratorViewModel : ObservableObject
         }
         _itemsBySubject[sheet.SubjectName] = fresh;
         foreach (var i in fresh) Students.Add(i);
+        RefreshQuality();
+    }
+
+    // ── 서술문 품질 점검 (F6) ──────────────
+    /// <summary>설정된 바이트 제한 (0=검사 안 함). 학생 항목이 참조.</summary>
+    internal int MaxNarrativeBytes => _settings.Options.MaxNarrativeBytes;
+    /// <summary>품질 점검(바이트·복붙 경고) 표시 여부 — 설정에서 켜고 끔.</summary>
+    internal bool ShowQuality => _settings.Options.ShowNarrativeQuality;
+
+    /// <summary>"다르게 다시 생성" 시 AI 에 붙이는 추가 지시 (표현만 달리, 없는 사실 금지).</summary>
+    private const string DistinctHint =
+        "이 학생의 서술문이 다른 학생과 표현이 매우 비슷하게 작성되었습니다. " +
+        "같은 성취 수준이라도 문장 구조·표현·어휘를 충분히 달리하여 다른 학생과 겹치지 않게 새로 작성하세요. " +
+        "단, 없는 사실을 지어내지 말고 제공된 성취 내역 범위 안에서만 표현을 다르게 하세요.";
+
+    private string _qualityNote = "";
+    /// <summary>학생 간 복붙 의심 요약 (비면 문제 없음).</summary>
+    public string QualityNote { get => _qualityNote; private set => SetProperty(ref _qualityNote, value); }
+
+    /// <summary>현재 과목 학생들의 서술문을 점검 — 매우 유사한(복붙 의심) 항목을 표시. 설정이 꺼져 있으면 아무것도 안 함.</summary>
+    public void RefreshQuality()
+    {
+        foreach (var s in Students) s.IsSimilarSuspect = false;
+        if (!ShowQuality) { QualityNote = ""; return; }
+
+        var items = Students.Where(s => s.HasValidResult).ToList();
+        if (items.Count < 2) { QualityNote = ""; return; }
+
+        var groups = NarrativeQuality.SimilarGroups(items.Select(s => s.Result).ToList());
+        foreach (var g in groups)
+            foreach (var idx in g)
+                items[idx].IsSimilarSuspect = true;
+
+        QualityNote = groups.Count == 0
+            ? ""
+            : "⚠ 서술문이 서로 매우 유사: " +
+              string.Join(", ", groups.Select(g => string.Join("·", g.Select(i => items[i].No)) + "번")) +
+              " — [다르게 다시 생성]을 쓰거나, 학생별 특기사항을 넣으면 더 잘 구별됩니다.";
+    }
+
+    /// <summary>유사(복붙 의심) 학생을 표현을 달리해 다시 생성 — 그 학생만 재생성.</summary>
+    internal void RegenerateDistinct(StudentGenItem item)
+    {
+        item.RestoreResult("⏳ 대기 중...");
+        _queue.Enqueue(new[] { item.ToJob(_scales.Active, DistinctHint) });
     }
 
     /// <summary>생성 결과 영속화 — 생성 완료·수동 편집 시 호출됨.</summary>
@@ -592,11 +638,12 @@ public sealed class StudentGenItem : ObservableObject
         _student = student;
         _domains = domains;
         GenerateCommand = new RelayCommand(() => _parent.EnqueueSingle(this));
+        RegenerateDistinctCommand = new RelayCommand(() => _parent.RegenerateDistinct(this));
     }
 
     /// <summary>백그라운드 큐 작업으로 변환 — 화면 항목과 독립적으로 실행 가능.</summary>
-    internal Services.GenJob ToJob(NeisAutoFill.Core.Scale.GradeScale scale) =>
-        new(_subject, No, Name, _domains, _student.SpecialNote, scale);
+    internal Services.GenJob ToJob(NeisAutoFill.Core.Scale.GradeScale scale, string? variationHint = null) =>
+        new(_subject, No, Name, _domains, _student.SpecialNote, scale, variationHint);
 
     public string No => _student.No;
     public string Name => _student.Name;
@@ -613,8 +660,11 @@ public sealed class StudentGenItem : ObservableObject
         get => _result;
         set
         {
-            if (SetProperty(ref _result, value) && !Busy)
-                _parent.PersistResult(this);   // 수동 편집도 즉시 저장 (생성 중 중간값은 제외)
+            if (SetProperty(ref _result, value))
+            {
+                RaiseByteInfo();
+                if (!Busy) _parent.PersistResult(this);   // 수동 편집도 즉시 저장 (생성 중 중간값은 제외)
+            }
         }
     }
 
@@ -623,7 +673,28 @@ public sealed class StudentGenItem : ObservableObject
     {
         _result = text;
         OnPropertyChanged(nameof(Result));
+        RaiseByteInfo();
     }
+
+    private void RaiseByteInfo()
+    {
+        OnPropertyChanged(nameof(ByteInfo));
+        OnPropertyChanged(nameof(OverLimit));
+    }
+
+    /// <summary>UTF-8 바이트 수 표시 (나이스 바이트 제한 참고). 품질 점검이 켜져 있고 유효 결과일 때만.</summary>
+    public string ByteInfo => _parent.ShowQuality && HasValidResult
+        ? $"{NeisAutoFill.Core.TextMetrics.Utf8Bytes(Result):N0} byte" : "";
+    /// <summary>설정된 바이트 제한 초과 여부.</summary>
+    public bool OverLimit => _parent.ShowQuality && _parent.MaxNarrativeBytes > 0 && HasValidResult
+        && NeisAutoFill.Core.TextMetrics.Utf8Bytes(Result) > _parent.MaxNarrativeBytes;
+
+    private bool _isSimilarSuspect;
+    /// <summary>다른 학생과 서술문이 매우 유사(복붙 의심).</summary>
+    public bool IsSimilarSuspect { get => _isSimilarSuspect; set => SetProperty(ref _isSimilarSuspect, value); }
+
+    /// <summary>유사 학생을 표현 달리해 다시 생성 (⚠유사 배지 옆 버튼).</summary>
+    public ICommand RegenerateDistinctCommand { get; }
 
     private string _uploadState = "";
     public string UploadState { get => _uploadState; set => SetProperty(ref _uploadState, value); }

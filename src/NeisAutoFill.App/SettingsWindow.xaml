@@ -99,6 +99,11 @@
                                        Text="예: 학생의 노력 과정을 구체적 행동 중심으로 묘사하고, 결과보다 성장에 초점을 둘 것"/>
                             <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,10,0,0"
                                        Text="💡 단계별(잘함/보통/노력요함 등) 톤은 [평가 단계] 탭의 'AI 서술 뉘앙스' 칸에서 설정합니다."/>
+
+                            <TextBlock Text="품질 점검" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,18,0,4"/>
+                            <CheckBox Content="서술문 품질 점검 표시 (바이트 수 · 복붙 의심 경고)" IsChecked="{Binding ShowNarrativeQuality}" FontSize="12"/>
+                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="22,4,0,0"
+                                       Text="켜면 학생별 바이트 수를 표시하고, 다른 학생과 매우 유사한 서술문에 [다르게 다시 생성] 버튼이 나타납니다."/>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

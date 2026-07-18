@@ -24,10 +24,14 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
     public async Task<string> GenerateAsync(
         string studentName, string subjectName,
         IReadOnlyList<DomainPoint> domains, string? subjectNote,
-        GradeScale scale, CancellationToken ct = default)
+        GradeScale scale, CancellationToken ct = default, string? variationHint = null)
     {
         if (string.IsNullOrWhiteSpace(options.GasUrl))
             throw new InvalidOperationException("생성기 서버(GAS) URL 이 설정되지 않았습니다. ⚙ AI 설정을 확인하세요.");
+
+        // "다르게 다시 생성" 지시는 톤 지시문에 덧붙여 보낸다 (서버는 tonePrompt 를 규칙과 함께 준수)
+        var tone = string.Join("\n\n",
+            new[] { options.TonePrompt, variationHint }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
         var (ts, nonce, sig) = GasAuth.Sign("generate");
         var request = new GasRequest(
@@ -37,7 +41,7 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
             subjectNote ?? "",
             scale.Levels.ToDictionary(l => l.Label, l => PromptBuilder.ResolveNuance(l.Label, scale)),
             options.TargetChars,
-            options.TonePrompt ?? "");
+            tone);
 
         using var response = await http.PostAsJsonAsync(options.GasUrl, request, Json, ct);
         response.EnsureSuccessStatusCode();

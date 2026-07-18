@@ -23,6 +23,7 @@ public sealed class SettingsViewModel : ObservableObject
         _targetChars = o.TargetChars.ToString();
         _maxDomains = o.MaxDomains.ToString();
         _tonePrompt = o.TonePrompt;
+        _showQuality = o.ShowNarrativeQuality;
         _selectedRegion = NeisRegions.Find(o.NeisRegionCode);
         _speedFast = o.ClickSpeed is not ("normal" or "slow");
         _speedNormal = o.ClickSpeed == "normal";
@@ -41,6 +42,10 @@ public sealed class SettingsViewModel : ObservableObject
 
     private string _tonePrompt;
     public string TonePrompt { get => _tonePrompt; set => SetProperty(ref _tonePrompt, value); }
+
+    private bool _showQuality;
+    /// <summary>서술문 품질 점검(바이트 표시·복붙 의심 경고) 표시 여부.</summary>
+    public bool ShowNarrativeQuality { get => _showQuality; set => SetProperty(ref _showQuality, value); }
 
     // ── 일반 ──────────────────────────────
     public IReadOnlyList<NeisRegion> Regions => NeisRegions.All;
@@ -83,6 +88,7 @@ public sealed class SettingsViewModel : ObservableObject
             TargetChars = chars,
             MaxDomains = domains,
             TonePrompt = TonePrompt.Trim(),
+            ShowNarrativeQuality = ShowNarrativeQuality,
             NeisRegionCode = SelectedRegion.Code,
             ClickSpeed = speed,
         };

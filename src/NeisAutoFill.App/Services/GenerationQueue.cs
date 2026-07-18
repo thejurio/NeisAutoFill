@@ -10,7 +10,8 @@ namespace NeisAutoFill.App.Services;
 /// <summary>생성 작업 한 건 — 화면 항목과 독립적으로 필요한 데이터를 모두 담는다.</summary>
 public sealed record GenJob(
     string Subject, string No, string Name,
-    IReadOnlyList<DomainPoint> Domains, string? Note, GradeScale Scale);
+    IReadOnlyList<DomainPoint> Domains, string? Note, GradeScale Scale,
+    string? VariationHint = null);   // 있으면 "다르게 다시 생성" — 표현을 달리하라는 추가 지시
 
 /// <summary>
 /// AI 서술문 백그라운드 생성 큐. 창을 닫거나 과목을 전환해도 계속 돌고,
@@ -132,7 +133,7 @@ public sealed class GenerationQueue
             try
             {
                 var gen = new GasBackendGenerator(Http, _settings.Options);
-                text = await gen.GenerateAsync(job.Name, job.Subject, job.Domains, job.Note, job.Scale, ct);
+                text = await gen.GenerateAsync(job.Name, job.Subject, job.Domains, job.Note, job.Scale, ct, job.VariationHint);
                 ok = !string.IsNullOrWhiteSpace(text);
                 if (!ok) text = "서버가 빈 서술문을 반환했습니다.";
                 if (!string.IsNullOrEmpty(gen.LastKeyHint))

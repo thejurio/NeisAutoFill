@@ -88,6 +88,10 @@
                         <ProgressBar Height="5" Minimum="0" Maximum="{Binding QueueTotal}" Value="{Binding QueueProgress, Mode=OneWay}"
                                      Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0" VerticalAlignment="Center"/>
                     </DockPanel>
+                    <!-- 서술문 품질 점검 (복붙 의심) -->
+                    <TextBlock Text="{Binding QualityNote}" Foreground="#B45309" FontSize="11.5" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Margin="0,6,0,0"
+                               Visibility="{Binding QualityNote, Converter={StaticResource StringToVis}}"/>
                 </StackPanel>
             </Border>
 
@@ -111,6 +115,26 @@
                                                 Command="{Binding GenerateCommand}" Padding="14,5"/>
                                         <TextBlock DockPanel.Dock="Right" Text="{Binding UploadState}" VerticalAlignment="Center"
                                                    Margin="0,0,10,0" FontWeight="SemiBold" Foreground="#0F766E" FontSize="12"/>
+                                        <!-- 바이트 수 (제한 초과 시 빨강) -->
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding ByteInfo}" VerticalAlignment="Center"
+                                                   Margin="0,0,10,0" FontSize="11">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding OverLimit}" Value="True">
+                                                            <Setter Property="Foreground" Value="#C0392B"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <!-- 복붙 의심 — 경고 겸 원클릭 재생성 -->
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="⚠ 다르게 다시 생성"
+                                                Command="{Binding RegenerateDistinctCommand}" Padding="8,3" Margin="0,0,10,0" FontSize="11"
+                                                ToolTip="다른 학생과 서술문이 매우 유사합니다 — 표현을 달리해 이 학생만 다시 생성합니다"
+                                                Visibility="{Binding IsSimilarSuspect, Converter={StaticResource BoolToVis}}"/>
                                         <StackPanel>
                                             <TextBlock FontSize="13">
                                                 <Run Text="{Binding No, Mode=OneWay}" Foreground="{StaticResource Sub}"/><Run Text="번 " Foreground="{StaticResource Sub}"/>
