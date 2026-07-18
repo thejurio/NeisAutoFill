@@ -17,6 +17,26 @@ public partial class SettingsWindow : Window
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void Backup_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "작업공간 백업 저장",
+            FileName = WorkspaceBackup.SuggestFileName(DateTime.Now),
+            Filter = "백업 파일 (*.zip)|*.zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        var (ok, error, count) = WorkspaceBackup.Create(dlg.FileName);
+        if (ok)
+            MessageBox.Show($"{count}개 파일을 백업했습니다.\n{dlg.FileName}",
+                "백업 완료", MessageBoxButton.OK, MessageBoxImage.Information);
+        else
+            MessageBox.Show($"백업하지 못했습니다: {error}",
+                "백업 실패", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
         var confirm = MessageBox.Show(
