@@ -11,6 +11,9 @@ Index.html
 t2.py
 NEIS_자동입력기_개발노트.md
 
+# GAS 요청 서명 시크릿 (공개 저장소 제외 — GasSecret.cs.example 로 재현). code.gs 의 V2_SECRET 과 일치
+GasSecret.cs
+
 # 데이터 파일 (실수 방지)
 *.xlsx
 *.xlsm

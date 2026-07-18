@@ -15,12 +15,26 @@ public sealed class UsageLogger(GeneratorSettingsStore settings)
 
     private string ClientName => $"NeisAutoFill ({Environment.UserName})";
 
-    public Task LogStartupAsync(string version) =>
-        PostAsync(new { action = "startup", version, clientName = ClientName });
+    public Task LogStartupAsync(string version)
+    {
+        var (ts, nonce, sig) = GasAuth.Sign("startup");
+        return PostAsync(new
+        {
+            action = "startup", authVersion = "2", timestamp = ts, nonce, signature = sig,
+            version, clientName = ClientName,
+        });
+    }
 
     /// <summary>생성 배치 완료 기록 (예: "국어 24명 · 수학 20명"). keyHint=실제로 쓴 키 뒤 4자리(들) → F열.</summary>
-    public Task LogBatchAsync(string info, string keyHint = "") =>
-        PostAsync(new { action = "logBatch", info, keyHint, clientName = ClientName });
+    public Task LogBatchAsync(string info, string keyHint = "")
+    {
+        var (ts, nonce, sig) = GasAuth.Sign("logBatch");
+        return PostAsync(new
+        {
+            action = "logBatch", authVersion = "2", timestamp = ts, nonce, signature = sig,
+            info, keyHint, clientName = ClientName,
+        });
+    }
 
     private async Task PostAsync(object payload)
     {

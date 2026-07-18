@@ -99,9 +99,11 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
     {
         try
         {
+            var (ts, nonce, sig) = GasAuth.Sign("logPlanImport");
             var payload = new
             {
                 action = "logPlanImport",
+                authVersion = "2", timestamp = ts, nonce, signature = sig,
                 clientName = $"NeisAutoFill ({Environment.UserName})",
                 result,
                 info,
@@ -115,9 +117,11 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
     private async Task<IReadOnlyList<string>> ListSubjectsAsync(
         PlanFileExtractor.Extraction extraction, ISet<string> usedKeys, CancellationToken ct)
     {
+        var (ts, nonce, sig) = GasAuth.Sign("listPlanSubjects");
         var payload = new
         {
             action = "listPlanSubjects",
+            authVersion = "2", timestamp = ts, nonce, signature = sig,
             clientName = $"NeisAutoFill ({Environment.UserName})",
             pdfBase64 = extraction.PdfBase64,
             text = extraction.Text,
@@ -138,9 +142,11 @@ public sealed class GasPlanImporter(HttpClient http, GeneratorOptions options)
     private async Task<IReadOnlyList<SubjectPlan>> ParseSubjectAsync(
         PlanFileExtractor.Extraction extraction, GradeScale scale, string? onlySubject, ISet<string> usedKeys, CancellationToken ct)
     {
+        var (ts, nonce, sig) = GasAuth.Sign("parsePlan");
         var payload = new
         {
             action = "parsePlan",
+            authVersion = "2", timestamp = ts, nonce, signature = sig,
             clientName = $"NeisAutoFill ({Environment.UserName})",
             scaleLabels = scale.Levels.Select(l => l.Label).ToList(),
             onlySubject,

@@ -29,7 +29,9 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
         if (string.IsNullOrWhiteSpace(options.GasUrl))
             throw new InvalidOperationException("생성기 서버(GAS) URL 이 설정되지 않았습니다. ⚙ AI 설정을 확인하세요.");
 
+        var (ts, nonce, sig) = GasAuth.Sign("generate");
         var request = new GasRequest(
+            "generate", "2", ts, nonce, sig,
             studentName, subjectName,
             domains.Select(d => new GasDomain(d.DomainName, d.Grade, d.CriteriaText, d.Achievement ?? "")).ToList(),
             subjectNote ?? "",
@@ -62,6 +64,11 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
     }
 
     private sealed record GasRequest(
+        string Action,
+        string AuthVersion,
+        string Timestamp,
+        string Nonce,
+        string Signature,
         string StudentName,
         string SubjectName,
         List<GasDomain> Domains,
