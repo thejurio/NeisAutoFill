@@ -3,6 +3,8 @@ using Xunit;
 
 namespace NeisAutoFill.Tests;
 
+// NeisSelectors 정규식을 읽으므로, 그 정적 상태를 바꾸는 원격 테스트와 같은 컬렉션 → 병렬 실행 방지
+[Collection("NeisSelectors")]
 public class RowMetaParseTests
 {
     [Fact]

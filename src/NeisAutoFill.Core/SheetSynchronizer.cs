@@ -12,6 +12,14 @@ namespace NeisAutoFill.Core;
 /// </summary>
 public static class SheetSynchronizer
 {
+    /// <summary>
+    /// 전담 조합 성적표 조립 (F9 M1). (학년·반)의 명단 + (학년·과목)의 평가계획을 합쳐 한 과목 시트를 만든다.
+    /// 기존 성적이 있으면 이월. 명단이 곧 학생 전부이므로 rosterAuthoritative=true.
+    /// </summary>
+    public static SubjectSheet BuildUnitSheet(
+        SubjectPlan plan, IReadOnlyList<(string No, string Name)> roster, SubjectSheet? old = null) =>
+        BuildSheet(plan.SubjectName, plan.Domains, old, roster, rosterAuthoritative: true);
+
     /// <summary>명단 순서대로 학생을 배치한 과목 시트 생성. 기존 시트가 있으면 성적·특기사항 이월.</summary>
     public static SubjectSheet BuildSheet(
         string subjectName,
