@@ -179,21 +179,31 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
         var files = Directory.GetFiles(extractDir);
         var srcDir = (dirs.Length == 1 && files.Length == 0) ? dirs[0] : extractDir;
 
+        // 안전장치: 소스가 비어 있으면 /MIR 가 설치 폴더를 통째로 지울 수 있다 → 실행 파일이 있는지 확인
+        if (!Directory.EnumerateFiles(srcDir, "*.exe", SearchOption.AllDirectories).Any())
+            throw new InvalidOperationException("업데이트 압축 내용이 올바르지 않습니다 (실행 파일 없음). 적용을 중단했습니다.");
+
         var appDir = AppContext.BaseDirectory.TrimEnd('\\');
         var exePath = Environment.ProcessPath ?? Path.Combine(appDir, "NeisAutoFill.App.exe");
         var pid = Environment.ProcessId;
 
-        // 앱 종료 대기 → 파일 교체 → 재시작
-        var script = Path.Combine(tempRoot, "apply_update.cmd");
-        await File.WriteAllTextAsync(script, $"""
-            @echo off
-            :wait
-            tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul && (timeout /t 1 /nobreak >nul & goto wait)
-            xcopy /e /y /q "{srcDir}\*" "{appDir}\" >nul
-            start "" "{exePath}"
-            """);
+        // 앱 종료 대기 → 파일 교체 → 재시작.
+        // PowerShell 스크립트로 작성 — 경로에 %,&,^ 등 특수문자가 있어도 안전(cmd 의 % 확장 문제 회피, P8).
+        // robocopy /MIR 로 미러링해 옛 버전에서 삭제된 파일도 정리(P7). 경로는 파일에 그대로 쓰되 '는 '' 로 이스케이프.
+        var script = Path.Combine(tempRoot, "apply_update.ps1");
+        await File.WriteAllTextAsync(script, $$"""
+            $ErrorActionPreference = 'SilentlyContinue'
+            $pid_ = {{pid}}
+            while (Get-Process -Id $pid_ -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }
+            $src = '{{PsLit(srcDir)}}'
+            $dst = '{{PsLit(appDir)}}'
+            # /MIR = 미러(대상에만 있는 옛 파일 삭제). 로그/재시도 최소화.
+            robocopy $src $dst /MIR /NFL /NDL /NJH /NJS /R:3 /W:1 | Out-Null
+            Start-Process -FilePath '{{PsLit(exePath)}}'
+            """, System.Text.Encoding.UTF8);
 
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{script}\"")
+        Process.Start(new ProcessStartInfo("powershell.exe",
+            $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{script}\"")
         {
             CreateNoWindow = true,
             UseShellExecute = false,
@@ -201,4 +211,7 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
 
         await Application.Current.Dispatcher.InvokeAsync(() => Application.Current.Shutdown());
     }
+
+    /// <summary>PowerShell 작은따옴표 리터럴 안에 넣기 위한 이스케이프 (' → '').</summary>
+    private static string PsLit(string s) => s.Replace("'", "''");
 }
