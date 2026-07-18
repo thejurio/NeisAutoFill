@@ -158,7 +158,14 @@ public sealed class MainViewModel : ObservableObject
     public bool IsConnected
     {
         get => _isConnected;
-        private set { if (SetProperty(ref _isConnected, value)) OnPropertyChanged(nameof(ShowConnectionHint)); }
+        private set
+        {
+            if (SetProperty(ref _isConnected, value))
+            {
+                OnPropertyChanged(nameof(ShowConnectionHint));
+                RefreshNextStep();
+            }
+        }
     }
 
     private string _connectionHint = "";
@@ -166,11 +173,57 @@ public sealed class MainViewModel : ObservableObject
     public string ConnectionHint
     {
         get => _connectionHint;
-        private set { if (SetProperty(ref _connectionHint, value)) OnPropertyChanged(nameof(ShowConnectionHint)); }
+        private set
+        {
+            if (SetProperty(ref _connectionHint, value))
+            {
+                OnPropertyChanged(nameof(ShowConnectionHint));
+                OnPropertyChanged(nameof(ShowNextStep));   // 연결 배너와 상호배타
+            }
+        }
     }
 
     /// <summary>연결 안내 배너 표시 여부 — 미연결이고 안내 문구가 있을 때.</summary>
     public bool ShowConnectionHint => !IsConnected && !string.IsNullOrEmpty(ConnectionHint);
+
+    // ── 진행 안내 (U1): 자료 로드 후 '다음 할 일'을 짚어준다 ──
+    private bool _nextStepDismissed;
+    /// <summary>이번 실행에서 사용자가 진행 안내를 닫았는지.</summary>
+    public bool NextStepDismissed
+    {
+        get => _nextStepDismissed;
+        set { if (SetProperty(ref _nextStepDismissed, value)) OnPropertyChanged(nameof(ShowNextStep)); }
+    }
+
+    /// <summary>다음 할 일 안내 문구. 자료 없음(빈 화면 카드가 담당)·완료 상태면 빈 문자열.</summary>
+    public string NextStep
+    {
+        get
+        {
+            if (Subjects.Count == 0) return "";   // 자료 없음 → 빈 화면 카드가 안내
+            bool anyGrade = Subjects.Any(s => s.Snapshot().Students.Any(st => st.Grades.Count > 0));
+            if (!anyGrade)
+                return "다음: 성적표에서 등급을 입력하세요. 셀을 여러 개 선택하고 숫자키(1·2·3…)나 드래그로 한 번에 지정할 수 있어요.";
+            if (!IsConnected)
+                return "다음: 나이스에 입력하려면 [🌐 NEIS 접속]으로 로그인·조회해 연결하세요. 서술문은 [✨ 교과학습] 창에서 생성합니다.";
+            return "준비 완료! 과목 탭에서 [▶ 이 과목 입력] 또는 [🚀 전과목 입력]으로 나이스에 넣으세요. 서술문은 [✨ 교과학습] 창에서.";
+        }
+    }
+
+    /// <summary>진행 안내 표시 여부 — 자료가 있고, 안 닫았고, 안내 문구가 있고, 연결 안내 배너와 겹치지 않을 때.</summary>
+    public bool ShowNextStep =>
+        !NextStepDismissed && !ShowConnectionHint && Subjects.Count > 0 && NextStep.Length > 0;
+
+    /// <summary>진행 안내 닫기.</summary>
+    public ICommand DismissNextStepCommand => _dismissNextStep ??= new RelayCommand(() => NextStepDismissed = true);
+    private ICommand? _dismissNextStep;
+
+    /// <summary>상태(자료·성적·연결)가 바뀌면 진행 안내를 다시 계산.</summary>
+    public void RefreshNextStep()
+    {
+        OnPropertyChanged(nameof(NextStep));
+        OnPropertyChanged(nameof(ShowNextStep));
+    }
 
 
     // ── 평가계획서 — 상태·파일 IO 는 WorkspaceService 전담 ──
@@ -465,6 +518,8 @@ public sealed class MainViewModel : ObservableObject
         SelectedSubject = Subjects.FirstOrDefault(s => s.SubjectName == selected) ?? Subjects.FirstOrDefault();
         ExcelName = Path.GetFileName(_workspace.GradeFilePath ?? _workspace.DefaultGradePath);
         OnPropertyChanged(nameof(RecentEntries));
+        NextStepDismissed = false;   // 자료가 바뀌면 안내를 다시 보여준다
+        RefreshNextStep();
     }
 
     /// <summary>
@@ -520,6 +575,7 @@ public sealed class MainViewModel : ObservableObject
     {
         _autoSaveTimer.Stop();
         _autoSaveTimer.Start();
+        RefreshNextStep();   // 등급 입력이 시작되면 다음 안내가 바뀐다 (첫 등급 → 연결 유도)
     }
 
     /// <summary>편집이 잦아들면 저장 대상 파일에 조용히 저장. 실패(파일 잠금 등)는 로그만 남기고 dirty 유지.</summary>

@@ -102,6 +102,17 @@
                     </DockPanel>
                 </Border>
 
+                <!-- 진행 안내 (U1) — 자료 로드 후 '다음 할 일'. 연결 배너가 없을 때만(ShowNextStep 이 반영). 닫기 가능 -->
+                <Border Grid.Row="1" Background="{StaticResource NeisSoft}" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,1" Padding="14,7"
+                        Visibility="{Binding ShowNextStep, Converter={StaticResource BoolToVis}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="✕" Padding="8,2"
+                                Command="{Binding DismissNextStepCommand}" ToolTip="이 안내 닫기" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding NextStep}" Foreground="{StaticResource Neis}" FontSize="12" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,10,0"/>
+                    </DockPanel>
+                </Border>
+
                 <!-- ===== 과목 탭 + 성적표 (+ U1 빈 화면 시작 안내) ===== -->
                 <Grid Grid.Row="2">
                 <TabControl ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
@@ -199,7 +210,12 @@
                             </Border>
                         </StackPanel>
                         <TextBlock Text="이미 만든 엑셀(성적·평가계획서)이 있다면 이 창에 끌어다 놓기만 하면 됩니다" FontSize="12.5"
-                                   Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,22,0,0"/>
+                                   Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,22,0,4"/>
+                        <TextBlock HorizontalAlignment="Center" FontSize="12" Foreground="#94A3B8" TextWrapping="Wrap" TextAlignment="Center">
+                            <Run Text="나이스 입력은 오른쪽 위 "/><Run Text="[🌐 NEIS 접속]" FontWeight="Bold" Foreground="{StaticResource Neis}"/><Run Text=" 버튼으로 전용 브라우저를 열어 로그인·조회하면 자동 연결됩니다."/>
+                        </TextBlock>
+                        <Button Style="{StaticResource GhostButton}" Content="❓ 자세한 사용법 보기" Command="{Binding HelpCommand}"
+                                HorizontalAlignment="Center" Margin="0,16,0,0"/>
                     </StackPanel>
                 </Border>
                 </Grid>
