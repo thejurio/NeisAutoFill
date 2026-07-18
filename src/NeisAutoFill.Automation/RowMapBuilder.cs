@@ -130,9 +130,9 @@ public sealed class RowMapBuilder(IPage page, GridScroller scroller)
 
     internal static RowMeta Parse(string noLabel, string nameLabel, string areaLabel)
     {
-        var no = Match(NeisSelectors.NoRegex(), noLabel);
-        var name = Match(NeisSelectors.NameRegex(), nameLabel);
-        var area = Match(NeisSelectors.AreaRegex(), areaLabel);
+        var no = Match(NeisSelectors.NoRegex, noLabel);
+        var name = Match(NeisSelectors.NameRegex, nameLabel);
+        var area = Match(NeisSelectors.AreaRegex, areaLabel);
         return new RowMeta(no, name, area);
     }
 

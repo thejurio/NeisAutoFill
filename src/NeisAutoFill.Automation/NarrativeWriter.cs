@@ -237,7 +237,7 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
             {
                 if (!int.TryParse(row[0].GetString(), out var idx) || map.ContainsKey(idx)) continue;
                 var no = MatchGroup(NarrativeSelectors.NoFlexRegex(), row[1].GetString());
-                var name = MatchGroup(NeisSelectors.NameRegex(), row[2].GetString());
+                var name = MatchGroup(NeisSelectors.NameRegex, row[2].GetString());
                 if (name is not null) map[idx] = (no, name);
             }
             return true;
