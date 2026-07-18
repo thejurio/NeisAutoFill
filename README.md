@@ -1,5 +1,7 @@
 # NEIS 교과평가 자동입력기 (NeisAutoFill)
 
+[![CI](https://github.com/thejurio/NeisAutoFill/actions/workflows/ci.yml/badge.svg)](https://github.com/thejurio/NeisAutoFill/actions/workflows/ci.yml)
+
 초등교사를 위한 4세대 나이스 교과평가 자동화 도구.
 엑셀에 정리한 성적을 나이스 「교과별 평가」 등급 드롭다운에 자동 입력하고,
 AI(Gemini)로 교과학습발달상황 서술문을 생성해 「학기말 종합의견」까지 자동 기입한다.

@@ -1,0 +1,32 @@
+name: CI
+
+# 매 푸시·PR 마다 빌드 + 테스트 자동 검증 (회귀 방지 안전망).
+# GasSecret.cs(gitignore) 없이도 빌드된다 — partial method 가 없으면 빈 시크릿으로 컴파일.
+# WPF(App)는 windows 전용이라 windows 러너 사용.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (Release)
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test (Release)
+        run: dotnet test --configuration Release --no-build --verbosity normal
