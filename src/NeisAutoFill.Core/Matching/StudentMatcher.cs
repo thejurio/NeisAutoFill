@@ -68,7 +68,7 @@ public static class StudentMatcher
         IReadOnlyDictionary<string, string>? areaMap,
         IReadOnlyDictionary<string, string>? nameMap)
     {
-        var (byKey, byName) = BuildLookup(students);
+        var lk = BuildLookup(students);
         var todo = new List<GradeTask>();
         var skipped = new List<SkipItem>();
 
@@ -87,12 +87,10 @@ public static class StudentMatcher
                 skipped.Add(new SkipItem(no ?? "", name, area, "사용자 제외 (영역)"));
                 continue;
             }
-            var student = Resolve(byKey, byName, no, name, nameMap);
+            var student = Resolve(lk, no, name, nameMap);
             if (student is null)
             {
-                skipped.Add(new SkipItem(no ?? "", name, area,
-                    nameMap is not null && nameMap.TryGetValue(name, out var mn) && mn == ""
-                        ? "사용자 제외 (학생)" : "엑셀에 학생 없음"));
+                skipped.Add(new SkipItem(no ?? "", name, area, SkipReasonFor(lk, no, name, nameMap)));
                 continue;
             }
             var target = (student.Grades.TryGetValue(excelArea, out var g) ? g : "")?.Trim() ?? "";
@@ -163,14 +161,14 @@ public static class StudentMatcher
         IReadOnlyDictionary<int, RowMeta> rowMap, IReadOnlyList<Student> students,
         IReadOnlyDictionary<string, string>? nameMap = null)
     {
-        var (byKey, byName) = BuildLookup(students);
+        var lk = BuildLookup(students);
         var map = new Dictionary<Student, List<RowRef>>();
         var order = new List<Student>();
         foreach (var idx in rowMap.Keys.OrderBy(k => k))
         {
             var (no, name, area) = rowMap[idx];
             if (name is null || area is null) continue;
-            var student = Resolve(byKey, byName, no, name, nameMap);
+            var student = Resolve(lk, no, name, nameMap);
             if (student is null) continue;
             if (!map.TryGetValue(student, out var list)) { list = new(); map[student] = list; order.Add(student); }
             list.Add(new RowRef(idx, no ?? "", name, area));
@@ -178,33 +176,60 @@ public static class StudentMatcher
         return order.Select(s => (s, map[s])).ToList();
     }
 
-    private static (Dictionary<(string, string), Student> byKey, Dictionary<string, Student> byName)
-        BuildLookup(IReadOnlyList<Student> students)
+    private sealed record Lookup(
+        Dictionary<(string, string), Student> ByKey,
+        Dictionary<string, Student> ByName,
+        HashSet<string> DupNames);   // 엑셀에 같은 정규화 이름이 2명 이상 (동명이인)
+
+    private static Lookup BuildLookup(IReadOnlyList<Student> students)
     {
         var byKey = new Dictionary<(string, string), Student>();
         var byName = new Dictionary<string, Student>();
+        var counts = new Dictionary<string, int>();
         foreach (var s in students)
         {
             var norm = NameNormalizer.Normalize(s.Name);
             byKey[(s.No, norm)] = s;
             byName[norm] = s;
+            counts[norm] = counts.GetValueOrDefault(norm) + 1;
         }
-        return (byKey, byName);
+        var dup = counts.Where(kv => kv.Value > 1).Select(kv => kv.Key).ToHashSet();
+        return new Lookup(byKey, byName, dup);
+    }
+
+    /// <summary>화면 행이 동명이인이라 번호로 특정하지 못하는 경우인지 (이름 폴백이 위험).</summary>
+    private static bool IsTwinAmbiguous(Lookup lk, string? no, string name, IReadOnlyDictionary<string, string>? nameMap)
+    {
+        if (nameMap is not null && nameMap.ContainsKey(name)) return false;   // 사용자가 지정했으면 문제 없음
+        var norm = NameNormalizer.Normalize(name);
+        if (!lk.DupNames.Contains(norm)) return false;                        // 동명이인 아님
+        return no is null || !lk.ByKey.ContainsKey((no, norm));              // 번호로 특정 안 되면 애매
+    }
+
+    /// <summary>매칭 실패(Resolve=null) 시 스킵 사유 — 동명이인·사용자 제외·미존재 구분.</summary>
+    private static string SkipReasonFor(Lookup lk, string? no, string name, IReadOnlyDictionary<string, string>? nameMap)
+    {
+        if (nameMap is not null && nameMap.TryGetValue(name, out var mn) && mn == "")
+            return "사용자 제외 (학생)";
+        if (IsTwinAmbiguous(lk, no, name, nameMap))
+            return "동명이인 — 화면 번호로 특정 불가 (확인 창에서 지정하세요)";
+        return "엑셀에 학생 없음";
     }
 
     private static Student? Resolve(
-        Dictionary<(string, string), Student> byKey, Dictionary<string, Student> byName,
-        string? no, string name, IReadOnlyDictionary<string, string>? nameMap = null)
+        Lookup lk, string? no, string name, IReadOnlyDictionary<string, string>? nameMap = null)
     {
         // 사용자 오버라이드: 화면 이름 → 엑셀 이름 ("" = 제외)
         if (nameMap is not null && nameMap.TryGetValue(name, out var mapped))
         {
             if (mapped == "") return null;
-            return byName.TryGetValue(NameNormalizer.Normalize(mapped), out var sm) ? sm : null;
+            return lk.ByName.TryGetValue(NameNormalizer.Normalize(mapped), out var sm) ? sm : null;
         }
         var norm = NameNormalizer.Normalize(name);
-        if (no is not null && byKey.TryGetValue((no, norm), out var s1)) return s1;
-        return byName.TryGetValue(norm, out var s2) ? s2 : null;
+        if (no is not null && lk.ByKey.TryGetValue((no, norm), out var s1)) return s1;
+        // 동명이인은 이름만으로 특정하면 오입력 위험 → 폴백 금지 (호출부가 스킵 사유 표시)
+        if (lk.DupNames.Contains(norm)) return null;
+        return lk.ByName.TryGetValue(norm, out var s2) ? s2 : null;
     }
 
     private static bool AddTaskOrSkip(

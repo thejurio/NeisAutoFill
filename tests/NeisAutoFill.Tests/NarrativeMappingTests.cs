@@ -66,6 +66,34 @@ public class NarrativeMappingTests
     }
 
     [Fact]
+    public void 서술문_동명이인_번호맞으면_각각_매칭()
+    {
+        var screen = Screen(("3", "김민준"), ("15", "김민준"));
+        var entries = new[]
+        {
+            new NarrativeEntry("3", "김민준", "발표를 잘함"),
+            new NarrativeEntry("15", "김민준", "성실히 참여함"),
+        };
+        var r = NarrativeMatcher.Build(screen, entries);
+        Assert.Equal(2, r.Todo.Count);
+    }
+
+    [Fact]
+    public void 서술문_동명이인_번호안맞으면_이름폴백_대신_스킵()
+    {
+        var screen = Screen(("7", "김민준"), ("8", "김민준"));   // 화면 번호가 자료(3,15)와 다름
+        var entries = new[]
+        {
+            new NarrativeEntry("3", "김민준", "발표를 잘함"),
+            new NarrativeEntry("15", "김민준", "성실히 참여함"),
+        };
+        var r = NarrativeMatcher.Build(screen, entries);
+
+        Assert.Empty(r.Todo);   // 조용히 오입력하지 않음
+        Assert.Contains(r.Skipped, s => s.Reason.Contains("동명이인"));
+    }
+
+    [Fact]
     public void AnalyzeNarratives_화면에있는데_내자료에없는_학생을_잡는다()
     {
         var screen = ScreenMeta(("1", "김철수"), ("2", "이영희"));

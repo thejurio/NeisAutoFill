@@ -48,6 +48,73 @@ public class StudentMatcherTests
         Assert.Equal("노력요함", result.Todo[0].TargetGrade);
     }
 
+    // ── 동명이인 (U7) ─────────────────────────
+    [Fact]
+    public void 동명이인은_번호가_맞으면_각각_정확히_매칭()
+    {
+        var rows = Rows((0, "3", "김민준", "듣기"), (1, "15", "김민준", "듣기"));
+        var students = new[]
+        {
+            S("3", "김민준", ("듣기", "잘함")),
+            S("15", "김민준", ("듣기", "노력요함")),
+        };
+        var result = ByName(rows, students, GradePresets.ThreeLevel);
+
+        Assert.Equal(2, result.Todo.Count);
+        Assert.Empty(result.Skipped);
+        Assert.Equal("잘함", result.Todo[0].TargetGrade);     // 3번
+        Assert.Equal("노력요함", result.Todo[1].TargetGrade);  // 15번
+    }
+
+    [Fact]
+    public void 동명이인인데_번호가_안맞으면_이름폴백_대신_스킵()
+    {
+        // 화면 번호(7,8)가 엑셀(3,15)과 안 맞음 → 이름만으로는 누구인지 특정 불가 → 조용히 오입력하지 않고 스킵
+        var rows = Rows((0, "7", "김민준", "듣기"), (1, "8", "김민준", "듣기"));
+        var students = new[]
+        {
+            S("3", "김민준", ("듣기", "잘함")),
+            S("15", "김민준", ("듣기", "노력요함")),
+        };
+        var result = ByName(rows, students, GradePresets.ThreeLevel);
+
+        Assert.Empty(result.Todo);
+        Assert.Equal(2, result.Skipped.Count);
+        Assert.All(result.Skipped, s => Assert.Contains("동명이인", s.Reason));
+    }
+
+    [Fact]
+    public void 동명이인도_확인창_매핑이_있으면_그대로_따른다()
+    {
+        var rows = Rows((0, "7", "김민준", "듣기"));
+        var students = new[]
+        {
+            S("3", "김민준", ("듣기", "잘함")),
+            S("15", "김민준", ("듣기", "노력요함")),
+        };
+        var areas = new[] { "듣기" };
+        // 사용자가 화면 '김민준' → 엑셀에선 이름이 유일하지 않으므로, nameMap 은 이름 문자열 기준
+        // (동명이인 매핑은 실무에선 번호 병기 이름을 쓰지만, 여기선 폴백 억제만 검증)
+        var nameMap = new Dictionary<string, string> { ["김민준"] = "김민준" };
+        var result = StudentMatcher.Build(rows, students, GradePresets.ThreeLevel, areas,
+            StudentMatcher.MatchMode.ByName, nameMap: nameMap);
+
+        // 매핑이 있으면 폴백 억제를 우회 — todo 1건 (오입력 스킵이 아님)
+        Assert.Single(result.Todo);
+    }
+
+    [Fact]
+    public void 이름이_유일하면_번호_달라도_이름폴백_유지()
+    {
+        // 동명이인 아님 → 기존 폴백 동작 그대로 (번호 달라도 이름으로 매칭)
+        var rows = Rows((0, "99", "이서준", "듣기"));
+        var students = new[] { S("3", "이서준", ("듣기", "보통")) };
+        var result = ByName(rows, students, GradePresets.ThreeLevel);
+
+        Assert.Single(result.Todo);
+        Assert.Equal("보통", result.Todo[0].TargetGrade);
+    }
+
     [Fact]
     public void Skips_when_student_missing_in_excel()
     {

@@ -22,12 +22,15 @@ public static class NarrativeMatcher
     {
         var byKey = new Dictionary<(string, string), NarrativeEntry>();
         var byName = new Dictionary<string, NarrativeEntry>();
+        var counts = new Dictionary<string, int>();
         foreach (var e in entries)
         {
             var norm = NameNormalizer.Normalize(e.Name);
             byKey[(e.No, norm)] = e;
             byName[norm] = e;
+            counts[norm] = counts.GetValueOrDefault(norm) + 1;
         }
+        var dupNames = counts.Where(kv => kv.Value > 1).Select(kv => kv.Key).ToHashSet();   // 동명이인
 
         var todo = new List<Item>();
         var skipped = new List<SkipItem>();
@@ -48,9 +51,16 @@ public static class NarrativeMatcher
             else
             {
                 var norm = NameNormalizer.Normalize(name);
-                entry = (no is not null && byKey.TryGetValue((no, norm), out var e1)) ? e1
-                      : byName.TryGetValue(norm, out var e2) ? e2
-                      : null;
+                if (no is not null && byKey.TryGetValue((no, norm), out var e1)) entry = e1;
+                // 동명이인은 이름만으로 특정하면 오입력 위험 → 폴백 금지, 사용자 매핑 유도
+                else if (dupNames.Contains(norm))
+                {
+                    if (byName.TryGetValue(norm, out var amb)) used.Add(amb);   // 스킵 보고가 이 서술문을 잡도록
+                    skipped.Add(new SkipItem(no ?? "", name, "",
+                        "동명이인 — 화면 번호로 특정 불가 (확인 창에서 지정하세요)"));
+                    continue;
+                }
+                else entry = byName.TryGetValue(norm, out var e2) ? e2 : null;
             }
             if (entry is null) continue;   // 서술문 없는 학생 행은 그냥 지나감 (스킵 사유 아님)
 
