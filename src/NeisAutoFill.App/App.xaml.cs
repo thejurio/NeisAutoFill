@@ -42,6 +42,7 @@ public partial class App : Application
 
         services.AddSingleton<UpdateService>();
         services.AddSingleton<UsageLogger>();
+        services.AddSingleton<RemoteSelectorService>();
 
         var provider = services.BuildServiceProvider();
         provider.GetRequiredService<NarrativeMirror>();   // store 변경 구독 시작 (서술문.xlsx 자동 미러)
@@ -61,6 +62,9 @@ public partial class App : Application
         // 프로그램 시작을 GAS RequestLog 시트에 기록 (백그라운드)
         var version = UpdateService.CurrentVersion.ToString(3);
         _ = provider.GetRequiredService<UsageLogger>().LogStartupAsync(version);
+
+        // 원격 셀렉터 적용 (백그라운드) — 나이스 개편 시 앱 재배포 없이 대응. 실패 시 기본값 유지
+        _ = provider.GetRequiredService<RemoteSelectorService>().ApplyAsync();
     }
 
     /// <summary>
