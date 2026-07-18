@@ -74,37 +74,33 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     /// ★ 종합의견 화면은 라벨이 전부 "학기, …" 로 잘못 붙어 있음 (2026-07-17 진단 실측)
     ///   → 조회조건 라벨(학년도/학년/학기/반/교과) 콤보 중 값이 숫자가 아닌 것을 과목으로 본다.
     /// </summary>
+    /// <summary>직전 과목 콤보 탐색이 라벨 버그 폴백으로 찾았는지. 정상 '교과' 라벨이 있으면 false.
+    /// 나이스가 라벨 버그를 고치면 자연히 false 가 되어, 폴백 의존이 사라졌음을 알 수 있다.</summary>
+    public bool LastSubjectComboUsedFallback { get; private set; }
+
     private async Task<(ILocator? Combo, string? Subject)> FindSubjectComboAsync()
     {
         var page = RequirePage();
         var combos = page.Locator("div[role='combobox'][aria-label]");
         int n = await combos.CountAsync();
-        ILocator? fallback = null; string? fallbackValue = null;
 
+        // 보이는 콤보의 라벨을 순서대로 수집 (인덱스 보존 — null = 안 보이거나 라벨 없음)
+        var labels = new List<string?>(n);
         for (int i = 0; i < n; i++)
         {
-            var c = combos.Nth(i);
             try
             {
-                if (!await c.IsVisibleAsync()) continue;
-                var label = await c.GetAttributeAsync("aria-label") ?? "";
-                var parts = label.Split(',', 2);
-                if (parts.Length != 2) continue;
-                var key = parts[0].Trim();
-                var value = parts[1].Trim();
-
-                if (key == "교과") return (c, value);   // 정상 라벨 — 즉시 확정
-
-                // 라벨 버그 화면 폴백: 조회조건 콤보인데 값이 숫자(연도·학기·반)가 아니면 과목 후보
-                if (fallback is null && key is "학년도" or "학년" or "학기" or "반" &&
-                    value != "" && !int.TryParse(value, out _))
-                {
-                    fallback = c; fallbackValue = value;
-                }
+                labels.Add(await combos.Nth(i).IsVisibleAsync()
+                    ? await combos.Nth(i).GetAttributeAsync("aria-label")
+                    : null);
             }
-            catch { /* 스캔 중 사라진 요소 무시 */ }
+            catch { labels.Add(null); }   // 스캔 중 사라진 요소
         }
-        return (fallback, fallbackValue);
+
+        // 분류·선택은 순수 로직(테스트됨). 정상 '교과' 우선, 없으면 라벨 버그 폴백.
+        var (idx, value, usedFallback) = Core.SubjectComboClassifier.Pick(labels);
+        LastSubjectComboUsedFallback = usedFallback;
+        return idx >= 0 ? (combos.Nth(idx), value) : (null, null);
     }
 
     // ── Phase 5.5 전과목 자동 업로드 ────────────────────────────
