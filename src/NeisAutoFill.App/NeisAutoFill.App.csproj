@@ -19,7 +19,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <!-- 자동업데이트 버전 비교 기준 — 릴리스 때 올릴 것 (GitHub 릴리스 태그 v1.0.0 과 일치) -->
-    <Version>1.4.7</Version>
+    <Version>1.4.8</Version>
 
     <!-- 배포 최소화: .NET 미설치 PC 대응(self-contained)은 publish 명령 옵션으로.
          아래는 publish 시에만 적용: 단일 exe + 내부 압축 + 한국어 리소스만 -->
