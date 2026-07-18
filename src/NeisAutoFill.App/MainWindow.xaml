@@ -91,7 +91,16 @@
                     </DockPanel>
                 </Border>
 
-                <!-- (로드 상태 요약줄 제거 — 작업공간 자동 저장 체제에서 파일명 표시는 불필요) -->
+                <!-- 연결 안내 배너 (U2) — 미연결이고 안내할 게 있을 때만. 연결되면 사라짐 -->
+                <Border Grid.Row="1" Background="#FFF7ED" BorderBrush="#FDBA74" BorderThickness="0,0,0,1" Padding="14,7"
+                        Visibility="{Binding ShowConnectionHint, Converter={StaticResource BoolToVis}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource AccentGhostButton}" Content="🌐 NEIS 접속"
+                                Command="{Binding LaunchEdgeCommand}" Padding="12,3" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ConnectionHint}" Foreground="#9A3412" FontSize="12" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" Margin="0,0,10,0"/>
+                    </DockPanel>
+                </Border>
 
                 <!-- ===== 과목 탭 + 성적표 (+ U1 빈 화면 시작 안내) ===== -->
                 <Grid Grid.Row="2">

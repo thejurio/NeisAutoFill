@@ -121,7 +121,15 @@ public sealed class MainViewModel : ObservableObject
                         await _engine.AttachAsync(ct).ConfigureAwait(false);
                         Ui(() => { SetConnected(true); Log("브라우저 자동 연결됨."); });
                     }
-                    catch (Exception ex) { Diag.Swallow(ex, "자동연결 attach"); }   // 아직 attach 가능한 브라우저 없음 — 조용히 재시도
+                    catch (Exception ex)
+                    {
+                        Diag.Swallow(ex, "자동연결 attach");   // 조용히 재시도하되, 사용자에겐 다음 할 일을 안내
+                        // 브라우저 자체가 없음 vs 열렸지만 나이스 탭 없음 을 구분해 안내 (우리가 던진 메시지 기준)
+                        var hint = ex is InvalidOperationException && (ex.Message.Contains("neis") || ex.Message.Contains("탭"))
+                            ? "나이스 전용 브라우저는 열렸어요. 나이스에 로그인하고 [교과별 평가](또는 [학기말 종합의견])를 조회하면 자동으로 연결됩니다."
+                            : "아직 연결되지 않았어요. [🌐 NEIS 접속] 버튼으로 전용 브라우저를 여세요. (평소 쓰던 Edge 를 그냥 열면 연결되지 않습니다)";
+                        Ui(() => ConnectionHint = hint);
+                    }
                 }
                 else if (!await _engine.IsAliveAsync().ConfigureAwait(false))
                 {
@@ -142,6 +150,7 @@ public sealed class MainViewModel : ObservableObject
         ConnectionText = on ? "연결됨" : "미연결";
         ConnectionBrush = new SolidColorBrush(on ? Color.FromRgb(0x22, 0xC5, 0x5E) : Color.FromRgb(0xEF, 0x44, 0x44));
         IsConnected = on;
+        if (on) ConnectionHint = "";   // 연결되면 안내 배너 숨김
     }
 
     private bool _isConnected;
@@ -149,8 +158,19 @@ public sealed class MainViewModel : ObservableObject
     public bool IsConnected
     {
         get => _isConnected;
-        private set => SetProperty(ref _isConnected, value);
+        private set { if (SetProperty(ref _isConnected, value)) OnPropertyChanged(nameof(ShowConnectionHint)); }
     }
+
+    private string _connectionHint = "";
+    /// <summary>미연결 시 다음에 뭘 해야 하는지 안내 (실패 원인별). 연결되면 빈 문자열.</summary>
+    public string ConnectionHint
+    {
+        get => _connectionHint;
+        private set { if (SetProperty(ref _connectionHint, value)) OnPropertyChanged(nameof(ShowConnectionHint)); }
+    }
+
+    /// <summary>연결 안내 배너 표시 여부 — 미연결이고 안내 문구가 있을 때.</summary>
+    public bool ShowConnectionHint => !IsConnected && !string.IsNullOrEmpty(ConnectionHint);
 
 
     // ── 평가계획서 — 상태·파일 IO 는 WorkspaceService 전담 ──
@@ -801,7 +821,8 @@ public sealed class MainViewModel : ObservableObject
     {
         try
         {
-            var screen = await _engine.ReadSubjectOptionsAsync(_cts?.Token ?? CancellationToken.None);
+            // ★ 이전 작업에서 취소된 _cts.Token 을 쓰면 콤보 읽기가 즉시 취소돼 매핑이 안 뜬다 → None 으로 읽는다(서술문과 동일)
+            var screen = await _engine.ReadSubjectOptionsAsync();
             if (screen.Count == 0) return;   // 콤보를 못 읽음 → 기존처럼 같은 이름으로 진행
             var suggestions = Core.SubjectMapper.Suggest(picks.Select(p => p.Name).ToList(), screen);
             for (int i = 0; i < picks.Count; i++)
