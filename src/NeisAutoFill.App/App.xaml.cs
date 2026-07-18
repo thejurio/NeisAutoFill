@@ -15,6 +15,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
         AppPaths.EnsureRoot();
+        // ★ 프로필을 가장 먼저 로드해 경로 계층에 반영 — 이후 만들어지는 NarrativeStore 등이 올바른 프로필 경로를 쓴다
+        var profiles = new ProfileStore();
         Automation.EngineDiag.OnSwallow = Diag.Swallow;   // 엔진의 조용한 예외를 diag.txt 로 (안정화 추적)
         _ = Task.Run(CleanupOldLayoutFiles);   // 구버전(다중 DLL) → 단일 exe 업데이트 잔재 청소
 
@@ -28,6 +30,7 @@ public partial class App : Application
         };
 
         var services = new ServiceCollection();
+        services.AddSingleton(profiles);   // 위에서 이미 로드·경로반영된 인스턴스
         services.AddSingleton(new EngineOptions());
         services.AddSingleton<INeisEngine, NeisEngine>();
         services.AddSingleton<IScaleStore>(_ => new JsonScaleStore(AppPaths.ScalesJson));
