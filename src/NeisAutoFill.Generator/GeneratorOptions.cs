@@ -13,8 +13,15 @@ public sealed record GeneratorOptions
     /// <summary>서술문 나이스 입력 시 UTF-8 바이트 제한 사전검사 (0 = 검사 안 함).</summary>
     public int MaxNarrativeBytes { get; init; } = 0;
 
-    /// <summary>생성문 목표 글자 수 (0 = AI 자율).</summary>
+    /// <summary>생성문 목표 글자 수 (0 = AI 자율). 과목별 지정은 <see cref="SubjectTargetChars"/> 우선.</summary>
     public int TargetChars { get; init; } = 0;
+
+    /// <summary>과목별 목표 글자 수 override (과목명 → 글자수). 없거나 0이면 전역 <see cref="TargetChars"/> 사용.</summary>
+    public Dictionary<string, int> SubjectTargetChars { get; init; } = new();
+
+    /// <summary>주어진 과목의 실제 목표 글자 수 — 과목별 지정(>0)이 있으면 그것, 없으면 전역.</summary>
+    public int TargetCharsFor(string subject) =>
+        SubjectTargetChars.TryGetValue(subject, out var n) && n > 0 ? n : TargetChars;
 
     /// <summary>서술문에 반영할 최대 영역 수 (0 = 전체).</summary>
     public int MaxDomains { get; init; } = 0;

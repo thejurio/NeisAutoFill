@@ -40,7 +40,7 @@ public sealed class GasBackendGenerator(HttpClient http, GeneratorOptions option
             domains.Select(d => new GasDomain(d.DomainName, d.Grade, d.CriteriaText, d.Achievement ?? "")).ToList(),
             subjectNote ?? "",
             scale.Levels.ToDictionary(l => l.Label, l => PromptBuilder.ResolveNuance(l.Label, scale)),
-            options.TargetChars,
+            options.TargetCharsFor(subjectName),   // 과목별 지정 우선, 없으면 전역
             tone);
 
         using var response = await http.PostAsJsonAsync(options.GasUrl, request, Json, ct);

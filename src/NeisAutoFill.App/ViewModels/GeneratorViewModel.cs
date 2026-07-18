@@ -265,7 +265,32 @@ public sealed class GeneratorViewModel : ObservableObject
     public string? SelectedSubject
     {
         get => _selectedSubject;
-        set { if (SetProperty(ref _selectedSubject, value)) RebuildStudents(); }
+        set
+        {
+            if (SetProperty(ref _selectedSubject, value))
+            {
+                RebuildStudents();
+                OnPropertyChanged(nameof(SubjectTargetChars));
+            }
+        }
+    }
+
+    /// <summary>이 과목만의 목표 글자 수 (빈 값 = 전역 설정 사용). 설정에 즉시 저장.</summary>
+    public string SubjectTargetChars
+    {
+        get => SelectedSubject is { } s
+            && _settings.Options.SubjectTargetChars.TryGetValue(s, out var n) && n > 0
+            ? n.ToString() : "";
+        set
+        {
+            if (SelectedSubject is not { } s) return;
+            var dict = new Dictionary<string, int>(_settings.Options.SubjectTargetChars);
+            if (int.TryParse(value, out var n) && n > 0) dict[s] = n;
+            else dict.Remove(s);   // 빈 값·0 = 과목별 지정 해제(전역 사용)
+            _settings.Options = _settings.Options with { SubjectTargetChars = dict };
+            _settings.Save();
+            OnPropertyChanged();
+        }
     }
 
     private string _planStatus = "(평가계획서 미로드 — 기준내용 없이 등급만으로 생성됩니다)";

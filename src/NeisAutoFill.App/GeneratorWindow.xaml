@@ -40,7 +40,10 @@
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
                             <TextBlock Text="과목" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,5,0"/>
                             <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding SubjectNames}" SelectedItem="{Binding SelectedSubject}" MinWidth="120" Margin="0,0,10,0"/>
-                            <CheckBox Content="전체선택" IsChecked="{Binding SelectAll}" VerticalAlignment="Center" FontSize="12"/>
+                            <CheckBox Content="전체선택" IsChecked="{Binding SelectAll}" VerticalAlignment="Center" FontSize="12" Margin="0,0,14,0"/>
+                            <TextBlock Text="이 과목 글자수" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,5,0"/>
+                            <TextBox Text="{Binding SubjectTargetChars, UpdateSourceTrigger=LostFocus}" Width="52" VerticalContentAlignment="Center"
+                                     ToolTip="이 과목만 목표 글자 수를 다르게 지정 (비우면 설정의 전역 글자 수 사용)"/>
                         </StackPanel>
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <Button Style="{StaticResource GhostButton}" Content="⛔ 중지" Command="{Binding CancelGenerationCommand}" Margin="0,0,8,0"
