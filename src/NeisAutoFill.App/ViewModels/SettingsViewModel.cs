@@ -13,10 +13,13 @@ namespace NeisAutoFill.App.ViewModels;
 public sealed class SettingsViewModel : ObservableObject
 {
     private readonly GeneratorSettingsStore _settings;
+    private readonly ProfileStore _profiles;
 
-    public SettingsViewModel(IScaleStore scales, GeneratorSettingsStore settings)
+    public SettingsViewModel(IScaleStore scales, GeneratorSettingsStore settings, ProfileStore profiles)
     {
         _settings = settings;
+        _profiles = profiles;
+        _subjectMode = profiles.IsSubjectMode;
         Scale = new ScaleEditorViewModel(scales);
 
         var o = settings.Options;
@@ -66,6 +69,19 @@ public sealed class SettingsViewModel : ObservableObject
     public bool SpeedFast { get => _speedFast; set => SetProperty(ref _speedFast, value); }
     public bool SpeedNormal { get => _speedNormal; set => SetProperty(ref _speedNormal, value); }
     public bool SpeedSlow { get => _speedSlow; set => SetProperty(ref _speedSlow, value); }
+
+    // ── 학급 모드 (담임/전담) ──────────────
+    private bool _subjectMode;
+    /// <summary>전담 여부 (담임=false). 반·과목은 여기서 등록하지 않는다(자료 준비·메인에서).</summary>
+    public bool SubjectMode { get => _subjectMode; set => SetProperty(ref _subjectMode, value); }
+
+    /// <summary>모드 저장. 담임↔전담이 실제로 바뀌면 true — UI(메인 콤보·자료준비)가 달라지므로 재시작.</summary>
+    public bool SaveModeReturnsNeedsRestart()
+    {
+        var changed = _profiles.IsSubjectMode != SubjectMode;
+        _profiles.SetMode(SubjectMode);
+        return changed;
+    }
 
     /// <summary>버전·업데이트 날짜 (exe 파일 시각 = 마지막 설치/업데이트 시점).</summary>
     public string VersionInfo

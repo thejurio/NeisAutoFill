@@ -94,6 +94,16 @@ public partial class SettingsWindow : Window
             MessageBox.Show(error, "확인 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+
+        // 학급 모드(담임/전담) 저장 — 바뀌면 자료 경로가 달라지므로 재시작
+        if (_vm.SaveModeReturnsNeedsRestart())
+        {
+            MessageBox.Show(
+                "학급 모드가 바뀌어 프로그램을 재시작합니다.\n담임과 전담의 자료는 서로 따로 보관됩니다.",
+                "모드 전환", MessageBoxButton.OK, MessageBoxImage.Information);
+            AppReset.RestartApp();
+            return;
+        }
         DialogResult = true;
     }
 }

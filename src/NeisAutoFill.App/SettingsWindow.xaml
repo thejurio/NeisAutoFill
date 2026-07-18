@@ -73,9 +73,17 @@
                                 </StackPanel>
                             </StackPanel>
 
-                            <!-- 오른쪽: 백업 · 초기화 -->
+                            <!-- 오른쪽: 학급 모드 · 백업 · 초기화 -->
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="백업 · 복원" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+                                <TextBlock Text="학급 모드" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+                                <TextBlock Text="담임은 우리 반. 전담은 여러 반의 특정 과목 — 반별 명단·과목별 평가계획을 따로 등록하고, 메인에서 학년·반을 바꿔가며 입력합니다." FontSize="11.5"
+                                           Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Content="담임" IsChecked="{Binding SubjectMode, Converter={StaticResource InvertBool}}" FontSize="12" Margin="0,0,16,0"/>
+                                    <RadioButton Content="전담" IsChecked="{Binding SubjectMode}" FontSize="12"/>
+                                </StackPanel>
+
+                                <TextBlock Text="백업 · 복원" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,20,0,0"/>
                                 <TextBlock Text="자료·설정을 zip 하나로 저장하고 되돌립니다." FontSize="11.5"
                                            Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,4,0,6"
                                            ToolTip="명단·평가계획·성적·서술문과 설정을 하나의 zip 파일로 저장/복원 — PC 교체·재설치·실수 삭제 대비"/>
