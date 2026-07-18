@@ -11,13 +11,17 @@ namespace NeisAutoFill.App.Helpers;
 /// </summary>
 public static class DataGridClipboard
 {
-    /// <param name="validate">(컬럼명, 값) → 허용 여부. null 이면 전부 허용.</param>
+    /// <param name="validate">(헤더, 값) → 허용 여부. null 이면 전부 허용.</param>
     /// <param name="allowGrow">붙여넣을 행이 표보다 많으면 새 행 추가 (명단·계획 편집용).</param>
+    /// <param name="resolveColumn">표시 헤더 → 실제 DataTable 컬럼명 변환 (영역명↔안전ID). null 이면 헤더=컬럼명.</param>
     public static (int Applied, int Skipped) Paste(
         DataGrid grid, DataTable table,
         Func<string, string, bool>? validate = null,
-        bool allowGrow = false)
+        bool allowGrow = false,
+        Func<string, string>? resolveColumn = null)
     {
+        string Col(string header) => resolveColumn?.Invoke(header) ?? header;
+
         var rows = ClipboardTable.Parse(Clipboard.ContainsText() ? Clipboard.GetText() : null);
         if (rows.Length == 0) return (0, 0);
 
@@ -32,9 +36,10 @@ public static class DataGridClipboard
             int filled = 0, refused = 0;
             foreach (var cell in selected)
             {
-                var name = cell.Column.Header?.ToString() ?? "";
+                var header = cell.Column.Header?.ToString() ?? "";
+                var name = Col(header);
                 if (cell.Column.IsReadOnly || !table.Columns.Contains(name) ||
-                    (validate is not null && !validate(name, value))) { refused++; continue; }
+                    (validate is not null && !validate(header, value))) { refused++; continue; }
                 ((DataRowView)cell.Item).Row[name] = value;
                 filled++;
             }
@@ -75,11 +80,12 @@ public static class DataGridClipboard
                 int colIdx = startCol + c;
                 if (colIdx >= columns.Count) { skipped++; continue; }
                 var gridCol = columns[colIdx];
-                var colName = gridCol.Header?.ToString() ?? "";
+                var header = gridCol.Header?.ToString() ?? "";
+                var colName = Col(header);
                 if (gridCol.IsReadOnly || !table.Columns.Contains(colName)) { skipped++; continue; }
 
                 var value = rows[r][c];
-                if (validate is not null && !validate(colName, value)) { skipped++; continue; }
+                if (validate is not null && !validate(header, value)) { skipped++; continue; }
 
                 table.Rows[rowIdx][colName] = value;
                 applied++;

@@ -15,11 +15,25 @@ public sealed class SubjectViewModel : ObservableObject
     private readonly MainViewModel _main;
     private readonly IReadOnlyList<string> _areas;
 
+    // 영역명 ↔ DataTable 안전 컬럼ID. 영역명에 쉼표·대괄호가 있으면 WPF 인덱서 바인딩([영역])이
+    // 깨지므로(값 안 뜨고 입력 불가), 실제 컬럼명은 특수문자 없는 ID 로 두고 표시 헤더만 영역명으로 쓴다.
+    private readonly Dictionary<string, string> _colByArea = new();   // 영역명 → 컬럼ID
+    private readonly Dictionary<string, string> _areaByCol = new();   // 컬럼ID → 영역명
+
     public string SubjectName { get; }
     public IReadOnlyList<string> Areas => _areas;
     public string AreasText => "영역: " + string.Join(", ", _areas);
     public DataTable Grid { get; }
     public DataView GridView => Grid.DefaultView;
+
+    /// <summary>표시 헤더(영역명·번호·이름·특기사항)를 실제 DataTable 컬럼명으로. 영역이면 안전ID, 나머지는 그대로.</summary>
+    public string DataColumnOf(string header) => _colByArea.TryGetValue(header, out var id) ? id : header;
+
+    /// <summary>DataTable 컬럼명(안전ID 등)을 표시 헤더로. 영역 컬럼ID면 영역명, 나머지는 그대로.</summary>
+    public string HeaderOf(string column) => _areaByCol.TryGetValue(column, out var area) ? area : column;
+
+    /// <summary>이 컬럼명이 영역(등급) 컬럼인지.</summary>
+    public bool IsAreaColumn(string column) => _areaByCol.ContainsKey(column);
 
     /// <summary>사용자가 표를 수정했는지 (저장 확인용).</summary>
     public bool IsDirty { get; private set; }
@@ -36,7 +50,13 @@ public sealed class SubjectViewModel : ObservableObject
         Grid = new DataTable();
         Grid.Columns.Add("번호");
         Grid.Columns.Add("이름");
-        foreach (var a in sheet.Areas) Grid.Columns.Add(a);
+        for (int i = 0; i < sheet.Areas.Count; i++)
+        {
+            var colId = "col_area_" + i;   // 특수문자 없는 안전 컬럼ID (표시엔 안 쓰임 — 헤더는 영역명)
+            _colByArea[sheet.Areas[i]] = colId;
+            _areaByCol[colId] = sheet.Areas[i];
+            Grid.Columns.Add(colId);
+        }
         Grid.Columns.Add(NoteColumn);
 
         foreach (var s in sheet.Students)
@@ -45,7 +65,7 @@ public sealed class SubjectViewModel : ObservableObject
             row["번호"] = s.No;
             row["이름"] = s.Name;
             foreach (var a in sheet.Areas)
-                row[a] = s.Grades.TryGetValue(a, out var g) ? g : "";
+                row[_colByArea[a]] = s.Grades.TryGetValue(a, out var g) ? g : "";
             row[NoteColumn] = s.SpecialNote ?? "";
             Grid.Rows.Add(row);
         }
@@ -83,7 +103,7 @@ public sealed class SubjectViewModel : ObservableObject
                 var grades = new Dictionary<string, string>();
                 foreach (var a in _areas)
                 {
-                    var v = (row[a]?.ToString() ?? "").Trim();
+                    var v = (row[_colByArea[a]]?.ToString() ?? "").Trim();
                     if (!string.IsNullOrEmpty(v)) grades[a] = v;
                 }
                 var note = (row[NoteColumn]?.ToString() ?? "").Trim();

@@ -129,7 +129,7 @@ public partial class MainWindow : Window
     /// <summary>성적 표 컬럼 생성: 번호/이름은 읽기전용, 영역(등급)은 척도 드롭다운, 특기사항은 텍스트.</summary>
     private void Grid_AutoGeneratingColumn(object sender, DataGridAutoGeneratingColumnEventArgs e)
     {
-        var name = e.PropertyName;
+        var name = e.PropertyName;   // DataTable 컬럼명 (영역은 안전ID)
 
         if (name is "번호" or "이름")
         {
@@ -145,16 +145,20 @@ public partial class MainWindow : Window
             return;                  // 기본 텍스트 편집
         }
 
-        // 영역(등급) 컬럼 → 평소엔 색 배지, 클릭하면 드롭다운 편집
-        e.Column = BuildGradeColumn(name);
+        // 영역(등급) 컬럼 → 평소엔 색 배지, 클릭하면 드롭다운 편집.
+        // 바인딩은 안전 컬럼ID 로, 표시 헤더는 영역명으로 (영역명에 쉼표가 있어도 바인딩 안 깨짐).
+        var vm = (sender as DataGrid)?.DataContext as SubjectViewModel;
+        var header = vm?.HeaderOf(name) ?? name;
+        e.Column = BuildGradeColumn(name, header);
     }
 
-    /// <summary>등급 컬럼: 표시=색 배지(GradeBadgeConverter), 편집=척도 드롭다운.</summary>
-    private DataGridTemplateColumn BuildGradeColumn(string area)
+    /// <summary>등급 컬럼: 표시=색 배지(GradeBadgeConverter), 편집=척도 드롭다운.
+    /// columnId=안전한 DataTable 컬럼명(바인딩용), header=화면 표시 영역명.</summary>
+    private DataGridTemplateColumn BuildGradeColumn(string columnId, string header)
     {
         var badgeBg = (System.Windows.Data.IValueConverter)FindResource("BadgeBg");
         var badgeFg = (System.Windows.Data.IValueConverter)FindResource("BadgeFg");
-        string path = $"[{area}]";
+        string path = $"[{columnId}]";   // columnId 는 특수문자 없는 안전 ID
 
         // 표시 템플릿: 알약 배지 (미입력은 – 로 표시)
         var dash = (IValueConverter)FindResource("EmptyDash");
@@ -187,7 +191,7 @@ public partial class MainWindow : Window
 
         return new DataGridTemplateColumn
         {
-            Header = area,
+            Header = header,
             CellTemplate = cellTemplate,
             CellEditingTemplate = editTemplate,
             ClipboardContentBinding = new Binding(path),   // 다중 셀 Ctrl+C 지원

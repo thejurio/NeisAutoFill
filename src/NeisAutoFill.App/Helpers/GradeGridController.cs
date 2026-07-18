@@ -152,7 +152,7 @@ public sealed class GradeGridController(MainViewModel main)
                 bool isArea = vm.Areas.Contains(header);
                 bool isNote = header == SubjectViewModel.NoteColumn;
                 if (!isArea && !(isNote && value == "")) continue;   // 등급값은 영역 셀에만
-                row.Row[header] = value;
+                row.Row[vm.DataColumnOf(header)] = value;            // 영역은 안전ID 로 접근
                 applied++;
             }
         }
@@ -169,8 +169,10 @@ public sealed class GradeGridController(MainViewModel main)
         int applied, skipped;
         try
         {
-            (applied, skipped) = DataGridClipboard.Paste(grid, vm.Grid, (column, value) =>
-                column == SubjectViewModel.NoteColumn || value == "" || main.GradeLabels.Contains(value));
+            (applied, skipped) = DataGridClipboard.Paste(grid, vm.Grid,
+                validate: (header, value) =>
+                    header == SubjectViewModel.NoteColumn || value == "" || main.GradeLabels.Contains(value),
+                resolveColumn: vm.DataColumnOf);   // 영역 헤더 → 안전 컬럼ID
         }
         finally { vm.EndBulkEdit(); }
         if (applied == 0 && skipped == 0) return;
