@@ -55,11 +55,15 @@
                                 <RadioButton Content="느림" IsChecked="{Binding SpeedSlow}" FontSize="12"/>
                             </StackPanel>
 
-                            <TextBlock Text="백업" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,24,0,4"/>
+                            <TextBlock Text="백업 · 복원" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,24,0,4"/>
                             <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                       Text="명단·평가계획·성적·서술문과 설정을 하나의 zip 파일로 저장합니다. PC 교체·재설치·실수 삭제에 대비하세요. 복원은 zip 을 풀어 원래 위치에 되돌리면 됩니다."/>
-                            <Button Style="{StaticResource GhostButton}" Content="💾 작업공간 백업" Click="Backup_Click"
-                                    HorizontalAlignment="Left"/>
+                                       Text="명단·평가계획·성적·서술문과 설정을 하나의 zip 파일로 저장하고, 나중에 그 파일로 되돌립니다. PC 교체·재설치·실수 삭제에 대비하세요."/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Style="{StaticResource GhostButton}" Content="💾 작업공간 백업" Click="Backup_Click"
+                                        HorizontalAlignment="Left" Margin="0,0,6,0"/>
+                                <Button Style="{StaticResource GhostButton}" Content="📥 백업에서 복원" Click="Restore_Click"
+                                        HorizontalAlignment="Left"/>
+                            </StackPanel>
 
                             <TextBlock Text="초기화" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,24,0,4"/>
                             <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,8"

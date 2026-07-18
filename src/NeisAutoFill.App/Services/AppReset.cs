@@ -26,11 +26,15 @@ public static class AppReset
             foreach (var name in new[] { "성적.xlsx", "평가계획서.xlsx", "서술문.xlsx" })
                 TryDelete(Path.Combine(AppPaths.Workspace, name));
 
-        // 지금 프로세스를 종료하고 새로 시작 — 지워진 상태로 깨끗하게 부팅
+        RestartApp();
+    }
+
+    /// <summary>현재 프로세스를 종료하고 잠시 뒤 새로 시작 — 바뀐 데이터로 깨끗하게 부팅(초기화·복원 공용).</summary>
+    public static void RestartApp()
+    {
         var exe = Environment.ProcessPath;
         if (exe is not null)
         {
-            // 잠깐 기다렸다 재시작하는 별도 프로세스 (현재 앱이 종료된 뒤 실행)
             var cmd = $"/c timeout /t 1 /nobreak >nul & start \"\" \"{exe}\"";
             Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false });
         }

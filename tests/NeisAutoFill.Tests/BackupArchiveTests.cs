@@ -46,6 +46,33 @@ public class BackupArchiveTests
         finally { tmp.Delete(recursive: true); }
     }
 
+    [Theory]
+    [InlineData("data/narratives.json", @"C:\App\narratives.json")]
+    [InlineData("workspace/성적.xlsx", @"C:\Docs\성적.xlsx")]
+    public void 복원경로_변환_정상(string entry, string expected)
+    {
+        var path = BackupArchive.ResolveRestorePath(entry, @"C:\App", @"C:\Docs");
+        Assert.Equal(expected, path);
+    }
+
+    [Theory]
+    [InlineData("other/x.txt")]           // 우리 폴더 아님
+    [InlineData("data/../evil.txt")]      // 경로 탈출 시도
+    [InlineData("data/")]                 // 파일명 없음
+    [InlineData("")]
+    public void 복원경로_형식_안맞으면_null(string entry)
+    {
+        Assert.Null(BackupArchive.ResolveRestorePath(entry, @"C:\App", @"C:\Docs"));
+    }
+
+    [Fact]
+    public void LooksLikeBackup_판별()
+    {
+        Assert.True(BackupArchive.LooksLikeBackup(new[] { "data/settings.json", "readme.txt" }));
+        Assert.True(BackupArchive.LooksLikeBackup(new[] { "workspace/성적.xlsx" }));
+        Assert.False(BackupArchive.LooksLikeBackup(new[] { "foo.txt", "bar/baz.json" }));
+    }
+
     [Fact]
     public void 담을_파일이_하나도_없으면_실패()
     {

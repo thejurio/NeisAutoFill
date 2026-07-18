@@ -37,6 +37,36 @@ public partial class SettingsWindow : Window
                 "백업 실패", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
+    private void Restore_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "복원할 백업 파일 선택",
+            Filter = "백업 파일 (*.zip)|*.zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        var confirm = MessageBox.Show(
+            "선택한 백업으로 되돌립니다.\n" +
+            "현재의 명단·평가계획·성적·서술문·설정이 백업 내용으로 덮어써집니다.\n" +
+            "이 작업은 되돌릴 수 없습니다.\n\n" +
+            "복원 후 프로그램이 자동으로 재시작됩니다. 계속할까요?",
+            "백업에서 복원", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK) return;
+
+        var (ok, error, count) = WorkspaceBackup.Restore(dlg.FileName);
+        if (!ok)
+        {
+            MessageBox.Show($"복원하지 못했습니다: {error}", "복원 실패",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        MessageBox.Show($"{count}개 파일을 복원했습니다.\n프로그램을 재시작합니다.",
+            "복원 완료", MessageBoxButton.OK, MessageBoxImage.Information);
+        AppReset.RestartApp();
+    }
+
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
         var confirm = MessageBox.Show(
