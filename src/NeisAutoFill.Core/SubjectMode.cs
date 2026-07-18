@@ -44,6 +44,24 @@ public static class SubjectModePaths
     public static string PlanFile(string workspaceRoot, int grade) =>
         System.IO.Path.Combine(workspaceRoot, RootFolder, "평가계획", $"{grade}학년.xlsx");
 
+    /// <summary>명단 파일명("3-1")을 ClassRef 로 파싱. 형식이 아니면 null (RosterFile 과 왕복).</summary>
+    public static ClassRef? ParseRosterName(string fileNameNoExt)
+    {
+        if (string.IsNullOrEmpty(fileNameNoExt)) return null;
+        var dash = fileNameNoExt.IndexOf('-');
+        if (dash <= 0 || dash == fileNameNoExt.Length - 1) return null;
+        if (int.TryParse(fileNameNoExt[..dash], out var g) && IsValidGrade(g))
+            return new ClassRef(g, fileNameNoExt[(dash + 1)..]);
+        return null;
+    }
+
+    /// <summary>계획 파일명("3학년")을 학년으로 파싱. 형식이 아니면 null (PlanFile 과 왕복).</summary>
+    public static int? ParsePlanName(string fileNameNoExt)
+    {
+        var digits = fileNameNoExt.Replace("학년", "");
+        return int.TryParse(digits, out var g) && IsValidGrade(g) ? g : null;
+    }
+
     /// <summary>작업(성적·서술문) 폴더. 예: {ws}\전담\작업\3-1_영어</summary>
     public static string UnitDir(string workspaceRoot, TeachingUnit u) =>
         System.IO.Path.Combine(workspaceRoot, RootFolder, "작업", $"{u.Grade}-{u.Class}_{u.Subject}");

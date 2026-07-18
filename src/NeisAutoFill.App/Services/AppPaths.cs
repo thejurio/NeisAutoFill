@@ -38,4 +38,11 @@ public static class AppPaths
         Directory.CreateDirectory(Workspace);
         return Workspace;
     }
+
+    /// <summary>문서\NeisAutoFill 최상위 루트 (프로필·전담 폴더의 부모). 전담 명단·계획은 이 아래 전담\ 에 둔다.</summary>
+    public static string EnsureWorkspaceRoot()
+    {
+        Directory.CreateDirectory(WorkspaceRoot);
+        return WorkspaceRoot;
+    }
 }

@@ -43,6 +43,44 @@ public class SubjectModeTests
         Assert.Equal(@"C:\ws\전담\작업\3-1_영어\서술문.xlsx", SubjectModePaths.UnitNarrativeFile(@"C:\ws", u));
     }
 
+    [Theory]
+    [InlineData("3-1", 3, "1")]
+    [InlineData("4-2", 4, "2")]
+    [InlineData("3", null, null)]      // 대시 없음
+    [InlineData("9-1", null, null)]   // 학년 범위 밖
+    [InlineData("3-", null, null)]    // 반 없음
+    public void 명단_파일명_파싱_왕복(string name, int? grade, string? cls)
+    {
+        var c = SubjectModePaths.ParseRosterName(name);
+        if (grade is null) Assert.Null(c);
+        else { Assert.NotNull(c); Assert.Equal(new ClassRef(grade.Value, cls!), c!.Value); }
+    }
+
+    [Fact]
+    public void 명단_생성명과_파싱이_왕복()
+    {
+        var c = new ClassRef(3, "1");
+        var fname = System.IO.Path.GetFileNameWithoutExtension(SubjectModePaths.RosterFile(@"C:\ws", c));
+        Assert.Equal(c, SubjectModePaths.ParseRosterName(fname));
+    }
+
+    [Theory]
+    [InlineData("3학년", 3)]
+    [InlineData("5학년", 5)]
+    [InlineData("9학년", null)]
+    [InlineData("영어", null)]
+    public void 계획_파일명_파싱(string name, int? grade)
+    {
+        Assert.Equal(grade, SubjectModePaths.ParsePlanName(name));
+    }
+
+    [Fact]
+    public void 계획_생성명과_파싱이_왕복()
+    {
+        var fname = System.IO.Path.GetFileNameWithoutExtension(SubjectModePaths.PlanFile(@"C:\ws", 4));
+        Assert.Equal(4, SubjectModePaths.ParsePlanName(fname));
+    }
+
     [Fact]
     public void 담임_전담_경로는_섞이지_않는다()
     {
