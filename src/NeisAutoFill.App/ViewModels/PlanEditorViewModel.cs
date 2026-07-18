@@ -58,6 +58,23 @@ public sealed class PlanEditorViewModel : ObservableObject
     public ObservableCollection<RosterRow> Roster { get; } = new();
     public ObservableCollection<PlanSubjectEdit> Subjects { get; } = new();
 
+    /// <summary>인식 검수 경고 (오인식·누락 의심 지점). 가져오기 후 채워진다.</summary>
+    public ObservableCollection<PlanWarningVm> RecognitionWarnings { get; } = new();
+    public bool HasWarnings => RecognitionWarnings.Count > 0;
+
+    private void SetWarnings(IReadOnlyList<SubjectPlan> plans)
+    {
+        RecognitionWarnings.Clear();
+        foreach (var w in PlanAudit.Analyze(plans, _scale.Levels.Select(l => l.Label).ToList()))
+        {
+            var where = w.Domain is null ? w.Subject : $"{w.Subject} · {w.Domain}";
+            var icon = w.Level == PlanWarningLevel.Warn ? "⚠" : "ℹ";
+            RecognitionWarnings.Add(new PlanWarningVm(
+                $"{icon} {where}: {w.Message}", w.Level == PlanWarningLevel.Warn));
+        }
+        OnPropertyChanged(nameof(HasWarnings));
+    }
+
     public ICommand ClearRosterCommand { get; }
     public ICommand ClearAllPlansCommand { get; }
 
@@ -187,7 +204,12 @@ public sealed class PlanEditorViewModel : ObservableObject
             Subjects.Clear();
             foreach (var p in plans) Subjects.Add(new PlanSubjectEdit(p, _scale));
             SelectedSubject = Subjects.FirstOrDefault();
-            ImportStatus = $"✔ {plans.Count}개 과목 인식 완료 — 내용을 확인·수정한 뒤 [저장 후 적용]을 누르세요.";
+
+            SetWarnings(plans);
+            var warnN = RecognitionWarnings.Count(w => w.IsWarn);
+            ImportStatus = warnN > 0
+                ? $"✔ {plans.Count}개 과목 인식 · ⚠ 확인 필요 {warnN}건 — 아래 목록의 과목을 표에서 확인하세요."
+                : $"✔ {plans.Count}개 과목 인식 완료 — 내용을 확인·수정한 뒤 [저장 후 적용]을 누르세요.";
         }
         catch (Exception ex)
         {
@@ -265,6 +287,9 @@ public sealed class PlanEditorViewModel : ObservableObject
         return (plans, roster);
     }
 }
+
+/// <summary>인식 검수 경고 한 줄 (표시용). IsWarn=true 는 ⚠(누락), false 는 ℹ(참고).</summary>
+public sealed record PlanWarningVm(string Text, bool IsWarn);
 
 /// <summary>명단 한 줄 (편집용).</summary>
 public sealed class RosterRow : ObservableObject

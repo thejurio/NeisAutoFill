@@ -98,6 +98,35 @@
                     <TextBlock DockPanel.Dock="Top" Text="{Binding ImportStatus}" FontSize="11.5" FontWeight="SemiBold"
                                Foreground="{StaticResource Neis}" TextWrapping="Wrap" Margin="0,0,0,8"
                                Visibility="{Binding ImportStatus, Converter={StaticResource StringToVis}}"/>
+                    <!-- 인식 검수 경고 — 오인식·누락 의심 지점을 표에서 확인하도록 안내 -->
+                    <Border DockPanel.Dock="Top" Margin="0,0,0,8" Padding="10,8" CornerRadius="8"
+                            Background="#FFF7ED" BorderBrush="#FDBA74" BorderThickness="1"
+                            Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="🔎 인식 검수 — 아래 항목을 표에서 확인하세요"
+                                       FontWeight="SemiBold" FontSize="11.5" Foreground="#9A3412" Margin="0,0,0,4"/>
+                            <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding RecognitionWarnings}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Text}" FontSize="11.5" TextWrapping="Wrap" Margin="0,1">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#6B7280"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsWarn}" Value="True">
+                                                                <Setter Property="Foreground" Value="#B45309"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </DockPanel>
+                    </Border>
                     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
                         <Button Style="{StaticResource GhostButton}" Content="＋ 영역 행" Click="AddPlanRow_Click" Margin="0,0,4,0"/>
                         <Button Style="{StaticResource GhostButton}" Content="－ 선택 행 삭제" Click="RemovePlanRow_Click"/>
