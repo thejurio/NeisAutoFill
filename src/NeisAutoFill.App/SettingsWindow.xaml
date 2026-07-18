@@ -35,42 +35,65 @@
 
                 <!-- ═══ 일반 ═══ -->
                 <TabItem Header="일반">
-                    <DockPanel Margin="10,12">
+                    <DockPanel Margin="14,14">
                         <TextBlock DockPanel.Dock="Bottom" Text="{Binding VersionInfo}" FontSize="11"
-                                   Foreground="#B8C2CE" Margin="0,0,0,2"/>
-                        <StackPanel MaxWidth="640" HorizontalAlignment="Left" VerticalAlignment="Top">
-                            <TextBlock Text="나이스 접속" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
-                            <DockPanel Margin="0,6,0,2">
-                                <TextBlock Text="교육청 (지역)" Width="110" VerticalAlignment="Center" FontSize="12"/>
-                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Regions}" SelectedItem="{Binding SelectedRegion}"
-                                          DisplayMemberPath="Name" Width="170" HorizontalAlignment="Left"/>
-                            </DockPanel>
+                                   Foreground="#B8C2CE" Margin="0,10,0,0"/>
+                        <Grid VerticalAlignment="Top">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="32"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                            <TextBlock Text="자동클릭 속도" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,18,0,4"/>
-                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,6"
-                                       Text="'빠름'이 검증된 기본 속도입니다. 나이스 반응이 느린 PC에서 입력이 자주 실패하면 낮춰 보세요."/>
-                            <StackPanel Orientation="Horizontal">
-                                <RadioButton Content="빠름 (기본)" IsChecked="{Binding SpeedFast}" FontSize="12" Margin="0,0,16,0"/>
-                                <RadioButton Content="보통" IsChecked="{Binding SpeedNormal}" FontSize="12" Margin="0,0,16,0"/>
-                                <RadioButton Content="느림" IsChecked="{Binding SpeedSlow}" FontSize="12"/>
+                            <!-- 왼쪽: 접속 · 속도 · 글자 크기 -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="나이스 접속" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+                                <DockPanel Margin="0,6,0,0">
+                                    <TextBlock Text="교육청" Width="52" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Sub}"/>
+                                    <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Regions}" SelectedItem="{Binding SelectedRegion}"
+                                              DisplayMemberPath="Name" HorizontalAlignment="Left" MinWidth="150"/>
+                                </DockPanel>
+
+                                <TextBlock Text="자동클릭 속도" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,20,0,4"
+                                           ToolTip="'빠름'이 기본. 나이스 반응이 느린 PC에서 입력이 자주 실패하면 낮춰 보세요."/>
+                                <StackPanel Orientation="Horizontal"
+                                            ToolTip="'빠름'이 기본. 나이스 반응이 느린 PC에서 입력이 자주 실패하면 낮춰 보세요.">
+                                    <RadioButton Content="빠름" IsChecked="{Binding SpeedFast}" FontSize="12" Margin="0,0,14,0"/>
+                                    <RadioButton Content="보통" IsChecked="{Binding SpeedNormal}" FontSize="12" Margin="0,0,14,0"/>
+                                    <RadioButton Content="느림" IsChecked="{Binding SpeedSlow}" FontSize="12"/>
+                                </StackPanel>
+
+                                <TextBlock Text="화면 글자 크기" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,20,0,4"
+                                           ToolTip="글씨가 작게 느껴질 때 키우세요. 저장 즉시 적용(창 크기는 다음 실행 때 완전 반영)."/>
+                                <StackPanel Orientation="Horizontal"
+                                            ToolTip="글씨가 작게 느껴질 때 키우세요. 저장 즉시 적용(창 크기는 다음 실행 때 완전 반영).">
+                                    <RadioButton Content="보통" IsChecked="{Binding ScaleNormal}" FontSize="12" Margin="0,0,14,0"/>
+                                    <RadioButton Content="크게" IsChecked="{Binding ScaleMedium}" FontSize="12" Margin="0,0,14,0"/>
+                                    <RadioButton Content="더 크게" IsChecked="{Binding ScaleLarge}" FontSize="12"/>
+                                </StackPanel>
                             </StackPanel>
 
-                            <TextBlock Text="백업 · 복원" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,24,0,4"/>
-                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                       Text="명단·평가계획·성적·서술문과 설정을 하나의 zip 파일로 저장하고, 나중에 그 파일로 되돌립니다. PC 교체·재설치·실수 삭제에 대비하세요."/>
-                            <StackPanel Orientation="Horizontal">
-                                <Button Style="{StaticResource GhostButton}" Content="💾 작업공간 백업" Click="Backup_Click"
-                                        HorizontalAlignment="Left" Margin="0,0,6,0"/>
-                                <Button Style="{StaticResource GhostButton}" Content="📥 백업에서 복원" Click="Restore_Click"
-                                        HorizontalAlignment="Left"/>
-                            </StackPanel>
+                            <!-- 오른쪽: 백업 · 초기화 -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="백업 · 복원" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+                                <TextBlock Text="자료·설정을 zip 하나로 저장하고 되돌립니다." FontSize="11.5"
+                                           Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,4,0,6"
+                                           ToolTip="명단·평가계획·성적·서술문과 설정을 하나의 zip 파일로 저장/복원 — PC 교체·재설치·실수 삭제 대비"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Style="{StaticResource GhostButton}" Content="💾 백업" Click="Backup_Click"
+                                            HorizontalAlignment="Left" Margin="0,0,6,0"/>
+                                    <Button Style="{StaticResource GhostButton}" Content="📥 복원" Click="Restore_Click"
+                                            HorizontalAlignment="Left"/>
+                                </StackPanel>
 
-                            <TextBlock Text="초기화" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,24,0,4"/>
-                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                       Text="설정·명단·성적·서술문을 모두 지우고 처음 실행한 상태로 되돌립니다. 되돌릴 수 없으니 필요한 자료는 미리 [작업공간 백업] 해 두세요."/>
-                            <Button Style="{StaticResource GhostButton}" Content="🗑 처음 상태로 초기화" Click="Reset_Click"
-                                    HorizontalAlignment="Left" Foreground="#B91C1C"/>
-                        </StackPanel>
+                                <TextBlock Text="초기화" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,20,0,4"/>
+                                <TextBlock Text="처음 실행 상태로 되돌립니다. 되돌릴 수 없어요." FontSize="11.5"
+                                           Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                           ToolTip="설정·명단·성적·서술문을 모두 지웁니다. 미리 [백업] 해 두세요."/>
+                                <Button Style="{StaticResource GhostButton}" Content="🗑 처음 상태로 초기화" Click="Reset_Click"
+                                        HorizontalAlignment="Left" Foreground="#B91C1C"/>
+                            </StackPanel>
+                        </Grid>
                     </DockPanel>
                 </TabItem>
 

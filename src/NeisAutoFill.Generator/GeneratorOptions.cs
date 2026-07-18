@@ -43,4 +43,7 @@ public sealed record GeneratorOptions
 
     /// <summary>서술문 품질 점검(바이트 표시·복붙 의심 경고) 표시 여부. 기본 켜짐.</summary>
     public bool ShowNarrativeQuality { get; init; } = true;
+
+    /// <summary>화면 표시 배율 (글꼴·요소 크기). 1.0=보통, 1.15=크게, 1.3=더 크게. 0.8~2.0 로 제한.</summary>
+    public double UiScale { get; init; } = 1.0;
 }

@@ -44,7 +44,14 @@ public partial class App : Application
 
         var provider = services.BuildServiceProvider();
         provider.GetRequiredService<NarrativeMirror>();   // store 변경 구독 시작 (서술문.xlsx 자동 미러)
-        Automation.Timings.SetSpeed(provider.GetRequiredService<GeneratorSettingsStore>().Options.ClickSpeed);
+        var settings = provider.GetRequiredService<GeneratorSettingsStore>();
+        Automation.Timings.SetSpeed(settings.Options.ClickSpeed);
+
+        // 화면 표시 배율 — 모든 창이 열릴 때 자동 적용 (한 곳에서 전역 처리)
+        UiScaler.Scale = settings.Options.UiScale;
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
+            new RoutedEventHandler((s, _) => { if (s is Window w) UiScaler.Apply(w); }));
+
         provider.GetRequiredService<MainWindow>().Show();
 
         // 자동업데이트 확인 (백그라운드 — 설정에 UpdateRepo 가 있을 때만 동작)

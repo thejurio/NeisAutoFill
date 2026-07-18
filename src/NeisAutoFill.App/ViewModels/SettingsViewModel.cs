@@ -24,6 +24,9 @@ public sealed class SettingsViewModel : ObservableObject
         _maxDomains = o.MaxDomains.ToString();
         _tonePrompt = o.TonePrompt;
         _showQuality = o.ShowNarrativeQuality;
+        _scaleLarge = o.UiScale >= 1.25;
+        _scaleMedium = o.UiScale >= 1.1 && o.UiScale < 1.25;
+        _scaleNormal = o.UiScale < 1.1;
         _selectedRegion = NeisRegions.Find(o.NeisRegionCode);
         _speedFast = o.ClickSpeed is not ("normal" or "slow");
         _speedNormal = o.ClickSpeed == "normal";
@@ -46,6 +49,12 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _showQuality;
     /// <summary>서술문 품질 점검(바이트 표시·복붙 의심 경고) 표시 여부.</summary>
     public bool ShowNarrativeQuality { get => _showQuality; set => SetProperty(ref _showQuality, value); }
+
+    // 화면 표시 배율 (보통 1.0 / 크게 1.15 / 더 크게 1.3)
+    private bool _scaleNormal, _scaleMedium, _scaleLarge;
+    public bool ScaleNormal { get => _scaleNormal; set => SetProperty(ref _scaleNormal, value); }
+    public bool ScaleMedium { get => _scaleMedium; set => SetProperty(ref _scaleMedium, value); }
+    public bool ScaleLarge { get => _scaleLarge; set => SetProperty(ref _scaleLarge, value); }
 
     // ── 일반 ──────────────────────────────
     public IReadOnlyList<NeisRegion> Regions => NeisRegions.All;
@@ -83,6 +92,7 @@ public sealed class SettingsViewModel : ObservableObject
         if (!TryNonNegative(MaxDomains, out var domains)) return "최대 영역 수는 0 이상의 숫자여야 합니다 (0 = 전체).";
 
         var speed = SpeedSlow ? "slow" : SpeedNormal ? "normal" : "fast";
+        var scale = ScaleLarge ? 1.3 : ScaleMedium ? 1.15 : 1.0;
         _settings.Options = _settings.Options with
         {
             TargetChars = chars,
@@ -91,9 +101,12 @@ public sealed class SettingsViewModel : ObservableObject
             ShowNarrativeQuality = ShowNarrativeQuality,
             NeisRegionCode = SelectedRegion.Code,
             ClickSpeed = speed,
+            UiScale = scale,
         };
         _settings.Save();
         Automation.Timings.SetSpeed(speed);
+        Services.UiScaler.Scale = scale;
+        Services.UiScaler.ApplyToAll();   // 열린 창에 즉시 반영(크기 완전 반영은 재시작)
         return null;
     }
 
