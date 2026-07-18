@@ -20,14 +20,24 @@ public sealed class PlanEditorViewModel : ObservableObject
 
     private readonly Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>? _importer;
 
+    // ── 전담 모드 (F9 M4a) — null 이면 담임(기존 동작) ──
+    private readonly Services.SubjectModeStore? _subjectStore;
+    private NeisAutoFill.Core.ClassRef? _currentClass;   // 현재 편집 중인 반 (명단)
+    private int _currentGrade;                            // 현재 편집 중인 학년 (계획)
+
+    /// <summary>전담 모드인가 (학년·반 콤보 표시).</summary>
+    public bool IsSubjectMode => _subjectStore is not null;
+
     public PlanEditorViewModel(
         IReadOnlyList<SubjectPlan> plans,
         IReadOnlyList<(string No, string Name)> roster,
         GradeScale scale,
-        Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>? importer = null)
+        Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>? importer = null,
+        Services.SubjectModeStore? subjectStore = null)
     {
         _scale = scale;
         _importer = importer;
+        _subjectStore = subjectStore;
 
         // 커맨드를 먼저 만든다 — SelectedSubject setter 가 커맨드를 참조하므로 데이터 채우기보다 앞서야 함
         ImportPlanCommand = new AsyncRelayCommand(ImportPlanAsync, () => !IsImporting);
@@ -47,16 +57,127 @@ public sealed class PlanEditorViewModel : ObservableObject
                 foreach (RosterRow row in e.OldItems) row.PropertyChanged -= RosterRow_PropertyChanged;
         };
 
-        foreach (var (no, name) in roster) Roster.Add(new RosterRow { No = no, Name = name });
-        // 빈 명단은 빈 셀 행으로 채워 바로 입력·붙여넣기 가능하게 (저장 시 빈 행은 걸러짐)
-        while (Roster.Count < EmptyRosterRows) Roster.Add(new RosterRow());
-
-        foreach (var p in plans) Subjects.Add(new PlanSubjectEdit(p, scale));
-        SelectedSubject = Subjects.FirstOrDefault();
+        if (_subjectStore is null)
+        {
+            // 담임: 넘겨받은 명단·계획 그대로
+            foreach (var (no, name) in roster) Roster.Add(new RosterRow { No = no, Name = name });
+            while (Roster.Count < EmptyRosterRows) Roster.Add(new RosterRow());
+            foreach (var p in plans) Subjects.Add(new PlanSubjectEdit(p, scale));
+            SelectedSubject = Subjects.FirstOrDefault();
+        }
+        else
+        {
+            // 전담: 등록된 반·학년으로 콤보 채우고 첫 항목 로드
+            AddClassCommand = new RelayCommand(AddClass);
+            AddGradeCommand = new RelayCommand(AddGrade);
+            foreach (var c in _subjectStore.ListClasses()) ClassOptions.Add(c);
+            foreach (var g in _subjectStore.ListGrades()) GradeOptions.Add(g);
+            _selectedClassRef = ClassOptions.FirstOrDefault();
+            _selectedGrade = GradeOptions.FirstOrDefault();
+            LoadCurrentClass();   // 명단
+            LoadCurrentGrade();   // 계획
+        }
     }
 
     public ObservableCollection<RosterRow> Roster { get; } = new();
     public ObservableCollection<PlanSubjectEdit> Subjects { get; } = new();
+
+    // ── 전담: 학년·반 축 ──────────────────
+    public ObservableCollection<NeisAutoFill.Core.ClassRef> ClassOptions { get; } = new();
+    public ObservableCollection<int> GradeOptions { get; } = new();
+
+    private NeisAutoFill.Core.ClassRef? _selectedClassRef;
+    /// <summary>현재 편집 중인 반. 바꾸면 그 반 명단을 저장하고 새 반을 로드.</summary>
+    public NeisAutoFill.Core.ClassRef? SelectedClassRef
+    {
+        get => _selectedClassRef;
+        set
+        {
+            if (_selectedClassRef.Equals(value)) return;
+            SaveCurrentClass();                     // 떠나기 전 저장
+            _selectedClassRef = value;
+            OnPropertyChanged();
+            LoadCurrentClass();
+        }
+    }
+
+    private int _selectedGrade;
+    /// <summary>현재 편집 중인 학년(계획). 바꾸면 그 학년 계획을 저장하고 새 학년을 로드.</summary>
+    public int SelectedGrade
+    {
+        get => _selectedGrade;
+        set
+        {
+            if (_selectedGrade == value) return;
+            SaveCurrentGrade();
+            _selectedGrade = value;
+            OnPropertyChanged();
+            LoadCurrentGrade();
+        }
+    }
+
+    public ICommand AddClassCommand { get; private set; } = null!;
+    public ICommand AddGradeCommand { get; private set; } = null!;
+
+    private void AddClass()
+    {
+        var vm = new AddClassDialogViewModel();
+        var win = new AddClassDialog(vm) { Owner = System.Windows.Application.Current.Windows.OfType<PlanEditorWindow>().FirstOrDefault() };
+        if (win.ShowDialog() != true) return;
+        var c = new NeisAutoFill.Core.ClassRef(vm.Grade, vm.ClassName.Trim());
+        if (!ClassOptions.Contains(c)) { ClassOptions.Add(c); }
+        SelectedClassRef = c;
+        // 학년 계획도 없으면 자동 생성 선택지에 추가
+        if (!GradeOptions.Contains(c.Grade)) GradeOptions.Add(c.Grade);
+    }
+
+    private void AddGrade()
+    {
+        var vm = new AddClassDialogViewModel { ClassVisible = false };
+        var win = new AddClassDialog(vm) { Owner = System.Windows.Application.Current.Windows.OfType<PlanEditorWindow>().FirstOrDefault() };
+        if (win.ShowDialog() != true) return;
+        if (!GradeOptions.Contains(vm.Grade)) GradeOptions.Add(vm.Grade);
+        SelectedGrade = vm.Grade;
+    }
+
+    private void LoadCurrentClass()
+    {
+        Roster.Clear();
+        if (_subjectStore is not null && _selectedClassRef is { } c)
+            foreach (var (no, name) in _subjectStore.LoadRoster(c))
+                Roster.Add(new RosterRow { No = no, Name = name });
+        while (Roster.Count < EmptyRosterRows) Roster.Add(new RosterRow());
+    }
+
+    private void SaveCurrentClass()
+    {
+        if (_subjectStore is null || _selectedClassRef is not { } c) return;
+        var roster = Roster.Where(r => !string.IsNullOrWhiteSpace(r.Name))
+            .Select((r, i) => (string.IsNullOrWhiteSpace(r.No) ? (i + 1).ToString() : r.No.Trim(), r.Name.Trim()))
+            .ToList();
+        _subjectStore.SaveRoster(c, roster);
+    }
+
+    private void LoadCurrentGrade()
+    {
+        Subjects.Clear();
+        if (_subjectStore is not null && _selectedGrade > 0)
+            foreach (var p in _subjectStore.LoadPlan(_selectedGrade))
+                Subjects.Add(new PlanSubjectEdit(p, _scale));
+        SelectedSubject = Subjects.FirstOrDefault();
+    }
+
+    private void SaveCurrentGrade()
+    {
+        if (_subjectStore is null || _selectedGrade <= 0) return;
+        var plans = new List<SubjectPlan>();
+        foreach (var s in Subjects)
+            if (s.BuildPlan(out _) is { Domains.Count: > 0 } plan) plans.Add(plan);
+        _subjectStore.SavePlan(_selectedGrade, plans);
+    }
+
+    /// <summary>전담: 현재 반·학년을 모두 저장 (창 닫기 전 호출).</summary>
+    public void SaveSubjectMode() { SaveCurrentClass(); SaveCurrentGrade(); }
 
     /// <summary>인식 검수 경고 (오인식·누락 의심 지점). 가져오기 후 채워진다.</summary>
     public ObservableCollection<PlanWarningVm> RecognitionWarnings { get; } = new();

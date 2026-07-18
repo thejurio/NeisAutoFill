@@ -41,6 +41,16 @@
                 <!-- ===== 좌: 학생 명단 ===== -->
                 <DockPanel Grid.Column="0">
                     <TextBlock DockPanel.Dock="Top" Text="학생 명단" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}" Margin="0,0,0,6"/>
+                    <!-- 전담: 반 선택·추가 (반 바꾸면 그 반 명단 로드/저장) -->
+                    <Border DockPanel.Dock="Top" Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="8,6" Margin="0,0,0,8"
+                            Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="＋ 학년·반" Command="{Binding AddClassCommand}" Padding="8,3" FontSize="11"/>
+                            <TextBlock DockPanel.Dock="Left" Text="반" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,6,0"/>
+                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding ClassOptions}" SelectedItem="{Binding SelectedClassRef}"
+                                      MinWidth="90" HorizontalAlignment="Left"/>
+                        </DockPanel>
+                    </Border>
                     <TextBlock DockPanel.Dock="Top" FontSize="11" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,8"
                                Text="엑셀에서 번호·이름 열을 복사한 뒤 [붙여넣기]를 누르면 명단 전체가 한 번에 입력됩니다."/>
                     <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" LastChildFill="False">
@@ -84,6 +94,12 @@
                             </Button>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
+                            <!-- 전담: 학년 선택·추가 (학년 바꾸면 그 학년 계획 로드/저장. 여러 반이 공유) -->
+                            <StackPanel Orientation="Horizontal" Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="학년" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,6,0"/>
+                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding GradeOptions}" SelectedItem="{Binding SelectedGrade}" MinWidth="70" Margin="0,0,4,0"/>
+                                <Button Style="{StaticResource GhostButton}" Content="＋" Command="{Binding AddGradeCommand}" Padding="7,3" FontSize="11" Margin="0,0,10,0" ToolTip="학년 추가"/>
+                            </StackPanel>
                             <TextBlock Text="과목" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Sub}" Margin="0,0,6,0"/>
                             <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
                                       DisplayMemberPath="Name" MinWidth="130" Margin="0,0,10,0"/>

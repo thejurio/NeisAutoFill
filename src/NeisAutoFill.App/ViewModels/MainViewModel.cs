@@ -241,14 +241,30 @@ public sealed class MainViewModel : ObservableObject
 
     private void OpenPlanEditor(string? importPath = null)
     {
-        // 평가계획서에 명단이 없으면 열려 있는 성적파일의 학생 명단을 재사용
+        var importer = (Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>)
+            (async (path, progress) => await new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
+                .ImportAsync(path, _scales.Active, progress));
+
+        // 전담: 자료 준비가 반별 명단·학년별 계획을 직접 저장(SubjectModeStore) — 담임 워크스페이스 저장 안 탐
+        if (_profiles.IsSubjectMode)
+        {
+            var store = new SubjectModeStore(_scales.Active);
+            var svm = new PlanEditorViewModel(Array.Empty<SubjectPlan>(), Array.Empty<(string, string)>(),
+                _scales.Active, importer, store);
+            var swin = new PlanEditorWindow(svm) { Owner = Application.Current.MainWindow };
+            if (importPath is not null) swin.Loaded += async (_, _) => await svm.ImportPlanFileAsync(importPath);
+            swin.ShowDialog();
+            svm.SaveSubjectMode();   // 현재 반·학년 저장 (전환 시마다 이미 저장되지만 마지막 것도)
+            Log("전담 명단·평가계획 저장 완료");
+            return;
+        }
+
+        // 담임(기존): 명단 없으면 열린 성적파일 명단 재사용
         var roster = _workspace.Roster;
         if (roster.Count == 0 && Subjects.Count > 0)
             roster = Subjects[0].Snapshot().Students.Select(s => (s.No, s.Name)).ToList();
 
-        var vm = new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active,
-            importer: async (path, progress) => await new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
-                .ImportAsync(path, _scales.Active, progress));
+        var vm = new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active, importer);
         var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
         if (importPath is not null)
             win.Loaded += async (_, _) => await vm.ImportPlanFileAsync(importPath);

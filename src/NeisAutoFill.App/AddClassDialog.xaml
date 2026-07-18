@@ -1,0 +1,35 @@
+<Window x:Class="NeisAutoFill.App.AddClassDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="{Binding Title}" Height="170" Width="440" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" WindowStyle="None"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display" FontFamily="{StaticResource UiFont}">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="0" CornerRadius="0" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+    <Border BorderBrush="#CBD5E1" BorderThickness="1" Background="White">
+        <DockPanel>
+            <Border DockPanel.Dock="Top" Height="36" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" Margin="14,0" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+            </Border>
+            <Border DockPanel.Dock="Bottom" Padding="14,10">
+                <DockPanel LastChildFill="False">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="취소" Click="Cancel_Click" Padding="16,6"/>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="추가" Click="Ok_Click" Padding="16,6" Margin="0,0,6,0"/>
+                </DockPanel>
+            </Border>
+            <StackPanel Orientation="Horizontal" Margin="16,0" VerticalAlignment="Center">
+                <TextBlock Text="학년" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0"/>
+                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding GradeOptions}" SelectedItem="{Binding Grade}"
+                          Width="80" VerticalAlignment="Center" Margin="0,0,18,0"/>
+                <TextBlock Text="반" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0"
+                           Visibility="{Binding ClassVisible, Converter={StaticResource BoolToVis}}"/>
+                <TextBox Text="{Binding ClassName, UpdateSourceTrigger=PropertyChanged}"
+                         Width="80" Height="32" Padding="8,0" VerticalContentAlignment="Center" FontSize="12"
+                         VerticalAlignment="Center"
+                         Visibility="{Binding ClassVisible, Converter={StaticResource BoolToVis}}"/>
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</Window>
