@@ -46,6 +46,8 @@
                             Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}">
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="＋ 학년·반" Command="{Binding AddClassCommand}" Padding="8,3" FontSize="11"/>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource DangerGhostButton}" Content="제거" Command="{Binding RemoveClassCommand}" Padding="8,3" FontSize="11" Margin="0,0,4,0"
+                                    ToolTip="선택한 반을 목록에서 지웁니다 (파일은 남습니다)"/>
                             <TextBlock DockPanel.Dock="Left" Text="반" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,6,0"/>
                             <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding ClassOptions}" SelectedItem="{Binding SelectedClassRef}"
                                       MinWidth="90" HorizontalAlignment="Left"/>
@@ -80,7 +82,7 @@
                 <DockPanel Grid.Column="2">
                     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <Button Style="{StaticResource AccentGhostButton}" Content="📄 평가계획 불러오기" Command="{Binding ImportPlanCommand}"
+                            <Button Style="{StaticResource AccentGhostButton}" Content="📄 평가계획" Command="{Binding ImportPlanCommand}"
                                     ToolTip="이지에듀·스쿨마스터 등 평가계획서(PDF/HWP/HWPX)를 넣으면 AI가 인식해 표에 채웁니다"
                                     Margin="0,0,10,0"/>
                             <Button Style="{StaticResource GhostButton}" Content="＋ 과목" Command="{Binding AddSubjectCommand}" Margin="0,0,4,0"/>
@@ -94,17 +96,17 @@
                             </Button>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
-                            <!-- 전담: 학년 선택·추가 (학년 바꾸면 그 학년 계획 로드/저장. 여러 반이 공유) -->
+                            <!-- 전담: 학년 선택 (반과 함께 자동 추가됨. 학년 바꾸면 그 학년 계획 로드/저장. 여러 반이 공유) -->
                             <StackPanel Orientation="Horizontal" Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="학년" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,6,0"/>
-                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding GradeOptions}" SelectedItem="{Binding SelectedGrade}" MinWidth="70" Margin="0,0,4,0"/>
-                                <Button Style="{StaticResource GhostButton}" Content="＋" Command="{Binding AddGradeCommand}" Padding="7,3" FontSize="11" Margin="0,0,10,0" ToolTip="학년 추가"/>
+                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding GradeOptions}" SelectedItem="{Binding SelectedGrade}" MinWidth="70" Margin="0,0,10,0"
+                                          ToolTip="학년은 왼쪽 명단에서 반을 추가하면 자동으로 생깁니다"/>
                             </StackPanel>
                             <TextBlock Text="과목" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Sub}" Margin="0,0,6,0"/>
                             <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Subjects}" SelectedItem="{Binding SelectedSubject}"
-                                      DisplayMemberPath="Name" MinWidth="130" Margin="0,0,10,0"/>
+                                      DisplayMemberPath="Name" Width="100" Margin="0,0,10,0"/>
                             <TextBlock Text="과목명" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Sub}" Margin="0,0,6,0"/>
-                            <TextBox Text="{Binding SelectedSubject.Name, UpdateSourceTrigger=PropertyChanged}" Width="130" VerticalContentAlignment="Center"/>
+                            <TextBox Text="{Binding SelectedSubject.Name, UpdateSourceTrigger=PropertyChanged}" Width="100" MinWidth="90" VerticalContentAlignment="Center"/>
                         </StackPanel>
                     </DockPanel>
                     <TextBlock DockPanel.Dock="Top" FontSize="11" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,4">

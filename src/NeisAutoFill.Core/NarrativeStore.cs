@@ -13,13 +13,24 @@ public sealed class NarrativeStore
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
-    private readonly string _path;
+    private string _path;
     private readonly Dictionary<(string Subject, string No, string Name), string> _map = new();
 
     public NarrativeStore(string path)
     {
         _path = path;
         Load();
+    }
+
+    /// <summary>저장 경로를 바꾸고 그 파일 내용으로 재로드 (전담 조합 인플레이스 전환용, F9 M5).
+    /// 같은 경로면 아무 것도 안 함.</summary>
+    public void SwitchTo(string path)
+    {
+        if (_path == path) return;
+        _path = path;
+        _map.Clear();
+        Load();
+        Changed?.Invoke();
     }
 
     /// <summary>내용 변경 시 발생 (엑셀 미러 등 후처리용). store 는 UI 스레드에서만 접근한다.</summary>

@@ -84,7 +84,10 @@ public sealed class MainViewModel : ObservableObject
         _showCriteriaPanel = appState.State.ShowCriteriaPanel;
         _logExpanded = appState.State.LogExpanded;
 
-        RestoreLastFiles();           // 최근 사용 자료 자동 로드 (없으면 조용히 넘어감)
+        if (_profiles.IsSubjectMode)
+            InitSubjectAxis();        // 전담: 등록된 반 목록·첫 조합 로드
+        else
+            RestoreLastFiles();       // 담임: 최근 사용 자료 자동 로드 (없으면 조용히 넘어감)
         // 앱 시작부터 자동 연결·재연결 (이미 열린 브라우저도 자동 포착). 종료 시 함께 정리
         Application.Current.Exit += (_, _) => _connectLoopCts.Cancel();
         _ = AutoConnectLoopAsync(_connectLoopCts.Token);
@@ -305,6 +308,102 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public ObservableCollection<SubjectViewModel> Subjects { get; } = new();
+
+    // ── 전담: 메인 학년·반 축 (F9 M5) — 학년·반 분리, [이동]으로 명시 적용 ──
+    /// <summary>전담 모드인가 — 상단 학년·반 콤보 표시.</summary>
+    public bool IsSubjectMode => _profiles.IsSubjectMode;
+
+    private IReadOnlyList<NeisAutoFill.Core.ClassRef> _allClasses = Array.Empty<NeisAutoFill.Core.ClassRef>();
+
+    /// <summary>등록된 학년 목록.</summary>
+    public ObservableCollection<int> GradeChoices { get; } = new();
+    /// <summary>선택된 학년의 반 목록 (반 콤보). 학년 콤보를 바꾸면 갱신되지만 자료는 안 바뀐다.</summary>
+    public ObservableCollection<string> ClassChoices { get; } = new();
+
+    private int _pickGrade;
+    /// <summary>학년 콤보 선택값 — 바꾸면 반 목록만 갱신(자료 로드 안 함).</summary>
+    public int PickGrade
+    {
+        get => _pickGrade;
+        set { if (SetProperty(ref _pickGrade, value)) RefreshClassChoices(); }
+    }
+
+    private string? _pickClass;
+    /// <summary>반 콤보 선택값 — 선택만. [이동]을 눌러야 전환된다.</summary>
+    public string? PickClass { get => _pickClass; set => SetProperty(ref _pickClass, value); }
+
+    /// <summary>[이동] — 선택한 학년·반으로 성적표 전환.</summary>
+    public ICommand GoUnitCommand => _goUnit ??= new RelayCommand(GoUnit,
+        () => PickGrade > 0 && !string.IsNullOrEmpty(PickClass));
+    private ICommand? _goUnit;
+
+    private NeisAutoFill.Core.ClassRef? _currentClass;   // 실제로 로드된 반
+
+    private void RefreshClassChoices()
+    {
+        ClassChoices.Clear();
+        foreach (var c in _allClasses.Where(c => c.Grade == PickGrade)) ClassChoices.Add(c.Class);
+        PickClass = ClassChoices.FirstOrDefault();
+        (_goUnit as RelayCommand)?.RaiseCanExecuteChanged();
+    }
+
+    private void GoUnit()
+    {
+        if (PickGrade <= 0 || string.IsNullOrEmpty(PickClass)) return;
+        _currentClass = new NeisAutoFill.Core.ClassRef(PickGrade, PickClass!);
+        LoadUnitForCurrentAxis();
+    }
+
+    /// <summary>전담 모드 초기화 — 등록된 학년·반 목록을 채우고 첫 조합을 로드 (앱 시작 시).</summary>
+    private void InitSubjectAxis()
+    {
+        if (!IsSubjectMode) return;
+        var store = new SubjectModeStore(_scales.Active);
+        _allClasses = store.ListClasses();
+        foreach (var g in _allClasses.Select(c => c.Grade).Distinct().OrderBy(g => g)) GradeChoices.Add(g);
+        _pickGrade = GradeChoices.FirstOrDefault();
+        OnPropertyChanged(nameof(PickGrade));
+        RefreshClassChoices();
+        if (_pickGrade > 0 && PickClass is not null) GoUnit();   // 첫 조합 자동 로드 (시작 시엔 편함)
+    }
+
+    /// <summary>현재 (반) 축으로 성적표를 구성한다. 그 반 명단 + 해당 학년 계획의 모든 과목을 합쳐,
+    /// 과목마다 SubjectSheet 를 만들어 탭으로 표시. 성적·서술문은 조합별 경로에 저장.</summary>
+    private void LoadUnitForCurrentAxis()
+    {
+        if (!IsSubjectMode || _currentClass is not { } c) return;
+
+        // 편집 중이던 조합의 성적 저장 (있으면)
+        if (_currentUnitGradePath is not null && Subjects.Any(s => s.IsDirty))
+            _workspace.SaveGrades(Subjects.Select(s => s.Snapshot()).ToList(), _currentUnitGradePath);
+
+        var store = new SubjectModeStore(_scales.Active);
+        var roster = store.LoadRoster(c);
+        var plans = store.LoadPlan(c.Grade);   // 그 학년의 과목별 계획
+
+        // 조합별 저장 경로 지정 (성적·서술문). 대표 과목 조합으로 폴더 결정 — 반 단위 폴더 사용.
+        var wsRoot = AppPaths.EnsureWorkspaceRoot();
+        var unit0 = new NeisAutoFill.Core.TeachingUnit(c.Grade, c.Class, plans.FirstOrDefault()?.SubjectName ?? "과목");
+        _currentUnitGradePath = NeisAutoFill.Core.SubjectModePaths.UnitGradeFile(wsRoot, unit0);
+        var narrPath = NeisAutoFill.Core.ProfilePaths.DataFile(AppPaths.Root, $"{c.Grade}-{c.Class}", "narratives.json");
+        _narratives.SwitchTo(narrPath);
+
+        // 과목마다 성적표 구성 (기존 성적 있으면 이월)
+        IReadOnlyList<SubjectSheet>? existing = null;
+        if (File.Exists(_currentUnitGradePath))
+            try { existing = NeisAutoFill.Excel.WorkbookLoader.Load(_currentUnitGradePath); }
+            catch { /* 손상 시 새로 */ }
+        var sheets = plans.Select(p =>
+        {
+            var old = existing?.FirstOrDefault(s => s.SubjectName == p.SubjectName);
+            return NeisAutoFill.Core.SheetSynchronizer.BuildUnitSheet(p, roster, old);
+        }).ToList();
+
+        ReplaceSubjects(sheets, keepSelected: false);
+        Log($"전담 {c.Grade}-{c.Class} — {plans.Count}과목, 명단 {roster.Count}명");
+    }
+
+    private string? _currentUnitGradePath;
 
     private SubjectViewModel? _selectedSubject;
     public SubjectViewModel? SelectedSubject
@@ -600,12 +699,14 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>편집이 잦아들면 저장 대상 파일에 조용히 저장. 실패(파일 잠금 등)는 로그만 남기고 dirty 유지.</summary>
     private void AutoSaveGrades()
     {
-        if (_workspace.GradeFilePath is null || !Subjects.Any(s => s.IsDirty)) return;
-        var error = _workspace.SaveGrades(Subjects.Select(s => s.Snapshot()).ToList());
+        // 전담: 현재 조합의 성적 파일에 저장
+        var savePath = IsSubjectMode ? _currentUnitGradePath : _workspace.GradeFilePath;
+        if (savePath is null || !Subjects.Any(s => s.IsDirty)) return;
+        var error = _workspace.SaveGrades(Subjects.Select(s => s.Snapshot()).ToList(), savePath);
         if (error is null)
         {
             foreach (var s in Subjects) s.MarkSaved();
-            Log($"자동 저장됨: {Path.GetFileName(_workspace.GradeFilePath)}");
+            Log($"자동 저장됨: {Path.GetFileName(savePath)}");
         }
         else
             Log($"⚠ 자동 저장 실패 ({error}) — 파일이 엑셀에서 열려 있으면 닫아 주세요. 다음 편집·종료 때 다시 시도합니다.");

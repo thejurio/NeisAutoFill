@@ -76,6 +76,17 @@
                         </StackPanel>
                         <!-- 왼쪽 (U6): 작업 흐름 그룹 │ 파일 그룹 -->
                         <StackPanel Orientation="Horizontal">
+                            <!-- 전담: 학년·반 선택 후 [이동] (선택만으론 안 바뀜 — 원치 않는 전환 방지) -->
+                            <Border Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="8,3" Margin="0,0,8,0"
+                                    Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="학년" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,5,0"/>
+                                    <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding GradeChoices}" SelectedItem="{Binding PickGrade}" MinWidth="52" Margin="0,0,8,0"/>
+                                    <TextBlock Text="반" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,5,0"/>
+                                    <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding ClassChoices}" SelectedItem="{Binding PickClass}" MinWidth="52" Margin="0,0,6,0"/>
+                                    <Button Style="{StaticResource PrimaryButton}" Content="이동" Command="{Binding GoUnitCommand}" Padding="12,3"/>
+                                </StackPanel>
+                            </Border>
                             <Button Style="{StaticResource GhostButton}" Content="📁 자료 준비" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"
                                     ToolTip="학생 명단·평가계획을 입력합니다 (평가계획서 파일을 넣으면 AI가 자동 인식)"/>
                             <Button Style="{StaticResource AccentGhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}"

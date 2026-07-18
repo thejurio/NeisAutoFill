@@ -69,9 +69,13 @@ public sealed class PlanEditorViewModel : ObservableObject
         {
             // 전담: 등록된 반·학년으로 콤보 채우고 첫 항목 로드
             AddClassCommand = new RelayCommand(AddClass);
-            AddGradeCommand = new RelayCommand(AddGrade);
-            foreach (var c in _subjectStore.ListClasses()) ClassOptions.Add(c);
-            foreach (var g in _subjectStore.ListGrades()) GradeOptions.Add(g);
+            RemoveClassCommand = new RelayCommand(RemoveClass, () => SelectedClassRef is not null);
+            foreach (var c in _subjectStore.ListClasses().OrderBy(c => c.Grade).ThenBy(c => ClassNum(c.Class)))
+                ClassOptions.Add(c);
+            // ★ 학년 = 계획 파일 ∪ 반의 학년 — 빈 계획은 파일이 없어도 반이 있으면 학년이 유지된다
+            var grades = _subjectStore.ListGrades()
+                .Concat(ClassOptions.Select(c => c.Grade)).Distinct().OrderBy(g => g);
+            foreach (var g in grades) GradeOptions.Add(g);
             _selectedClassRef = ClassOptions.FirstOrDefault();
             _selectedGrade = GradeOptions.FirstOrDefault();
             LoadCurrentClass();   // 명단
@@ -117,7 +121,7 @@ public sealed class PlanEditorViewModel : ObservableObject
     }
 
     public ICommand AddClassCommand { get; private set; } = null!;
-    public ICommand AddGradeCommand { get; private set; } = null!;
+    public ICommand RemoveClassCommand { get; private set; } = null!;
 
     private void AddClass()
     {
@@ -125,19 +129,71 @@ public sealed class PlanEditorViewModel : ObservableObject
         var win = new AddClassDialog(vm) { Owner = System.Windows.Application.Current.Windows.OfType<PlanEditorWindow>().FirstOrDefault() };
         if (win.ShowDialog() != true) return;
         var c = new NeisAutoFill.Core.ClassRef(vm.Grade, vm.ClassName.Trim());
-        if (!ClassOptions.Contains(c)) { ClassOptions.Add(c); }
+
+        if (ClassOptions.Contains(c))
+        {
+            System.Windows.MessageBox.Show($"{c.Grade}-{c.Class} 반은 이미 있습니다.",
+                "안내", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            SelectedClassRef = c;
+            return;
+        }
+
+        InsertSorted(c);   // 오름차순 자리에 삽입
         SelectedClassRef = c;
-        // 학년 계획도 없으면 자동 생성 선택지에 추가
-        if (!GradeOptions.Contains(c.Grade)) GradeOptions.Add(c.Grade);
+        // 반을 추가하면 그 학년의 평가계획도 자동으로 준비된다 (학년은 명단에서만 추가)
+        if (!GradeOptions.Contains(c.Grade))
+        {
+            GradeOptions.Add(c.Grade);
+            SortInts(GradeOptions);
+        }
+        SelectedGrade = c.Grade;   // 계획도 이 학년으로 전환
     }
 
-    private void AddGrade()
+    /// <summary>반을 (학년, 반번호) 오름차순 자리에 끼워넣는다.</summary>
+    private void InsertSorted(NeisAutoFill.Core.ClassRef c)
     {
-        var vm = new AddClassDialogViewModel { ClassVisible = false };
-        var win = new AddClassDialog(vm) { Owner = System.Windows.Application.Current.Windows.OfType<PlanEditorWindow>().FirstOrDefault() };
-        if (win.ShowDialog() != true) return;
-        if (!GradeOptions.Contains(vm.Grade)) GradeOptions.Add(vm.Grade);
-        SelectedGrade = vm.Grade;
+        int i = 0;
+        while (i < ClassOptions.Count &&
+               (ClassOptions[i].Grade < c.Grade ||
+                (ClassOptions[i].Grade == c.Grade && ClassNum(ClassOptions[i].Class) < ClassNum(c.Class))))
+            i++;
+        ClassOptions.Insert(i, c);
+    }
+
+    /// <summary>반 이름을 정렬용 숫자로 (숫자 아니면 큰 값 뒤로).</summary>
+    private static int ClassNum(string cls) => int.TryParse(cls, out var n) ? n : int.MaxValue;
+
+    private static void SortInts(ObservableCollection<int> col)
+    {
+        var sorted = col.OrderBy(x => x).ToList();
+        for (int i = 0; i < sorted.Count; i++)
+            if (!col[i].Equals(sorted[i])) col.Move(col.IndexOf(sorted[i]), i);
+    }
+
+    private void RemoveClass()
+    {
+        if (_selectedClassRef is not { } c) return;
+        var r = System.Windows.MessageBox.Show(
+            $"{c.Grade}-{c.Class} 반을 목록에서 지웁니다.\n(저장된 명단 파일은 남습니다 — 다시 추가하면 복원됩니다)",
+            "반 삭제", System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Warning);
+        if (r != System.Windows.MessageBoxResult.OK) return;
+
+        var idx = ClassOptions.IndexOf(c);
+        ClassOptions.Remove(c);
+        _selectedClassRef = ClassOptions.Count > 0 ? ClassOptions[System.Math.Min(idx, ClassOptions.Count - 1)] : null;
+        OnPropertyChanged(nameof(SelectedClassRef));
+        LoadCurrentClass();
+        // 그 학년의 반이 하나도 안 남으면 학년 선택지에서도 제거
+        if (!ClassOptions.Any(x => x.Grade == c.Grade))
+        {
+            GradeOptions.Remove(c.Grade);
+            if (_selectedGrade == c.Grade)
+            {
+                _selectedGrade = GradeOptions.FirstOrDefault();
+                OnPropertyChanged(nameof(SelectedGrade));
+                LoadCurrentGrade();
+            }
+        }
     }
 
     private void LoadCurrentClass()
