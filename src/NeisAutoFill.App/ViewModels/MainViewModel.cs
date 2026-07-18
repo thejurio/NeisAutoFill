@@ -739,26 +739,34 @@ public sealed class MainViewModel : ObservableObject
 
         _cts = new CancellationTokenSource();
         var bySubject = sheets.ToDictionary(s => s.SubjectName);
-        var summary = await BatchUploadRunner.RunAsync(
-            sheets.Select(s => s.SubjectName).ToList(), _engine,
-            runSubject: async subjectName =>
-            {
-                ProgressValue = 0;
-                var sheet = bySubject[subjectName];
-                var report = await _engine.RunSubjectAsync(
-                    sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
-                return new BatchUploadRunner.SubjectResult(
-                    report.Done.Count, report.Failed.Count, report.Skipped.Count,
-                    report.Skipped.Any(s => s.Reason == "사용자 취소"));
-            },
-            Log, unit: "건", _cts.Token);
+
+        // runSubject 를 델리게이트로 빼 재시도 때 그대로 재사용한다 (엔진 경로 동일)
+        Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runSubject = async subjectName =>
+        {
+            ProgressValue = 0;
+            var sheet = bySubject[subjectName];
+            var report = await _engine.RunSubjectAsync(
+                sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
+            return new Automation.BatchUploadRunner.SubjectResult(
+                report.Done.Count, report.Failed, report.Skipped.Count,
+                report.Skipped.Any(s => s.Reason == "사용자 취소"));
+        };
+
+        var outcomes = await Automation.BatchUploadRunner.RunAsync(
+            sheets.Select(s => s.SubjectName).ToList(), _engine, runSubject, Log, unit: "건", _cts.Token);
 
         Log(new string('=', 50));
         Log("전과목 자동 입력 결과:");
-        foreach (var s in summary) Log("  " + s);
-        MessageBox.Show("전과목 자동 입력 결과\n\n" + string.Join("\n", summary),
-            "전과목 입력 완료", MessageBoxButton.OK,
-            summary.Any(s => s.StartsWith("✗")) ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        foreach (var s in Automation.BatchUploadRunner.Summarize(outcomes)) Log("  " + s);
+
+        // 재시도: 실패·미도달 과목만 같은 경로로 다시 (토큰은 새로)
+        BatchResultWindow.ShowResult(outcomes, "건",
+            retry: async subs =>
+            {
+                _cts = new CancellationTokenSource();
+                return await Automation.BatchUploadRunner.RunAsync(subs, _engine, runSubject, Log, "건", _cts.Token);
+            },
+            owner: Application.Current.MainWindow);
     }
 
     // ── 화면 진단 (Phase 5.5 셀렉터 실측용 — docs/보관_진단_검증도구.md) ──

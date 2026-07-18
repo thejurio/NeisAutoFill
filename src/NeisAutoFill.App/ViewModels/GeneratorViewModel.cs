@@ -341,21 +341,25 @@ public sealed class GeneratorViewModel : ObservableObject
             if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
         });
 
-        var summary = await Services.BatchUploadRunner.RunAsync(
-            bySubject.Keys.ToList(), _engine,
-            runSubject: async subject =>
-            {
-                var report = await _engine.RunNarrativesAsync(
-                    subject, bySubject[subject], dryRun: false, _settings.Options.MaxNarrativeBytes, progress);
-                return new Services.BatchUploadRunner.SubjectResult(
-                    report.Done.Count, report.Failed.Count, report.Skipped.Count, UserCancelled: false);
-            },
-            _mainLog, unit: "명", CancellationToken.None);
+        // runSubject 를 델리게이트로 빼 재시도 때 그대로 재사용
+        Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runSubject = async subject =>
+        {
+            var report = await _engine.RunNarrativesAsync(
+                subject, bySubject[subject], dryRun: false, _settings.Options.MaxNarrativeBytes, progress);
+            return new Automation.BatchUploadRunner.SubjectResult(
+                report.Done.Count, report.Failed, report.Skipped.Count, UserCancelled: false);
+        };
 
-        _mainLog("전과목 서술문 입력 결과: " + string.Join(" / ", summary));
-        MessageBox.Show("전과목 서술문 입력 결과\n\n" + string.Join("\n", summary),
-            "완료", MessageBoxButton.OK,
-            summary.Any(s => s.StartsWith("✗")) ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        var outcomes = await Automation.BatchUploadRunner.RunAsync(
+            bySubject.Keys.ToList(), _engine, runSubject, _mainLog, unit: "명", CancellationToken.None);
+
+        _mainLog("전과목 서술문 입력 결과: " +
+            string.Join(" / ", Automation.BatchUploadRunner.Summarize(outcomes)));
+
+        BatchResultWindow.ShowResult(outcomes, "명",
+            retry: async subs =>
+                await Automation.BatchUploadRunner.RunAsync(subs, _engine, runSubject, _mainLog, "명", CancellationToken.None),
+            owner: Application.Current.MainWindow);
     }
     public ICommand ExportCommand { get; }
     public ICommand ImportCommand { get; }
