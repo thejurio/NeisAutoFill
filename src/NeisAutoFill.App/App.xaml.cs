@@ -15,6 +15,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
         AppPaths.EnsureRoot();
+        Automation.EngineDiag.OnSwallow = Diag.Swallow;   // 엔진의 조용한 예외를 diag.txt 로 (안정화 추적)
         _ = Task.Run(CleanupOldLayoutFiles);   // 구버전(다중 DLL) → 단일 exe 업데이트 잔재 청소
 
         DispatcherUnhandledException += (_, args) =>

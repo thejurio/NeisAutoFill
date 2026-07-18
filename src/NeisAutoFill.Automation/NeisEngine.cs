@@ -351,6 +351,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             catch (Exception ex)
             {
                 why = ex.GetType().Name;
+                EngineDiag.Swallow(ex, $"등급 설정({task.Area}→{task.TargetGrade})");   // 상세는 diag.txt 로
             }
 
             if (attempt == 1) await Task.Delay(Timings.RetryDelay, ct);

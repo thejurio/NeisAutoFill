@@ -828,7 +828,7 @@ public sealed class MainViewModel : ObservableObject
             for (int i = 0; i < picks.Count; i++)
                 picks[i].SetScreenMapping(screen, suggestions[i].Screen, suggestions[i].Auto);
         }
-        catch { /* 매핑 실패는 무시 — 같은 이름으로 진행 */ }
+        catch (Exception ex) { Diag.Swallow(ex, "전과목(등급) 화면 과목 매핑"); }   // 같은 이름으로 진행
     }
 
     // ── 화면 진단 (Phase 5.5 셀렉터 실측용 — docs/보관_진단_검증도구.md) ──

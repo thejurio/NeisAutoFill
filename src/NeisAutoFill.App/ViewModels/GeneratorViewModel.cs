@@ -421,7 +421,7 @@ public sealed class GeneratorViewModel : ObservableObject
             for (int i = 0; i < picks.Count; i++)
                 picks[i].SetScreenMapping(screen, suggestions[i].Screen, suggestions[i].Auto);
         }
-        catch { /* 매핑 실패는 무시 */ }
+        catch (Exception ex) { Diag.Swallow(ex, "전과목(서술문) 화면 과목 매핑"); }   // 같은 이름으로 진행
     }
     public ICommand ExportCommand { get; }
     public ICommand ImportCommand { get; }
