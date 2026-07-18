@@ -1,0 +1,74 @@
+name: Release
+
+# 태그(vX.Y.Z) push 시 자동 릴리스 — 수동 절차의 실수(버전 불일치·시크릿 누락) 차단.
+#
+# 사전 준비(1회): 저장소 Settings → Secrets and variables → Actions 에
+#   GAS_SECRET = code.gs 의 V2_SECRET 과 동일한 값  을 추가한다.
+#
+# 릴리스 방법: csproj <Version> 을 올려 커밋·푸시한 뒤
+#   git tag vX.Y.Z && git push origin vX.Y.Z
+#   → 이 워크플로우가 검증·빌드·게시. (수동 `gh release create` 는 쓰지 않는다 — 태그가 이중 생성됨)
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write   # 릴리스 생성 권한
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 시크릿·버전 검증
+        shell: pwsh
+        env:
+          GAS_SECRET: ${{ secrets.GAS_SECRET }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GAS_SECRET)) {
+            Write-Host "::error::GAS_SECRET 저장소 시크릿이 없습니다. Settings→Secrets and variables→Actions 에 추가하세요."
+            exit 1
+          }
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $ver = (Select-String -Path 'src/NeisAutoFill.App/NeisAutoFill.App.csproj' -Pattern '<Version>(.*?)</Version>').Matches[0].Groups[1].Value
+          if ($tag -ne $ver) {
+            Write-Host "::error::태그($tag) 와 csproj Version($ver) 불일치 — 버전을 맞춰 다시 태그하세요."
+            exit 1
+          }
+          Write-Host "검증 통과: v$ver"
+
+      - name: GAS 시크릿 주입 (GasSecret.cs 생성)
+        shell: pwsh
+        env:
+          GAS_SECRET: ${{ secrets.GAS_SECRET }}
+        run: |
+          $line = 'namespace NeisAutoFill.Generator; public static partial class GasAuth { static partial void LoadSecret(ref string secret) => secret = "' + $env:GAS_SECRET + '"; }'
+          Set-Content -Path 'src/NeisAutoFill.Generator/GasSecret.cs' -Value $line -Encoding utf8
+          # 주입 확인 — 시크릿이 파일에 들어갔으면 컴파일 시 결정적으로 포함됨
+          if (-not (Select-String -Path 'src/NeisAutoFill.Generator/GasSecret.cs' -SimpleMatch -Pattern $env:GAS_SECRET -Quiet)) {
+            Write-Host "::error::시크릿 주입 실패"; exit 1
+          }
+          Write-Host "시크릿 주입 확인"
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Publish (self-contained win-x64)
+        run: dotnet publish src/NeisAutoFill.App -c Release -r win-x64 --self-contained true -o publish/NeisAutoFill
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive publish/NeisAutoFill/* publish/NeisAutoFill-win-x64.zip -Force
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }} publish/NeisAutoFill-win-x64.zip --title ${{ github.ref_name }} --generate-notes
