@@ -68,6 +68,7 @@ dotnet run --project src/NeisAutoFill.App
 ### roadmap — 계획·진행 추적
 - [개선로드맵.md](docs/roadmap/개선로드맵.md) — **현행 진행 추적 문서**. 작업 시 상태를 여기서 갱신
 - [개선감사.md](docs/roadmap/개선감사.md) — 전 계층 감사(잘된 점·문제점·불편·추가 기능) + 조치 상태 추적
+- [전담모드_설계.md](docs/roadmap/전담모드_설계.md) — **전담 교사 지원(F9) 설계·개발 로드맵**(명단·계획·작업 정규화, AI 학년·과목 분리, 마일스톤 M0~M6)
 - [UX개선로드맵.md](docs/roadmap/UX개선로드맵.md) — v1.4.0 UI/UX 개편 계획
 - [리팩토링계획.md](docs/roadmap/리팩토링계획.md) — 구조 부채 정리 계획(R1~R5)
 - [ROADMAP_개발로드맵.md](docs/roadmap/ROADMAP_개발로드맵.md) — 최초 C# 이식 로드맵(Phase 0~)
