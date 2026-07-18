@@ -25,15 +25,13 @@ public class SubjectModeTests
     }
 
     [Fact]
-    public void 평가계획은_학년과목별_경로_여러반이_공유()
+    public void 평가계획은_학년별_한파일_과목은_시트()
     {
-        // 3-1 영어와 3-2 영어는 같은 계획 파일을 가리킨다 (반 무관)
-        var p1 = SubjectModePaths.PlanFile(@"C:\ws", 3, "영어");
-        var p2 = SubjectModePaths.PlanFile(@"C:\ws", 3, "영어");
-        Assert.Equal(@"C:\ws\전담\평가계획\3_영어.xlsx", p1);
-        Assert.Equal(p1, p2);
-        // 학년이 다르면 다른 계획
-        Assert.NotEqual(p1, SubjectModePaths.PlanFile(@"C:\ws", 4, "영어"));
+        // 3학년 영어·과학은 같은 파일(3학년.xlsx)의 다른 시트 → 담임 포맷 재사용
+        var p = SubjectModePaths.PlanFile(@"C:\ws", 3);
+        Assert.Equal(@"C:\ws\전담\평가계획\3학년.xlsx", p);
+        // 학년이 다르면 다른 파일
+        Assert.NotEqual(p, SubjectModePaths.PlanFile(@"C:\ws", 4));
     }
 
     [Fact]

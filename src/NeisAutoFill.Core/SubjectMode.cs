@@ -39,9 +39,10 @@ public static class SubjectModePaths
     public static string RosterFile(string workspaceRoot, ClassRef c) =>
         System.IO.Path.Combine(workspaceRoot, RootFolder, "명단", $"{c.Grade}-{c.Class}.xlsx");
 
-    /// <summary>(학년·과목) 평가계획 파일. 예: {ws}\전담\평가계획\3_영어.xlsx</summary>
-    public static string PlanFile(string workspaceRoot, int grade, string subject) =>
-        System.IO.Path.Combine(workspaceRoot, RootFolder, "평가계획", $"{grade}_{subject}.xlsx");
+    /// <summary>학년 평가계획 파일 — 담임 평가계획서와 같은 포맷(과목 시트들 + [학생명단]).
+    /// 과목은 파일 안 시트로 분리 → PlanWorkbookLoader/Writer 그대로 재사용. 예: {ws}\전담\평가계획\3학년.xlsx</summary>
+    public static string PlanFile(string workspaceRoot, int grade) =>
+        System.IO.Path.Combine(workspaceRoot, RootFolder, "평가계획", $"{grade}학년.xlsx");
 
     /// <summary>작업(성적·서술문) 폴더. 예: {ws}\전담\작업\3-1_영어</summary>
     public static string UnitDir(string workspaceRoot, TeachingUnit u) =>
