@@ -75,6 +75,7 @@ dotnet run --project src/NeisAutoFill.App
 ### maintenance — 운영·유지보수 규칙
 - [릴리스_배포.md](docs/maintenance/릴리스_배포.md) — **버전 올리기 → 빌드 → 게시 절차**, 자동업데이트 동작
 - [GAS_서버.md](docs/maintenance/GAS_서버.md) — code.gs 재배포, APIKeys/RequestLog 시트, 로깅·키 규칙
+- [원격_셀렉터.md](docs/maintenance/원격_셀렉터.md) — **나이스 개편 시 대응**(셀렉터 키·새 값 찾기·GAS 반영). AI에게 시킬 때 이 문서를 주면 됨
 
 ### archive — 보관(동결)
 - [PROJECT_STATUS.md](docs/archive/PROJECT_STATUS.md) — v1.0.0 초기 개발 현황(낡음)
