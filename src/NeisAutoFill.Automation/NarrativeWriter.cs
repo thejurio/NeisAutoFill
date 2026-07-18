@@ -74,7 +74,9 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
         int maxBytes,
         Action<string> log,
         Action<int, int> progressCount,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<IReadOnlyDictionary<int, (string? No, string? Name)>,
+             Task<IReadOnlyDictionary<string, string>?>>? resolveNameMap = null)
     {
         // 1) 대상 그리드·행 지도 (스크롤 훑기로 전 행 수집)
         var (gridIndex, rowMap) = await BuildRowMapAsync(log, ct)
@@ -85,8 +87,22 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
         log($"서술문 대상 행 파악: {rowMap.Count}건");
         var grid = VisibleGrids().Nth(gridIndex);
 
-        // 2) 매칭
-        var (todo, skipped) = NarrativeMatcher.Build(rowMap, entries);
+        // 2) 매칭 — 이름이 달라 자동 매칭 안 되는 학생은 사용자 매핑(확인 창)으로 연결 (등급과 동일)
+        IReadOnlyDictionary<string, string>? nameMap = null;
+        if (resolveNameMap is not null)
+        {
+            nameMap = await resolveNameMap(rowMap);
+            if (nameMap is null)   // 사용자 취소
+            {
+                log("사용자가 입력을 취소했습니다.");
+                return new NarrativeReport(
+                    new List<NarrativeEntry>(),
+                    new List<SkipItem> { new("", "", "", "사용자 취소") },
+                    new List<SkipItem>());
+            }
+        }
+
+        var (todo, skipped) = NarrativeMatcher.Build(rowMap, entries, nameMap);
         var skippedList = skipped.ToList();
 
         var done = new List<NarrativeEntry>();

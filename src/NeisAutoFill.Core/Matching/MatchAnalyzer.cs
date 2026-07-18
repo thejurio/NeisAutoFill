@@ -70,4 +70,35 @@ public static class MatchAnalyzer
             unmatchedStudents, screenAreas, unmatchedAreas,
             duplicateAreas, countMismatch, rowsPerStudent);
     }
+
+    /// <summary>
+    /// 서술문(교과발달상황) 화면 분석 — 영역이 없으므로 과목·학생 불일치만 본다.
+    /// entryNames = 내가 입력할 서술문 학생들의 성명. 화면에 있는데 내 자료에 없는 학생을 UnmatchedStudents 로.
+    /// </summary>
+    public static Issues AnalyzeNarratives(
+        string? screenSubject,
+        string targetSubject,
+        IReadOnlyDictionary<int, RowMeta> rowMap,
+        IReadOnlyList<string> entryNames)
+    {
+        var mine = entryNames.Select(NameNormalizer.Normalize).ToHashSet();
+        var unmatched = new List<(string, string)>();
+        var seen = new HashSet<string>();
+
+        foreach (var idx in rowMap.Keys.OrderBy(k => k))
+        {
+            var (no, name, _) = rowMap[idx];
+            if (name is null) continue;
+            var key = $"{no}|{name}";
+            if (!mine.Contains(NameNormalizer.Normalize(name)) && seen.Add(key))
+                unmatched.Add((no ?? "", name));
+        }
+
+        return new Issues(
+            screenSubject,
+            screenSubject is not null && screenSubject != targetSubject,
+            unmatched,
+            Array.Empty<string>(), Array.Empty<string>(),   // 영역 없음
+            DuplicateAreas: false, AreaCountMismatch: false, RowsPerStudent: 0);
+    }
 }

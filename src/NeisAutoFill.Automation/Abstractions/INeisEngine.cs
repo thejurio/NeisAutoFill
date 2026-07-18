@@ -66,12 +66,14 @@ public interface INeisEngine
     /// <summary>현재 화면 구조 진단 리포트 (Phase 8 셀렉터 실측용, 읽기 전용).</summary>
     Task<string> InspectDomAsync(CancellationToken ct = default);
 
-    /// <summary>AI 생성 서술문을 화면 textarea 에 입력 (Phase 8). 저장은 하지 않는다.</summary>
+    /// <summary>AI 생성 서술문을 화면 textarea 에 입력 (Phase 8). 저장은 하지 않는다.
+    /// resolveMatch: 이름이 달라 자동 매칭 안 되는 학생을 사용자가 매핑 (등급과 동일 콜백). null=매핑 없이 자동만.</summary>
     Task<NarrativeReport> RunNarrativesAsync(
         string subjectName,
         IReadOnlyList<NarrativeEntry> entries,
         bool dryRun,
         int maxBytes,
         IProgress<ProgressInfo> progress,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null);
 }

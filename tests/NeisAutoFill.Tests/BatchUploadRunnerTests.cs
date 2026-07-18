@@ -31,7 +31,8 @@ public class BatchUploadRunnerTests
             CancellationToken ct = default) => throw new NotImplementedException();
         public Task<string> InspectDomAsync(CancellationToken ct = default) => throw new NotImplementedException();
         public Task<NarrativeReport> RunNarrativesAsync(string subjectName, IReadOnlyList<NarrativeEntry> entries,
-            bool dryRun, int maxBytes, IProgress<ProgressInfo> progress, CancellationToken ct = default)
+            bool dryRun, int maxBytes, IProgress<ProgressInfo> progress, CancellationToken ct = default,
+            Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null)
             => throw new NotImplementedException();
     }
 

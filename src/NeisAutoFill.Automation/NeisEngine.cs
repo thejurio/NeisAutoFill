@@ -422,22 +422,40 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         bool dryRun,
         int maxBytes,
         IProgress<ProgressInfo> progress,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null)
     {
         var page = RequirePage();
         void Log(string m) => progress.Report(new ProgressInfo(m));
 
         // 안전장치: 과목 콤보가 있으면 반드시 일치해야 함. 없으면(화면 구조 미확정) 경고 후 진행.
+        // (과목 다름은 아래 확인 창에서 사용자가 동의할 수 있으므로, 콜백이 있으면 던지지 않는다)
         var subject = await GetCurrentSubjectAsync(ct);
-        if (subject is not null && subject != subjectName)
+        if (resolveMatch is null && subject is not null && subject != subjectName)
             throw new InvalidOperationException(
                 $"화면 교과 '{subject}' ≠ 대상 '{subjectName}'. 나이스에서 '{subjectName}'를 조회하세요.");
         if (subject is null)
             Log($"⚠ 화면에서 교과 콤보를 찾지 못했습니다. 현재 화면이 '{subjectName}' 대상인지 직접 확인하세요.");
 
+        // 확인 창 콜백(등급과 동일 타입)을 서술문 매칭용 nameMap 으로 어댑트
+        Func<IReadOnlyDictionary<int, (string? No, string? Name)>,
+             Task<IReadOnlyDictionary<string, string>?>>? resolveNameMap = null;
+        if (resolveMatch is not null)
+        {
+            resolveNameMap = async rowMap =>
+            {
+                var meta = rowMap.ToDictionary(kv => kv.Key,
+                    kv => new RowMeta(kv.Value.No, kv.Value.Name, null));
+                var decision = await resolveMatch(
+                    new MatchContext(subject, subjectName, meta, Array.Empty<int>()));
+                if (decision is null) return null;   // 취소
+                return decision.NameMap ?? new Dictionary<string, string>();
+            };
+        }
+
         var writer = new NarrativeWriter(page, _scroller!);
         return await writer.RunAsync(entries, dryRun, maxBytes, Log,
-            (i, t) => progress.Report(new ProgressInfo("", i, t)), ct);
+            (i, t) => progress.Report(new ProgressInfo("", i, t)), ct, resolveNameMap);
     }
 
     private IPage RequirePage() =>

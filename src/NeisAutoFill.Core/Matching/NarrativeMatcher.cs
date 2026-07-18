@@ -14,9 +14,11 @@ public static class NarrativeMatcher
         IReadOnlyList<Item> Todo,
         IReadOnlyList<SkipItem> Skipped);
 
+    /// <param name="nameMap">사용자 매핑(확인 창): 화면 성명 → 내 자료 성명 ("" = 제외). 이름이 달라 자동 매칭 안 될 때.</param>
     public static MatchResult Build(
         IReadOnlyDictionary<int, (string? No, string? Name)> rowMap,
-        IReadOnlyList<NarrativeEntry> entries)
+        IReadOnlyList<NarrativeEntry> entries,
+        IReadOnlyDictionary<string, string>? nameMap = null)
     {
         var byKey = new Dictionary<(string, string), NarrativeEntry>();
         var byName = new Dictionary<string, NarrativeEntry>();
@@ -36,10 +38,20 @@ public static class NarrativeMatcher
             var (no, name) = rowMap[idx];
             if (name is null) continue;   // 성명 없는 행은 대상 아님 (헤더·오버레이)
 
-            var norm = NameNormalizer.Normalize(name);
-            var entry = (no is not null && byKey.TryGetValue((no, norm), out var e1)) ? e1
+            NarrativeEntry? entry;
+            // 사용자 매핑 우선 — 화면 성명이 매핑에 있으면 그 결정을 따른다
+            if (nameMap is not null && nameMap.TryGetValue(name, out var mapped))
+            {
+                if (string.IsNullOrEmpty(mapped)) continue;   // 명시적 '입력 안 함'
+                entry = byName.TryGetValue(NameNormalizer.Normalize(mapped), out var em) ? em : null;
+            }
+            else
+            {
+                var norm = NameNormalizer.Normalize(name);
+                entry = (no is not null && byKey.TryGetValue((no, norm), out var e1)) ? e1
                       : byName.TryGetValue(norm, out var e2) ? e2
                       : null;
+            }
             if (entry is null) continue;   // 서술문 없는 학생 행은 그냥 지나감 (스킵 사유 아님)
 
             if (string.IsNullOrWhiteSpace(entry.Text))
