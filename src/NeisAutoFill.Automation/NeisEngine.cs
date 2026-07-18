@@ -106,6 +106,14 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     // ── Phase 5.5 전과목 자동 업로드 ────────────────────────────
     // ★ 버튼·대화상자 셀렉터는 잠정 (NeisSelectors 주석 참조) — 첫 실기기 실행은 반드시 지켜볼 것.
 
+    public async Task<IReadOnlyList<string>> ReadSubjectOptionsAsync(CancellationToken ct = default)
+    {
+        RequirePage();
+        var (combo, _) = await FindSubjectComboAsync();
+        if (combo is null) return Array.Empty<string>();
+        return await _combo!.OpenAndReadOptionsAsync(combo);
+    }
+
     public async Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default)
     {
         var page = RequirePage();

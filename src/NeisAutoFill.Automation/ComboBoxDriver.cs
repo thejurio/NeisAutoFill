@@ -54,6 +54,25 @@ public sealed class ComboBoxDriver(IPage page)
         return new PickResult(false, $"옵션 '{target}' 없음");
     }
 
+    /// <summary>콤보를 열어 선택 가능한 옵션 목록을 읽고 다시 닫는다 (선택은 하지 않음). 전과목 과목 매핑용.</summary>
+    public async Task<IReadOnlyList<string>> OpenAndReadOptionsAsync(ILocator combo)
+    {
+        await combo.ClickAsync();
+        var options = page.Locator(NeisSelectors.OptionItem);
+        var deadline = DateTime.UtcNow + Timings.PopupPollTimeout;
+        int count = 0;
+        while (DateTime.UtcNow < deadline)
+        {
+            count = await options.CountAsync();
+            if (count > 0 && await AnyVisibleAsync(options, count)) break;
+            await Task.Delay(Timings.PopupPollStep);
+        }
+        var list = await ReadOpenOptionsAsync();
+        await page.Keyboard.PressAsync("Escape");   // 읽기만 — 다시 닫는다
+        await Task.Delay(Timings.PopupPollStep);
+        return list;
+    }
+
     /// <summary>현재 열린(또는 이 콤보의) 팝업에서 선택 가능한 옵션 텍스트 목록.
     /// §9.2 동적 화이트리스트 — 나이스 실제 옵션과 교차검증용.</summary>
     public async Task<IReadOnlyList<string>> ReadOpenOptionsAsync()

@@ -14,6 +14,10 @@ public static class BatchUploadRunner
 {
     public enum SubjectStatus { Success, Skipped, Failed, SwitchFailed, SaveFailed, Cancelled, NotReached }
 
+    /// <summary>한 과목 대상: Display=내 자료 과목명(데이터·표시 기준), Screen=화면 콤보에서 전환할 과목명.
+    /// 보통 둘이 같지만, 이름이 다를 때 사용자가 매핑하면 달라진다.</summary>
+    public sealed record SubjectTarget(string Display, string Screen);
+
     /// <summary>한 과목 실행 결과 (runSubject 콜백 반환). Failed 는 실패 학생 상세.</summary>
     public sealed record SubjectResult(int Done, IReadOnlyList<SkipItem> Failed, int Skipped, bool UserCancelled)
     {
@@ -31,10 +35,11 @@ public static class BatchUploadRunner
             or SubjectStatus.SaveFailed or SubjectStatus.Cancelled or SubjectStatus.NotReached;
     }
 
-    /// <param name="runSubject">과목 하나 입력 실행 (전환 완료 후 호출됨)</param>
+    /// <param name="targets">전환할 과목들 (Display=내 과목, Screen=화면 과목). 보통 둘이 같다.</param>
+    /// <param name="runSubject">과목 하나 입력 실행 (전환 완료 후 Display 이름으로 호출됨)</param>
     /// <param name="unit">요약 문구 단위 (등급="건", 서술문="명")</param>
     public static async Task<List<SubjectOutcome>> RunAsync(
-        IReadOnlyList<string> subjects,
+        IReadOnlyList<SubjectTarget> targets,
         INeisEngine engine,
         Func<string, Task<SubjectResult>> runSubject,
         Action<string> log,
@@ -44,13 +49,15 @@ public static class BatchUploadRunner
         var outcomes = new List<SubjectOutcome>();
         try
         {
-            for (int i = 0; i < subjects.Count; i++)
+            for (int i = 0; i < targets.Count; i++)
             {
-                var subject = subjects[i];
+                var subject = targets[i].Display;
+                var screen = targets[i].Screen;
                 log(new string('─', 50));
-                log($"[전과목 {i + 1}/{subjects.Count}] '{subject}' 과목으로 전환 중...");
+                log($"[전과목 {i + 1}/{targets.Count}] '{subject}'" +
+                    (screen != subject ? $" → 화면 '{screen}'" : "") + " 과목으로 전환 중...");
 
-                var (selOk, selWhy) = await engine.SelectSubjectAsync(subject, ct);
+                var (selOk, selWhy) = await engine.SelectSubjectAsync(screen, ct);
                 if (!selOk)
                 {
                     outcomes.Add(new SubjectOutcome(subject, SubjectStatus.SwitchFailed, 0, 0,
@@ -97,8 +104,8 @@ public static class BatchUploadRunner
         catch (Exception ex) { log($"전과목 입력 오류: {ex.Message}"); }
 
         // break·취소·예외 이후 실행되지 않은 나머지 과목은 '미도달'
-        for (int i = outcomes.Count; i < subjects.Count; i++)
-            outcomes.Add(new SubjectOutcome(subjects[i], SubjectStatus.NotReached, 0, 0,
+        for (int i = outcomes.Count; i < targets.Count; i++)
+            outcomes.Add(new SubjectOutcome(targets[i].Display, SubjectStatus.NotReached, 0, 0,
                 Array.Empty<SkipItem>(), "앞 과목 중단으로 실행되지 않음"));
 
         return outcomes;

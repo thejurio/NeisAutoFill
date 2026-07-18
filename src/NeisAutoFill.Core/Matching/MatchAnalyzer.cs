@@ -22,6 +22,11 @@ public static class MatchAnalyzer
         public bool Clean =>
             !SubjectMismatch && UnmatchedStudents.Count == 0 &&
             UnmatchedAreas.Count == 0 && !DuplicateAreas && !AreaCountMismatch;
+
+        /// <summary>과목명만 다르고 학생·영역은 정상 — 이땐 복잡한 매핑 창 대신 "그래도 진행?" 만 물으면 된다.</summary>
+        public bool SubjectOnlyMismatch =>
+            SubjectMismatch && UnmatchedStudents.Count == 0 &&
+            UnmatchedAreas.Count == 0 && !DuplicateAreas && !AreaCountMismatch;
     }
 
     public static Issues Analyze(

@@ -323,6 +323,9 @@ public sealed class GeneratorViewModel : ObservableObject
         var picks = allBySubject
             .Select(kv => new SubjectPick(kv.Key, kv.Value.Count, $"서술문 {kv.Value.Count}명 입력 예정"))
             .ToList();
+        // 화면 과목 목록을 읽어 매핑 자동 제안 (이름이 다르면 사용자가 창에서 고른다)
+        await PopulateScreenMappingAsync(picks);
+
         var win = new BatchGenerateWindow(picks,
             title: "전과목 서술문 입력",
             description: "나이스에 입력할 과목을 선택하세요. 나이스 화면이 [학기말 종합의견] 조회 화면인지 확인한 뒤 시작하세요.",
@@ -332,10 +335,12 @@ public sealed class GeneratorViewModel : ObservableObject
         { Owner = Application.Current.MainWindow };
         if (win.ShowDialog() != true) return;
 
-        var chosen = picks.Where(p => p.IsChecked).Select(p => p.Name).ToHashSet();
-        var bySubject = allBySubject.Where(kv => chosen.Contains(kv.Key))
+        var chosen = picks.Where(p => p.IsChecked).ToList();
+        var chosenNames = chosen.Select(p => p.Name).ToHashSet();
+        var bySubject = allBySubject.Where(kv => chosenNames.Contains(kv.Key))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
         if (bySubject.Count == 0) return;
+        var targets = BuildTargets(chosen);
 
         var progress = new Progress<Automation.Abstractions.ProgressInfo>(p =>
         {
@@ -352,15 +357,43 @@ public sealed class GeneratorViewModel : ObservableObject
         };
 
         var outcomes = await Automation.BatchUploadRunner.RunAsync(
-            bySubject.Keys.ToList(), _engine, runSubject, _mainLog, unit: "명", CancellationToken.None);
+            targets, _engine, runSubject, _mainLog, unit: "명", CancellationToken.None);
 
         _mainLog("전과목 서술문 입력 결과: " +
             string.Join(" / ", Automation.BatchUploadRunner.Summarize(outcomes)));
 
+        var screenByDisplay = targets.ToDictionary(t => t.Display, t => t.Screen);
         BatchResultWindow.ShowResult(outcomes, "명",
             retry: async subs =>
-                await Automation.BatchUploadRunner.RunAsync(subs, _engine, runSubject, _mainLog, "명", CancellationToken.None),
+            {
+                var rt = subs.Select(d => new Automation.BatchUploadRunner.SubjectTarget(
+                    d, screenByDisplay.TryGetValue(d, out var sc) ? sc : d)).ToList();
+                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runSubject, _mainLog, "명", CancellationToken.None);
+            },
             owner: Application.Current.MainWindow);
+    }
+
+    /// <summary>선택된 과목들로 (내 과목 → 화면 과목) 대상 목록. 매핑 없거나 '미선택'이면 같은 이름.</summary>
+    private static List<Automation.BatchUploadRunner.SubjectTarget> BuildTargets(IEnumerable<SubjectPick> chosen) =>
+        chosen.Select(p =>
+        {
+            var screen = p.HasScreenOptions && p.ScreenSubject != SubjectPick.NoScreenMatch
+                ? p.ScreenSubject : p.Name;
+            return new Automation.BatchUploadRunner.SubjectTarget(p.Name, screen);
+        }).ToList();
+
+    /// <summary>화면 과목 목록을 읽어 각 pick 에 자동 매핑을 채운다. 못 읽으면 매핑 UI 없이 같은 이름.</summary>
+    private async Task PopulateScreenMappingAsync(IReadOnlyList<SubjectPick> picks)
+    {
+        try
+        {
+            var screen = await _engine.ReadSubjectOptionsAsync();
+            if (screen.Count == 0) return;
+            var suggestions = Core.SubjectMapper.Suggest(picks.Select(p => p.Name).ToList(), screen);
+            for (int i = 0; i < picks.Count; i++)
+                picks[i].SetScreenMapping(screen, suggestions[i].Screen, suggestions[i].Auto);
+        }
+        catch { /* 매핑 실패는 무시 */ }
     }
     public ICommand ExportCommand { get; }
     public ICommand ImportCommand { get; }
@@ -606,12 +639,15 @@ public sealed class GeneratorViewModel : ObservableObject
 /// <summary>과목 선택 대화상자의 과목 한 줄 (전과목 생성·입력 공용).</summary>
 public sealed class SubjectPick : ObservableObject
 {
+    public const string NoScreenMatch = "(화면에서 선택)";
+
     public SubjectPick(string name, int eligibleCount, string? summary = null)
     {
         Name = name;
         EligibleCount = eligibleCount;
         _isChecked = eligibleCount > 0;
         Summary = summary ?? (eligibleCount > 0 ? $"{eligibleCount}명 생성 가능" : "생성할 학생 없음 (등급 미입력)");
+        _screenSubject = name;   // 기본은 같은 이름
     }
 
     public string Name { get; }
@@ -620,6 +656,30 @@ public sealed class SubjectPick : ObservableObject
 
     private bool _isChecked;
     public bool IsChecked { get => _isChecked; set => SetProperty(ref _isChecked, value); }
+
+    // ── 화면 과목 매핑 (전과목 입력에서만 사용; 생성에선 옵션 비어 숨김) ──
+    /// <summary>이 과목을 입력할 화면 콤보의 과목명. 기본은 같은 이름, 다르면 사용자가 고른다.</summary>
+    private string _screenSubject;
+    public string ScreenSubject { get => _screenSubject; set => SetProperty(ref _screenSubject, value); }
+
+    /// <summary>화면에서 고를 수 있는 과목 목록 (+ 미선택). 비어 있으면 매핑 UI 안 보임.</summary>
+    public IReadOnlyList<string> ScreenOptions { get; private set; } = System.Array.Empty<string>();
+    public bool HasScreenOptions => ScreenOptions.Count > 0;
+
+    /// <summary>자동 매칭이 안 돼 사용자 확인이 필요한지 (강조 표시용).</summary>
+    private bool _needsAttention;
+    public bool NeedsAttention { get => _needsAttention; set => SetProperty(ref _needsAttention, value); }
+
+    /// <summary>화면 과목 목록·자동 제안을 채운다 (전과목 입력 시작 전).</summary>
+    public void SetScreenMapping(IReadOnlyList<string> options, string? suggested, bool auto)
+    {
+        var opts = new List<string>(options) { NoScreenMatch };
+        ScreenOptions = opts;
+        ScreenSubject = suggested ?? NoScreenMatch;
+        NeedsAttention = !auto;
+        OnPropertyChanged(nameof(HasScreenOptions));
+        OnPropertyChanged(nameof(ScreenOptions));
+    }
 }
 
 /// <summary>학생 한 명의 생성 항목 (행).</summary>

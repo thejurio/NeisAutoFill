@@ -698,6 +698,16 @@ public sealed class MainViewModel : ObservableObject
             if (issues.Clean)
                 return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName);
 
+            // 과목명만 다르고 학생·영역은 정상 → 복잡한 매핑 창 대신 "그래도 진행?" 만 묻는다
+            if (issues.SubjectOnlyMismatch)
+            {
+                var ok = MessageBox.Show(
+                    $"화면 과목은 '{issues.ScreenSubject}'인데 입력 대상은 '{sheet.SubjectName}'입니다.\n" +
+                    "학생·영역은 화면과 일치합니다. 이 화면에 그대로 입력할까요?",
+                    "과목 확인", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+                return ok ? new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName) : (MatchDecision?)null;
+            }
+
             var vm = new MatchPreviewViewModel(issues, sheet);
             var win = new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow };
             return win.ShowDialog() == true ? vm.BuildDecision() : null;
@@ -724,6 +734,9 @@ public sealed class MainViewModel : ObservableObject
             int n = s.Students.Sum(st => st.Grades.Count(g => !string.IsNullOrWhiteSpace(g.Value)));
             return new SubjectPick(s.SubjectName, n, n > 0 ? $"등급 {n}건 입력 예정" : "입력할 등급 없음");
         }).ToList();
+        // 화면 과목 목록을 읽어 매핑 자동 제안 (이름이 다르면 사용자가 창에서 고른다)
+        await PopulateScreenMappingAsync(picks);
+
         var win = new BatchGenerateWindow(picks,
             title: "전과목 나이스 입력",
             description: "나이스에 입력할 과목을 선택하세요. 나이스 화면이 [교과별 평가] 조회 화면인지 확인한 뒤 시작하세요.",
@@ -733,12 +746,14 @@ public sealed class MainViewModel : ObservableObject
         { Owner = Application.Current.MainWindow };
         if (win.ShowDialog() != true) return;
 
-        var chosen = picks.Where(p => p.IsChecked).Select(p => p.Name).ToHashSet();
-        var sheets = allSheets.Where(s => chosen.Contains(s.SubjectName)).ToList();
+        var chosen = picks.Where(p => p.IsChecked).ToList();
+        var chosenNames = chosen.Select(p => p.Name).ToHashSet();
+        var sheets = allSheets.Where(s => chosenNames.Contains(s.SubjectName)).ToList();
         if (sheets.Count == 0) return;
 
         _cts = new CancellationTokenSource();
         var bySubject = sheets.ToDictionary(s => s.SubjectName);
+        var targets = BuildTargets(chosen);   // 내 과목 → 화면 과목 매핑 반영
 
         // runSubject 를 델리게이트로 빼 재시도 때 그대로 재사용한다 (엔진 경로 동일)
         Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runSubject = async subjectName =>
@@ -753,20 +768,46 @@ public sealed class MainViewModel : ObservableObject
         };
 
         var outcomes = await Automation.BatchUploadRunner.RunAsync(
-            sheets.Select(s => s.SubjectName).ToList(), _engine, runSubject, Log, unit: "건", _cts.Token);
+            targets, _engine, runSubject, Log, unit: "건", _cts.Token);
 
         Log(new string('=', 50));
         Log("전과목 자동 입력 결과:");
         foreach (var s in Automation.BatchUploadRunner.Summarize(outcomes)) Log("  " + s);
 
-        // 재시도: 실패·미도달 과목만 같은 경로로 다시 (토큰은 새로)
+        // 재시도: 실패·미도달 과목만 같은 경로로 (표시명 → 매핑된 화면명 복원)
+        var screenByDisplay = targets.ToDictionary(t => t.Display, t => t.Screen);
         BatchResultWindow.ShowResult(outcomes, "건",
             retry: async subs =>
             {
                 _cts = new CancellationTokenSource();
-                return await Automation.BatchUploadRunner.RunAsync(subs, _engine, runSubject, Log, "건", _cts.Token);
+                var rt = subs.Select(d => new Automation.BatchUploadRunner.SubjectTarget(
+                    d, screenByDisplay.TryGetValue(d, out var sc) ? sc : d)).ToList();
+                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runSubject, Log, "건", _cts.Token);
             },
             owner: Application.Current.MainWindow);
+    }
+
+    /// <summary>선택된 과목들로 (내 과목 → 화면 과목) 대상 목록을 만든다. 매핑이 없거나 '미선택'이면 같은 이름으로 폴백.</summary>
+    private static List<Automation.BatchUploadRunner.SubjectTarget> BuildTargets(IEnumerable<SubjectPick> chosen) =>
+        chosen.Select(p =>
+        {
+            var screen = p.HasScreenOptions && p.ScreenSubject != SubjectPick.NoScreenMatch
+                ? p.ScreenSubject : p.Name;
+            return new Automation.BatchUploadRunner.SubjectTarget(p.Name, screen);
+        }).ToList();
+
+    /// <summary>화면 과목 콤보 목록을 읽어 각 pick 에 자동 매핑을 채운다. 못 읽으면(오프라인 등) 매핑 UI 없이 같은 이름 사용.</summary>
+    private async Task PopulateScreenMappingAsync(IReadOnlyList<SubjectPick> picks)
+    {
+        try
+        {
+            var screen = await _engine.ReadSubjectOptionsAsync(_cts?.Token ?? CancellationToken.None);
+            if (screen.Count == 0) return;   // 콤보를 못 읽음 → 기존처럼 같은 이름으로 진행
+            var suggestions = Core.SubjectMapper.Suggest(picks.Select(p => p.Name).ToList(), screen);
+            for (int i = 0; i < picks.Count; i++)
+                picks[i].SetScreenMapping(screen, suggestions[i].Screen, suggestions[i].Auto);
+        }
+        catch { /* 매핑 실패는 무시 — 같은 이름으로 진행 */ }
     }
 
     // ── 화면 진단 (Phase 5.5 셀렉터 실측용 — docs/보관_진단_검증도구.md) ──

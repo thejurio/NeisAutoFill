@@ -20,6 +20,8 @@ public class BatchUploadRunnerTests
         public Task<bool> AttachAsync(CancellationToken ct = default) => Task.FromResult(true);
         public Task<bool> IsAliveAsync() => Task.FromResult(true);
         public Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default) => Task.FromResult<string?>(null);
+        public Task<IReadOnlyList<string>> ReadSubjectOptionsAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<string>>(System.Array.Empty<string>());
         public Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default)
             => Task.FromResult(OnSelect(subjectName));
         public Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default)
@@ -37,8 +39,11 @@ public class BatchUploadRunnerTests
     private static BatchUploadRunner.SubjectResult Fail(params SkipItem[] failed) => new(0, failed, 0, false);
 
     private static Task<List<BatchUploadRunner.SubjectOutcome>> Run(
-        FakeEngine eng, IReadOnlyList<string> subjects, Func<string, BatchUploadRunner.SubjectResult> run) =>
-        BatchUploadRunner.RunAsync(subjects, eng, s => Task.FromResult(run(s)), _ => { }, "건", CancellationToken.None);
+        FakeEngine eng, IReadOnlyList<string> subjects, Func<string, BatchUploadRunner.SubjectResult> run)
+    {
+        var targets = subjects.Select(s => new BatchUploadRunner.SubjectTarget(s, s)).ToList();
+        return BatchUploadRunner.RunAsync(targets, eng, s => Task.FromResult(run(s)), _ => { }, "건", CancellationToken.None);
+    }
 
     [Fact]
     public async Task 모두_성공하면_전부_Success()

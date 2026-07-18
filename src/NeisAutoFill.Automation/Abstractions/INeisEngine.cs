@@ -40,6 +40,9 @@ public interface INeisEngine
     /// <summary>현재 화면의 교과(과목)명 (§3.2). 없으면 null.</summary>
     Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default);
 
+    /// <summary>화면 과목 콤보의 선택 가능한 과목 목록을 읽는다 (전과목 매핑용). 콤보를 못 찾으면 빈 목록.</summary>
+    Task<IReadOnlyList<string>> ReadSubjectOptionsAsync(CancellationToken ct = default);
+
     /// <summary>화면 상단 과목 콤보로 과목을 전환하고 [조회] 후 갱신을 기다린다 (Phase 5.5).</summary>
     Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default);
 
