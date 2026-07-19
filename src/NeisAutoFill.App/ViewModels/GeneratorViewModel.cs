@@ -466,6 +466,16 @@ public sealed class GeneratorViewModel : ObservableObject
             return;
         }
 
+        // 학기말종합의견 화면으로 자동 이동 (전담과 동일 — 이후 과목 전환·조회는 배치 러너가 함)
+        var navProg = new Progress<Automation.Abstractions.ProgressInfo>(p =>
+        { if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message); });
+        if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, navProg))
+        {
+            MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요. 나이스에서 직접 열어 주세요.",
+                "안내", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         // 과목 체크리스트 — 입력할 과목을 고르고, 자동 저장 동의도 이 창에서
         var picks = allBySubject
             .Select(kv => new SubjectPick(kv.Key, kv.Value.Count, $"서술문 {kv.Value.Count}명 입력 예정"))
@@ -475,7 +485,7 @@ public sealed class GeneratorViewModel : ObservableObject
 
         var win = new BatchGenerateWindow(picks,
             title: "전과목 서술문 입력",
-            description: "나이스에 입력할 과목을 선택하세요. 나이스 화면이 [학기말 종합의견] 조회 화면인지 확인한 뒤 시작하세요.",
+            description: "나이스에 입력할 과목을 선택하세요. 학기말종합의견 화면으로 자동 이동해 과목마다 조회·입력·저장합니다.",
             startLabel: "🚀 입력 시작",
             warning: "각 과목 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 과목으로 넘어갑니다. " +
                      "검증에 실패한 과목은 저장하지 않고 그 자리에서 중단합니다.")
@@ -878,9 +888,8 @@ public sealed class GeneratorViewModel : ObservableObject
             var prompt = ctx is { } c
                 ? $"'{c.Grade}-{c.Class} {c.Subject}' 세특 {items.Count}명을 나이스에 입력합니다.\n" +
                   "학기말종합의견 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?"
-                : $"'{SelectedSubject}' {items.Count}명의 서술문을 나이스 화면에 입력합니다.\n" +
-                  "(저장은 하지 않으며, 확인 후 나이스에서 직접 [저장]을 누르세요)\n\n" +
-                  "나이스 화면이 해당 과목의 종합의견 입력 화면인지 확인하셨나요?";
+                : $"'{SelectedSubject}' {items.Count}명의 서술문을 나이스에 입력합니다.\n" +
+                  "학기말종합의견 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?";
             var ok = MessageBox.Show(prompt, "확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (ok != MessageBoxResult.Yes) return;
         }
@@ -895,17 +904,25 @@ public sealed class GeneratorViewModel : ObservableObject
 
         try
         {
-            // 전담: 세특 서술문은 나이스 '학기말종합의견' 화면에 입력 → 이동 → 학년·반·교과 선택 → 조회
-            if (ctx is { } tc && !dryRun)
+            // 서술문은 나이스 '학기말종합의견' 화면에 입력 → 이동 후 과목(전담은 학년·반도) 맞추고 조회
+            if (!dryRun)
             {
-                _mainLog($"{tc.Grade}-{tc.Class} {tc.Subject} 세특 화면을 준비하고 있어요…");
-                var moved = await _engine.NavigateToAsync(
-                    Automation.Abstractions.NeisTarget.TermOpinion, progress);
-                if (!moved) { MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
-                var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress);
-                if (!okAxis) { MessageBox.Show($"학년·반·교과를 맞추지 못했어요.\n{whyAxis}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
-                var (okQ, whyQ) = await _engine.QueryAsync();
-                if (!okQ) { MessageBox.Show($"명단을 불러오지 못했어요.\n{whyQ}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                _mainLog($"{SelectedSubject} 서술문 화면을 준비하고 있어요…");
+                if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress))
+                { MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+
+                if (ctx is { } tc)   // 전담: 학년·반·교과 값 기반 선택 + 조회
+                {
+                    var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress);
+                    if (!okAxis) { MessageBox.Show($"학년·반·교과를 맞추지 못했어요.\n{whyAxis}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                    var (okQ, whyQ) = await _engine.QueryAsync();
+                    if (!okQ) { MessageBox.Show($"명단을 불러오지 못했어요.\n{whyQ}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                }
+                else                 // 담임: 자기 반 고정 → 교과만 전환(SelectSubject 가 조회까지)
+                {
+                    var (okSubj, whySubj) = await _engine.SelectSubjectAsync(SelectedSubject!);
+                    if (!okSubj) { MessageBox.Show($"'{SelectedSubject}' 과목으로 바꾸지 못했어요.\n{whySubj}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                }
             }
 
             var report = await _engine.RunNarrativesAsync(
