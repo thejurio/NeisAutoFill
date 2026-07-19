@@ -24,10 +24,22 @@ public partial class UpdatePromptWindow : Window
 
             var head = Regex.Match(line, @"^(#{1,6})\s*(.*)$");
             Paragraph p;
-            if (head.Success)   // 헤딩 — 크고 파랗게, 위 여백
+            if (head.Success)   // 헤딩 — # 버전 구분(크게·밑줄), ## 이하 섹션(파랗게)
             {
-                p = new Paragraph { Margin = new Thickness(0, 10, 0, 4), FontSize = 14.5,
-                                    FontWeight = FontWeights.Bold, Foreground = HeadBrush };
+                bool ver = head.Groups[1].Value.Length == 1;
+                p = new Paragraph
+                {
+                    Margin = new Thickness(0, ver ? 14 : 10, 0, 4),
+                    FontSize = ver ? 16 : 14.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = ver ? Brushes.Black : HeadBrush,
+                };
+                if (ver)
+                {
+                    p.BorderBrush = HeadBrush;
+                    p.BorderThickness = new Thickness(0, 0, 0, 1.5);
+                    p.Padding = new Thickness(0, 0, 0, 4);
+                }
                 AddInlines(p.Inlines, head.Groups[2].Value);
             }
             else if (Regex.Match(line, @"^\s*-\s+(.*)$") is { Success: true } li)   // 불릿
@@ -70,15 +82,14 @@ public partial class UpdatePromptWindow : Window
         return win.ShowDialog() == true;
     }
 
-    /// <summary>업데이트 직후 1회 — "이번 버전에서 새로워진 점"(패치로그)을 보여준다.</summary>
-    public static void ShowWhatsNew(string version, string notes, DateTime? publishedAt, Window? owner)
+    /// <summary>업데이트 직후 1회 — 이전 버전 이후의 패치로그(여러 버전이면 전부 누적)를 보여준다.</summary>
+    public static void ShowWhatsNew(string version, string fromVersion, string notes, Window? owner)
     {
         var win = new UpdatePromptWindow { Owner = owner };
         win.TitleText.Text = "업데이트 완료";
         win.HeadText.Text = $"🎉 v{version} 으로 업데이트되었습니다";
-        win.SubText.Text = publishedAt is { } d
-            ? $"이번 버전에서 새로워진 점입니다.  ·  {d:yyyy-MM-dd} 업데이트"
-            : "이번 버전에서 새로워진 점입니다.";
+        win.SubText.Text = $"v{fromVersion} 이후 새로워진 점입니다.";
+        win.Height = 620; win.Width = 600;   // 누적 노트는 길다 — 넉넉하게
         win.SetNotes(string.IsNullOrWhiteSpace(notes) ? "변경 내용 안내를 불러오지 못했습니다." : notes);
         win.FootText.Text = "";
         win.LaterBtn.Visibility = Visibility.Collapsed;

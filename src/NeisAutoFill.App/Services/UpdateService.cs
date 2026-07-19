@@ -43,27 +43,42 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
         }
         if (current <= last) return;   // 업데이트 아님
 
-        // 현재 버전 태그의 릴리스 노트·게시 일시 조회 (실패해도 창은 띄움 — 안내문으로)
+        // 이전 실행 버전 < 태그 ≤ 현재 버전인 릴리스 노트를 전부 모은다 —
+        // 옛 버전에서 여러 단계를 건너뛰어 업데이트해도 그 사이 변경점이 다 보이게 (최신부터).
+        // 자동 생성 링크("Full Changelog")뿐인 노트는 스킵해 알맹이만 남긴다.
         string notes = "";
-        DateTime? publishedAt = null;
         var repo = settings.Options.UpdateRepo?.Trim();
         if (!string.IsNullOrEmpty(repo) && repo.Contains('/'))
         {
             try
             {
                 var json = await Http.GetStringAsync(
-                    $"https://api.github.com/repos/{repo}/releases/tags/v{current.ToString(3)}");
+                    $"https://api.github.com/repos/{repo}/releases?per_page=50");
                 using var doc = JsonDocument.Parse(json);
-                notes = doc.RootElement.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
-                if (doc.RootElement.TryGetProperty("published_at", out var pa) &&
-                    DateTime.TryParse(pa.GetString(), out var dt))
-                    publishedAt = dt.ToLocalTime();
+                var sb = new System.Text.StringBuilder();
+                foreach (var rel in doc.RootElement.EnumerateArray())   // API 기본 = 최신순
+                {
+                    var tag = rel.GetProperty("tag_name").GetString() ?? "";
+                    if (!Version.TryParse(tag.TrimStart('v', 'V'), out var v)) continue;
+                    if (v <= last || v > current) continue;
+
+                    var body = (rel.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "").Trim();
+                    if (body.Length == 0 || body.StartsWith("**Full Changelog**")) continue;   // 링크뿐 → 스킵
+
+                    var date = rel.TryGetProperty("published_at", out var pa) &&
+                               DateTime.TryParse(pa.GetString(), out var dt)
+                        ? $"  ·  {dt.ToLocalTime():yyyy-MM-dd}" : "";
+                    sb.AppendLine($"# 🔖 v{v.ToString(3)}{date}");
+                    sb.AppendLine(body);
+                    sb.AppendLine();
+                }
+                notes = sb.ToString().Trim();
             }
             catch { /* 오프라인 등 — 노트 없이 진행 */ }
         }
 
         await Application.Current.Dispatcher.InvokeAsync(() =>
-            UpdatePromptWindow.ShowWhatsNew(current.ToString(3), notes, publishedAt, Application.Current.MainWindow));
+            UpdatePromptWindow.ShowWhatsNew(current.ToString(3), last.ToString(3), notes, Application.Current.MainWindow));
         SaveLastRunVersion(current);   // 확인 후 기록 — 다음 실행부턴 안 뜸
     }
 
