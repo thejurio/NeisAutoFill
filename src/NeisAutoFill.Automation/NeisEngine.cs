@@ -119,6 +119,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     public async Task<bool> NavigateToAsync(NeisTarget target, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
     {
         if (_page is null) return false;
+        await DismissAlertsAsync(ct);   // 남은 알림이 메뉴 클릭을 막지 않게
         // 마지막 단계 라벨(접미사 포함 우선)·이동 후 탭·화면 제목(app-tit 실측값)
         var (thirdName, thirdLabels, tabLabels, screenName, title) = target switch
         {
@@ -299,6 +300,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     public async Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default)
     {
         var page = RequirePage();
+        await DismissAlertsAsync(ct);   // 남은 알림이 콤보 조작을 막지 않게
 
         var (combo, current) = await FindSubjectComboAsync();
         if (current == subjectName) return (true, "이미 조회됨");
@@ -339,6 +341,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         int grade, string @class, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
     {
         var page = RequirePage();
+        await DismissAlertsAsync(ct);   // 남은 알림이 콤보 조작을 막지 않게
 
         progress?.Report(new($"학년 콤보 확인 중 (목표 {grade}학년)…"));
         var g = await PickQueryComboAsync("학년", grade, progress, ct);
@@ -386,6 +389,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         int grade, string @class, string subject, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
     {
         var page = RequirePage();
+        await DismissAlertsAsync(ct);   // 남은 알림이 콤보 조작을 막지 않게
         int classNum = int.TryParse(DigitsOf(@class), out var cn) ? cn : 0;
 
         progress?.Report(new($"학년·반·교과 확인 중 (목표 {grade}-{classNum} {subject})…"));
@@ -492,6 +496,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     public async Task<(bool Ok, string Why)> QueryAsync(CancellationToken ct = default)
     {
         var page = RequirePage();
+        await DismissAlertsAsync(ct);   // 남은 알림이 조회 클릭을 막지 않게
         var query = await FindButtonAsync(NeisSelectors.QueryButtonName);
         if (query is null) return (false, "[조회] 버튼을 찾지 못했습니다");
         await query.ClickAsync();
@@ -512,10 +517,11 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         var save = await FindButtonAsync(NeisSelectors.SaveButtonName);
         if (save is null) return (false, "[저장] 버튼을 찾지 못했습니다");
 
-        // 실측: 저장할 변경이 없으면 버튼에 cl-disabled 가 붙는다 — 클릭해도 무반응이므로 명확히 보고
+        // 실측: 저장할 변경이 없으면 버튼에 cl-disabled 가 붙는다 — 이미 같은 값이면 정상이므로
+        // 실패가 아니라 '저장 생략' 성공으로 보고 배치가 다음으로 넘어가게 한다.
         var cls = await save.GetAttributeAsync("class") ?? "";
         if (cls.Contains(NeisSelectors.DisabledClass))
-            return (false, "[저장] 버튼이 비활성 상태입니다 (저장할 변경이 없거나 화면이 준비되지 않음)");
+            return (true, "변경 없음 — 저장 생략");
 
         await save.ClickAsync();
 
@@ -529,6 +535,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             await yes.ClickAsync();
             await Task.Delay(500, ct);
         }
+        // 잔여 알림("변경된 내용이 없습니다" 등)이 남아 있으면 마저 닫는다 — 다음 단계 클릭이 막히지 않게
+        await DismissAlertsAsync(ct);
         // 대화상자가 하나도 없었어도 클릭 자체는 됐으므로 성공으로 본다 (화면별 차이 허용)
         return (true, anyDialog ? "" : "대화상자 없음");
     }
@@ -564,6 +572,21 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             catch { /* 스캔 중 사라진 요소는 건너뜀 */ }
         }
         return contains;
+    }
+
+    /// <summary>화면에 남아 있는 알림 대화상자("변경된 내용이 없습니다" 등)를 [확인]으로 닫는다.
+    /// 모달이 남으면 이후 모든 클릭이 막혀 단계별 타임아웃이 연쇄돼 멈춘 것처럼 보인다 (실측 2026-07-19).
+    /// 조회·저장·콤보 조작 등 상호작용 직전마다 불러 안전하게 비운다. 없으면 즉시 통과.</summary>
+    private async Task DismissAlertsAsync(CancellationToken ct = default)
+    {
+        if (_page is null) return;
+        for (int i = 0; i < 3; i++)   // 겹친 대화상자 대비 최대 3개
+        {
+            var yes = await WaitDialogYesButtonAsync(TimeSpan.FromMilliseconds(250), ct);
+            if (yes is null) return;
+            try { await yes.ClickAsync(new LocatorClickOptions { Timeout = 2000 }); } catch { return; }
+            await Task.Delay(300, ct);
+        }
     }
 
     /// <summary>대화상자 안의 긍정(확인/예) 버튼이 나타나면 반환. 시간 내 없으면 null.</summary>
