@@ -242,26 +242,18 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     public bool LastSubjectComboUsedFallback { get; private set; }
 
     /// <summary>화면의 aria-label 콤보들과 그 라벨 목록(인덱스 보존)을 함께 반환.
-    /// 과목·학년·반 콤보 탐색이 공유한다.</summary>
+    /// 과목·학년·반 콤보 탐색이 공유한다.
+    /// ★ JS 일괄 읽기 1회 — 교과별평가 화면은 그리드 행마다 등급 콤보가 있어(17명이면 30~40개)
+    ///   콤보별 RPC(IsVisible+GetAttribute)로 돌면 폴링 한 번에 수 초씩 걸렸다 (속도 병목 실측).</summary>
     private async Task<(ILocator Combos, List<string?> Labels)> ReadComboLabelsAsync()
     {
         var page = RequirePage();
         var combos = page.Locator("div[role='combobox'][aria-label]");
-        int n = await combos.CountAsync();
-
-        // 보이는 콤보의 라벨을 순서대로 수집 (인덱스 보존 — null = 안 보이거나 라벨 없음)
-        var labels = new List<string?>(n);
-        for (int i = 0; i < n; i++)
-        {
-            try
-            {
-                labels.Add(await combos.Nth(i).IsVisibleAsync()
-                    ? await combos.Nth(i).GetAttributeAsync("aria-label")
-                    : null);
-            }
-            catch { labels.Add(null); }   // 스캔 중 사라진 요소
-        }
-        return (combos, labels);
+        // querySelectorAll 순서 = Locator Nth 순서 (둘 다 DOM 순서) — 인덱스 정합 보장
+        var labels = await page.EvaluateAsync<string?[]>(
+            @"() => [...document.querySelectorAll(""div[role='combobox'][aria-label]"")]
+                    .map(el => el.offsetParent !== null ? el.getAttribute('aria-label') : null)");
+        return (combos, labels?.ToList() ?? new List<string?>());
     }
 
     private async Task<(ILocator? Combo, string? Subject)> FindSubjectComboAsync()
@@ -318,13 +310,13 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            await Task.Delay(600, ct);
+            await Task.Delay(400, ct);
             try
             {
                 if (await GetCurrentSubjectAsync(ct) == subjectName &&
                     await FindGridAsync(page) is not null)
                 {
-                    await Task.Delay(800, ct);   // 그리드 데이터 렌더 여유
+                    await Task.Delay(400, ct);   // 그리드 데이터 렌더 여유
                     return (true, "");
                 }
             }
@@ -369,12 +361,12 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            await Task.Delay(600, ct);
+            await Task.Delay(400, ct);
             try
             {
                 if (await FindGridAsync(page) is not null)
                 {
-                    await Task.Delay(800, ct);   // 렌더 여유
+                    await Task.Delay(400, ct);   // 렌더 여유
                     return (true, "");
                 }
             }
@@ -414,8 +406,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            await Task.Delay(600, ct);
-            try { if (await FindGridAsync(page) is not null) { await Task.Delay(800, ct); return (true, ""); } }
+            await Task.Delay(400, ct);
+            try { if (await FindGridAsync(page) is not null) { await Task.Delay(400, ct); return (true, ""); } }
             catch { /* 갱신 중 일시 오류 무시 */ }
         }
         return (false, "조회 후 화면 갱신을 확인하지 못했습니다");
@@ -505,8 +497,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
-            await Task.Delay(500, ct);
-            try { if (await FindGridAsync(page) is not null) { await Task.Delay(600, ct); return (true, ""); } }
+            await Task.Delay(400, ct);
+            try { if (await FindGridAsync(page) is not null) { await Task.Delay(400, ct); return (true, ""); } }
             catch { /* 갱신 중 일시 오류 무시 */ }
         }
         return (false, "조회 후 그리드를 확인하지 못했습니다");
@@ -525,15 +517,16 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
         await save.ClickAsync();
 
-        // 확인("저장하시겠습니까?") → 완료("저장되었습니다") 대화상자 순서로 최대 2개 처리
+        // 확인("저장하시겠습니까?") → 완료("저장되었습니다") 대화상자 순서로 최대 2개 처리.
+        // 첫 대화상자는 4초, 그 다음부터는 1.5초만 — 없는 두 번째를 6초씩 기다리던 게 저장 지연의 주범.
         bool anyDialog = false;
         for (int d = 0; d < 2; d++)
         {
-            var yes = await WaitDialogYesButtonAsync(TimeSpan.FromSeconds(6), ct);
+            var yes = await WaitDialogYesButtonAsync(TimeSpan.FromSeconds(d == 0 ? 4 : 1.5), ct);
             if (yes is null) break;
             anyDialog = true;
             await yes.ClickAsync();
-            await Task.Delay(500, ct);
+            await Task.Delay(400, ct);
         }
         // 잔여 알림("변경된 내용이 없습니다" 등)이 남아 있으면 마저 닫는다 — 다음 단계 클릭이 막히지 않게
         await DismissAlertsAsync(ct);
