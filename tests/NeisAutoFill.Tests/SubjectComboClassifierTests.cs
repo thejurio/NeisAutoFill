@@ -124,6 +124,40 @@ public class SubjectComboClassifierTests
         Assert.Null(value);
     }
 
+    // ── F9 M10: 종합의견·세특 화면 학년·반·교과 (라벨 깨짐 → 값으로 판별) ──
+    [Fact]
+    public void ClassifyNarrativeAxis_라벨이_전부_학기여도_값으로_찾는다()
+    {
+        // 실측: 종합의견 화면 콤보 순서 [학년도, 학기, 학년(5), 반(1), 교과(국어)] — 라벨은 다 깨짐
+        var labels = new string?[] { "학년도, 2026", "학기, 1", "학기, 5", "학기, 1", "학기, 국어" };
+        var (g, c, s) = ClassifyNarrativeAxis(labels);
+        Assert.Equal(2, g);   // 학년 = 세 번째
+        Assert.Equal(3, c);   // 반 = 네 번째
+        Assert.Equal(4, s);   // 교과 = 다섯 번째(비숫자)
+    }
+
+    [Fact]
+    public void ClassifyNarrativeAxis_정상_라벨_화면에서도_동작()
+    {
+        // 교과별 평가처럼 라벨이 정상이어도 값 기반이라 동일하게 찾는다
+        var labels = new string?[] { "학년, 2026", "학기, 1", "학년, 5", "반, 1", "교과, 국어" };
+        var (g, c, s) = ClassifyNarrativeAxis(labels);
+        Assert.Equal(2, g);
+        Assert.Equal(3, c);
+        Assert.Equal(4, s);
+    }
+
+    [Fact]
+    public void ClassifyNarrativeAxis_조회조건_아닌_콤보는_무시()
+    {
+        var labels = new string?[] { "학년도, 2026", "학기, 1", "학기, 3", "학기, 2",
+                                     "학기, 수학", "일괄적용 성취기준 선택", "정렬" };
+        var (g, c, s) = ClassifyNarrativeAxis(labels);
+        Assert.Equal(2, g);
+        Assert.Equal(3, c);
+        Assert.Equal(4, s);
+    }
+
     [Fact]
     public void FindQueryCombo_학년_라벨이_둘이면_prefer로_진짜학년()
     {

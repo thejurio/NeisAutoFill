@@ -31,6 +31,9 @@ public class BatchUploadRunnerTests
         public Task<(bool Ok, string Why)> SelectClassAsync(int grade, string @class,
             IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
             => Task.FromResult((true, ""));
+        public Task<(bool Ok, string Why)> SelectNarrativeAxisAsync(int grade, string @class, string subject,
+            IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
+            => Task.FromResult((true, ""));
         public Task<(bool Ok, string Why)> QueryAsync(CancellationToken ct = default) => Task.FromResult((true, ""));
         public Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default)
             => Task.FromResult(OnSave());

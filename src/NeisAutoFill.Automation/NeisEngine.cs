@@ -381,6 +381,81 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         return (false, "조회 후 화면 갱신을 확인하지 못했습니다");
     }
 
+    /// <summary>종합의견·세특 화면의 학년·반·교과를 맞추고 [조회] 한다 (F9 M10).
+    /// 이 화면들은 조회조건 라벨이 전부 "학기"로 깨져 있어 값(성질) 기반으로 콤보를 찾는다(ClassifyNarrativeAxis).</summary>
+    public async Task<(bool Ok, string Why)> SelectNarrativeAxisAsync(
+        int grade, string @class, string subject, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
+    {
+        var page = RequirePage();
+        int classNum = int.TryParse(DigitsOf(@class), out var cn) ? cn : 0;
+
+        progress?.Report(new($"학년·반·교과 확인 중 (목표 {grade}-{classNum} {subject})…"));
+        var g = await PickAxisComboAsync(Axis.Grade, grade.ToString(), progress, ct);
+        if (!g.Ok) return g;
+        var c = await PickAxisComboAsync(Axis.Class, classNum.ToString(), progress, ct);
+        if (!c.Ok) return c;
+        var s = await PickAxisComboAsync(Axis.Subject, subject, progress, ct);
+        if (!s.Ok) return s;
+
+        if (g.Why == "skip" && c.Why == "skip" && s.Why == "skip")
+        {
+            progress?.Report(new($"이미 {grade}-{classNum} {subject} 화면입니다 (조회 생략)"));
+            return (true, "이미 해당 조합");
+        }
+
+        var query = await FindButtonAsync(NeisSelectors.QueryButtonName);
+        if (query is null) return (false, "[조회] 버튼을 찾지 못했습니다");
+        await query.ClickAsync();
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(600, ct);
+            try { if (await FindGridAsync(page) is not null) { await Task.Delay(800, ct); return (true, ""); } }
+            catch { /* 갱신 중 일시 오류 무시 */ }
+        }
+        return (false, "조회 후 화면 갱신을 확인하지 못했습니다");
+    }
+
+    private enum Axis { Grade, Class, Subject }
+
+    /// <summary>세특/종합의견 화면 축(학년·반·교과) 콤보를 값 기반으로 찾아 목표로 맞춘다.
+    /// 이미 목표면 Why="skip". 학년·반은 숫자, 교과는 텍스트 비교.</summary>
+    private async Task<(bool Ok, string Why)> PickAxisComboAsync(
+        Axis axis, string target, IProgress<ProgressInfo>? progress, CancellationToken ct)
+    {
+        var name = axis switch { Axis.Grade => "학년", Axis.Class => "반", _ => "교과" };
+        var (combos, labels) = await ReadComboLabelsAsync();
+        var (gi, ci, si) = Core.SubjectComboClassifier.ClassifyNarrativeAxis(labels);
+        int idx = axis switch { Axis.Grade => gi, Axis.Class => ci, _ => si };
+        if (idx < 0) return (false, $"{name} 콤보를 화면에서 찾지 못했습니다 (세특/종합의견 화면인지 확인)");
+
+        var combo = combos.Nth(idx);
+        var current = await ComboBoxDriver.ReadValueAsync(combo);
+        bool match = axis == Axis.Subject
+            ? current.Trim() == target.Trim()
+            : DigitsOf(current) == DigitsOf(target);
+        if (match) return (true, "skip");
+
+        var options = await _combo!.OpenAndReadOptionsAsync(combo);
+        var pickText = axis == Axis.Subject
+            ? options.FirstOrDefault(o => o.Trim() == target.Trim())
+            : options.FirstOrDefault(o => DigitsOf(o) == DigitsOf(target));
+        if (pickText is null)
+            return (false, $"{name} 콤보에 '{target}' 옵션이 없습니다 (있는 옵션: {string.Join(" / ", options)})");
+
+        // 재렌더 대비 콤보 재탐색 후 선택
+        (combos, labels) = await ReadComboLabelsAsync();
+        (gi, ci, si) = Core.SubjectComboClassifier.ClassifyNarrativeAxis(labels);
+        idx = axis switch { Axis.Grade => gi, Axis.Class => ci, _ => si };
+        if (idx < 0) return (false, $"{name} 콤보 재탐색 실패");
+        var pick = await _combo!.OpenAndPickAsync(combos.Nth(idx), pickText);
+        if (!pick.Ok) return (false, $"{name} 선택 실패: {pick.Reason}");
+        progress?.Report(new($"{name} → {pickText} 선택됨"));
+        return (true, "");
+    }
+
     /// <summary>조회조건 콤보를 목표 숫자로 맞춘다. 이미 맞으면 Why="skip" 으로 건너뜀.
     /// 옵션 텍스트가 "5"/"5학년" 어느 쪽이든 숫자만 비교해 매칭한다.</summary>
     private async Task<(bool Ok, string Why)> PickQueryComboAsync(

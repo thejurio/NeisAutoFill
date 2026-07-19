@@ -73,4 +73,40 @@ public static class SubjectComboClassifier
         }
         return (firstIdx, firstVal);
     }
+
+    /// <summary>종합의견·세특 화면의 학년·반·교과 콤보 인덱스를 값으로 찾는다 (F9 M10).
+    /// 이 화면들은 라벨이 전부 "학기"로 깨져 있어 라벨로는 못 찾는다 → 값의 성질로 판별:
+    ///   · 학년도 = 4자리 연도(2026)   · 교과 = 숫자가 아닌 값(국어)
+    ///   · 나머지 숫자 콤보를 화면 순서대로 = [학기, 학년, 반] → 2번째=학년, 3번째=반
+    /// 조회조건 콤보(라벨 key ∈ 학년도/학년/학기/반/교과)만 대상. 못 찾으면 인덱스 -1.</summary>
+    public static (int GradeIndex, int ClassIndex, int SubjectIndex) ClassifyNarrativeAxis(IReadOnlyList<string?> ariaLabels)
+    {
+        var query = new List<(int Index, string Value)>();
+        for (int i = 0; i < ariaLabels.Count; i++)
+        {
+            var label = ariaLabels[i];
+            if (string.IsNullOrWhiteSpace(label)) continue;
+            var parts = label.Split(',', 2);
+            if (parts.Length != 2) continue;
+            var key = parts[0].Trim();
+            if (key is "학년도" or "학년" or "학기" or "반" or "교과")
+                query.Add((i, parts[1].Trim()));
+        }
+
+        int subjectIdx = -1;
+        var numericNonYear = new List<int>();   // 학기·학년·반 (연도 제외한 숫자 콤보, 화면 순서)
+        foreach (var (idx, value) in query)
+        {
+            var digits = new string(value.Where(char.IsDigit).ToArray());
+            bool isNumeric = digits.Length > 0 && digits == value.Trim();
+            if (!isNumeric) { if (subjectIdx < 0) subjectIdx = idx; continue; }   // 비숫자 = 교과
+            if (digits.Length == 4) continue;                                     // 4자리 = 학년도 (건너뜀)
+            numericNonYear.Add(idx);                                              // 학기/학년/반 후보
+        }
+
+        // 순서: [학기, 학년, 반] → index 1 = 학년, index 2 = 반
+        int gradeIdx = numericNonYear.Count >= 2 ? numericNonYear[1] : -1;
+        int classIdx = numericNonYear.Count >= 3 ? numericNonYear[2] : -1;
+        return (gradeIdx, classIdx, subjectIdx);
+    }
 }

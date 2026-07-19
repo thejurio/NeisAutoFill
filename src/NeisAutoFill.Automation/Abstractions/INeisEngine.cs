@@ -83,6 +83,11 @@ public interface INeisEngine
     Task<(bool Ok, string Why)> SelectClassAsync(
         int grade, string @class, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);
 
+    /// <summary>종합의견·세특 화면의 학년·반·교과를 맞추고 [조회] 한다 (전담 서술문 F9 M10).
+    /// 이 화면들은 라벨이 깨져 있어 값 기반으로 콤보를 찾는다.</summary>
+    Task<(bool Ok, string Why)> SelectNarrativeAxisAsync(
+        int grade, string @class, string subject, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);
+
     /// <summary>[조회] 버튼을 눌러 명단·그리드를 불러온다 (전담: 이동 후 조회가 생략됐을 때 강제).</summary>
     Task<(bool Ok, string Why)> QueryAsync(CancellationToken ct = default);
 
