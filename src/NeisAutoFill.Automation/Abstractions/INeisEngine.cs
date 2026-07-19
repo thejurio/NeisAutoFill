@@ -19,6 +19,14 @@ public enum NeisScreenKind
 /// <summary>현재 나이스 상황 판별 결과. Url·화면 과목은 알 수 있으면 채운다.</summary>
 public sealed record NeisStatus(NeisScreenKind Kind, string? Url = null, string? ScreenSubject = null);
 
+/// <summary>앱이 이동할 수 있는 나이스 화면. 셋 다 메뉴 경로: 학급담임 → 학생평가 → (아래 3단계) (F9 M10).</summary>
+public enum NeisTarget
+{
+    Evaluation,          // 교과평가 → [교과별 평가] 탭 (성적 등급 입력)
+    TermOpinion,         // 학기말종합의견 (종합의견 서술문)
+    SubjectDevelopment,  // 교과학습발달상황 (교과 세특 서술문)
+}
+
 /// <summary>화면 파악 결과 — UI 가 매칭을 검토·결정할 재료.</summary>
 public sealed record MatchContext(
     string? ScreenSubject,
@@ -56,6 +64,10 @@ public interface INeisEngine
     /// <summary>교과별 평가 화면으로 앱이 직접 이동 시도 (메뉴: 학급담임→학생평가→교과평가→교과별평가).
     /// 실제로 교과별 평가 화면이 떴을 때만 true. progress 로 단계별 진행/실패를 로그에 남긴다.</summary>
     Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);
+
+    /// <summary>목표 화면(교과평가/학기말종합의견/교과학습발달상황)으로 이동. 상단 '학급담임'부터 눌러
+    /// 어느 페이지에서 출발해도 찾아간다. 실제 그 화면이 떴을 때만 true (F9 M10).</summary>
+    Task<bool> NavigateToAsync(NeisTarget target, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);
 
     /// <summary>현재 화면의 교과(과목)명 (§3.2). 없으면 null.</summary>
     Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default);

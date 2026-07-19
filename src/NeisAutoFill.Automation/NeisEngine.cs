@@ -106,31 +106,47 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         return new NeisStatus(NeisScreenKind.OtherNeisPage, url);
     }
 
-    /// <summary>교과별 평가 화면으로 앱이 직접 이동 (F9 M8). 나이스 메뉴 경로:
-    /// 학급담임 → 학생평가 → 교과평가 → 교과별평가 를 차례로 클릭한다. 실제 화면이 떴을 때만 true.
-    /// progress 로 각 단계 성공/실패를 로그에 남겨 어디서 막히는지 보이게 한다.</summary>
-    public async Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
+    /// <summary>교과별 평가 화면으로 이동 (하위호환 진입점 — 일반 NavigateToAsync 로 위임).</summary>
+    public Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
+        => NavigateToAsync(NeisTarget.Evaluation, progress, ct);
+
+    /// <summary>목표 화면으로 앱이 직접 이동 (F9 M10). 세 화면 모두 메뉴 경로:
+    /// 학급담임(상단 네비 — 어느 페이지에서도 보임) → 학생평가 → (교과평가|학기말종합의견|교과학습발달상황).
+    /// 상단 '학급담임'을 먼저 눌러 그 카테고리로 돌아오므로 다른 메뉴 화면에서도 출발할 수 있다.
+    /// 실제 그 화면(그리드 등장)이 확인될 때만 true. 막힌 단계만 progress 로 알린다.</summary>
+    public async Task<bool> NavigateToAsync(NeisTarget target, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
     {
         if (_page is null) return false;
-        if ((await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) return true;
+        // 이미 그 화면이면 생략 (교과평가만 상태 판별이 확실 — 서술문 화면은 아래 이동으로 재확인)
+        if (target == NeisTarget.Evaluation &&
+            (await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) return true;
 
-        // 각 단계: 접미사(0/2/3단계)를 붙인 '구체 라벨'을 먼저 — 하단 탭·제목의 같은 글자와 안 헷갈리게.
-        // 실측(dom_inspect): "학급담임 0단계 메뉴항목" / "학생평가 2단계 메뉴항목" / "교과평가 3단계" / 탭 "교과별 평가"
-        var path = new[]
+        // 마지막 단계 라벨(접미사 포함 우선 — 하단 탭·제목의 같은 글자와 안 헷갈리게)과 이동 후 탭
+        var (thirdName, thirdLabels, tabLabels, screenName) = target switch
         {
-            (name: "학급담임", labels: new[] { "학급담임 0단계", "학급담임" }),
-            (name: "학생평가", labels: new[] { "학생평가 2단계", "학생평가" }),
-            (name: "교과평가", labels: new[] { "교과평가 3단계", "교과평가" }),
-            (name: "교과별 평가", labels: new[] { "교과별 평가", "교과별평가" }),
+            NeisTarget.Evaluation =>
+                ("교과평가", new[] { "교과평가 3단계", "교과평가" }, new[] { "교과별 평가", "교과별평가" }, "교과별 평가"),
+            NeisTarget.TermOpinion =>
+                ("학기말종합의견", new[] { "학기말종합의견 3단계", "학기말종합의견" }, System.Array.Empty<string>(), "학기말 종합의견"),
+            NeisTarget.SubjectDevelopment =>
+                ("교과학습발달상황", new[] { "교과학습발달상황 3단계", "교과학습발달상황" }, System.Array.Empty<string>(), "교과학습발달상황"),
+            _ => ("교과평가", new[] { "교과평가" }, System.Array.Empty<string>(), "교과별 평가"),
         };
 
-        progress?.Report(new("교과별 평가 화면으로 이동하고 있어요…"));
+        var steps = new List<(string name, string[] labels)>
+        {
+            ("학급담임", new[] { "학급담임 0단계", "학급담임" }),
+            ("학생평가", new[] { "학생평가 2단계", "학생평가" }),
+            (thirdName, thirdLabels),
+        };
+        if (tabLabels.Length > 0) steps.Add((screenName, tabLabels));   // 교과평가만 하위 탭
+
+        progress?.Report(new($"{screenName} 화면으로 이동하고 있어요…"));
         try
         {
-            foreach (var (name, labels) in path)
+            foreach (var (name, labels) in steps)
             {
-                // 성공 단계는 조용히 — 막힌 단계만 알린다
-                if (await ClickMenuLabelAsync(labels, ct) is null)
+                if (await ClickMenuLabelAsync(labels, ct) is null)   // 성공 단계는 조용히, 막힌 단계만 알림
                 {
                     progress?.Report(new($"'{name}' 메뉴를 찾지 못해 이동을 멈췄어요"));
                     return false;
@@ -138,12 +154,12 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
                 await Task.Delay(800, ct);           // 하위 메뉴/화면 렌더 대기
             }
 
-            // 최종 화면 확인 (조회 로딩 여유)
+            // 도착 확인 — 그리드가 뜨면 그 화면에 온 것 (조회 로딩 여유)
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
             while (DateTime.UtcNow < deadline)
             {
                 ct.ThrowIfCancellationRequested();
-                if ((await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) return true;
+                if (await FindGridAsync(_page) is not null) { await Task.Delay(500, ct); return true; }
                 await Task.Delay(600, ct);
             }
         }

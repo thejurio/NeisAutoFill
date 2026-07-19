@@ -22,6 +22,7 @@ public class BatchUploadRunnerTests
         public Task<NeisStatus> DetectStatusAsync(CancellationToken ct = default)
             => Task.FromResult(new NeisStatus(NeisScreenKind.EvaluationReady));
         public Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default) => Task.FromResult(true);
+        public Task<bool> NavigateToAsync(NeisTarget target, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default) => Task.FromResult(true);
         public Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default) => Task.FromResult<string?>(null);
         public Task<IReadOnlyList<string>> ReadSubjectOptionsAsync(CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<string>>(System.Array.Empty<string>());
