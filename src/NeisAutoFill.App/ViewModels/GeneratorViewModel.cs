@@ -583,8 +583,9 @@ public sealed class GeneratorViewModel : ObservableObject
         {
             var pc = perClass.First(x => $"{x.Grade}-{x.Class}" == classKey);
             _mainLog($"{pc.Grade}-{pc.Class} {subject} 세특 화면을 준비하고 있어요…");
-            if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.SubjectDevelopment, progress))
-                return Fail($"{classKey} 세특 화면 이동 실패");
+            // 세특 서술문은 나이스에서 '학기말종합의견' 화면에 입력한다 (교과학습발달상황 아님)
+            if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress))
+                return Fail($"{classKey} 학기말종합의견 화면 이동 실패");
             var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(pc.Grade, pc.Class, subject, progress);
             if (!okAxis) return Fail($"{classKey} 학년·반·교과 선택 실패: {whyAxis}");
             var (okQ, whyQ) = await _engine.QueryAsync();
@@ -876,7 +877,7 @@ public sealed class GeneratorViewModel : ObservableObject
         {
             var prompt = ctx is { } c
                 ? $"'{c.Grade}-{c.Class} {c.Subject}' 세특 {items.Count}명을 나이스에 입력합니다.\n" +
-                  "교과학습발달상황 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?"
+                  "학기말종합의견 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?"
                 : $"'{SelectedSubject}' {items.Count}명의 서술문을 나이스 화면에 입력합니다.\n" +
                   "(저장은 하지 않으며, 확인 후 나이스에서 직접 [저장]을 누르세요)\n\n" +
                   "나이스 화면이 해당 과목의 종합의견 입력 화면인지 확인하셨나요?";
@@ -894,13 +895,13 @@ public sealed class GeneratorViewModel : ObservableObject
 
         try
         {
-            // 전담: 교과학습발달상황(세특) 화면으로 이동 → 학년·반·교과 선택 → 조회 (담임은 현재 화면 그대로)
+            // 전담: 세특 서술문은 나이스 '학기말종합의견' 화면에 입력 → 이동 → 학년·반·교과 선택 → 조회
             if (ctx is { } tc && !dryRun)
             {
                 _mainLog($"{tc.Grade}-{tc.Class} {tc.Subject} 세특 화면을 준비하고 있어요…");
                 var moved = await _engine.NavigateToAsync(
-                    Automation.Abstractions.NeisTarget.SubjectDevelopment, progress);
-                if (!moved) { MessageBox.Show("교과학습발달상황 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                    Automation.Abstractions.NeisTarget.TermOpinion, progress);
+                if (!moved) { MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
                 var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress);
                 if (!okAxis) { MessageBox.Show($"학년·반·교과를 맞추지 못했어요.\n{whyAxis}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
                 var (okQ, whyQ) = await _engine.QueryAsync();

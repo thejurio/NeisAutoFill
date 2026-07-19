@@ -86,11 +86,12 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             return new NeisStatus(NeisScreenKind.NotNeisTab, url);
 
         // 화면 제목(app-tit)으로 판별 — 실측: 교과평가/학기말종합의견/교과학습발달상황 이 그대로 들어온다.
-        // 교과별 평가(성적 등급) 화면일 때만 입력 준비. 서술문 화면들은 아래 OtherNeisPage 로 떨어진다.
+        // 교과별 평가(성적 등급) 화면이면 입력 준비. 그리드는 조회를 눌러야 뜨므로 판별에 요구하지 않는다
+        // (조회 전에도 '교과평가' 화면이면 준비 상태로 본다 → 호출부가 조회를 누른다).
         try
         {
             var title = await ReadScreenTitleAsync();
-            if (title.Contains("교과평가") && await FindGridAsync(_page) is not null)
+            if (title.Contains("교과평가"))
             {
                 var (_, subject) = await FindSubjectComboAsync();   // 화면 과목은 있으면 표시
                 return new NeisStatus(NeisScreenKind.EvaluationReady, url, subject);
@@ -133,8 +134,9 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             _ => ("교과평가", new[] { "교과평가" }, System.Array.Empty<string>(), "교과평가", "교과평가"),
         };
 
-        // 이미 그 화면이면 생략 — 제목(app-tit)으로 판별 (세 화면 모두 확실)
-        if ((await ReadScreenTitleAsync()).Contains(title) && await FindGridAsync(_page) is not null) return true;
+        // 이미 그 화면이면 생략 — 제목(app-tit)으로 판별. 서술문 화면은 조회 전이라 그리드가 없으니
+        // 제목만으로 판단한다 (그리드 요구하면 조회 전엔 영영 도착으로 안 잡힘).
+        if ((await ReadScreenTitleAsync()).Contains(title)) return true;
 
         var steps = new List<(string name, string[] labels)>
         {
@@ -157,13 +159,13 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
                 await Task.Delay(800, ct);           // 하위 메뉴/화면 렌더 대기
             }
 
-            // 도착 확인 — 화면 제목이 목표와 일치하고 그리드가 뜨면 도착 (조회 로딩 여유)
+            // 도착 확인 — 화면 제목(app-tit)만으로 판별. 서술문 화면은 조회를 눌러야 그리드가 뜨므로
+            // 도착 판정에 그리드를 요구하면 안 된다 (조회는 호출부가 이어서 누른다).
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(12);
             while (DateTime.UtcNow < deadline)
             {
                 ct.ThrowIfCancellationRequested();
-                if ((await ReadScreenTitleAsync()).Contains(title) && await FindGridAsync(_page) is not null)
-                { await Task.Delay(500, ct); return true; }
+                if ((await ReadScreenTitleAsync()).Contains(title)) { await Task.Delay(500, ct); return true; }
                 await Task.Delay(600, ct);
             }
             progress?.Report(new($"{screenName} 화면 확인이 안 돼요 (제목이 바뀌지 않음)"));
@@ -538,15 +540,18 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     private async Task<ILocator?> FindButtonAsync(string label)
     {
         var page = RequirePage();
+        // 1) 접근성 이름 '정확히' 일치 우선 (예: "조회" ≠ "조회 숨김")
         try
         {
-            var byRole = page.GetByRole(AriaRole.Button, new() { Name = label }).First;
+            var byRole = page.GetByRole(AriaRole.Button, new() { Name = label, Exact = true }).First;
             if (await byRole.IsVisibleAsync()) return byRole;
         }
         catch { /* 접근성 이름 불일치 → 수동 스캔 */ }
 
+        // 2) 수동 스캔 — 정확 일치 즉시 반환, 없으면 '포함'을 폴백으로(단 토글류 '숨김/펼침' 제외)
         var candidates = page.Locator(NeisSelectors.AnyButton);
         int n = await candidates.CountAsync();
+        ILocator? contains = null;
         for (int i = 0; i < n; i++)
         {
             var b = candidates.Nth(i);
@@ -555,11 +560,13 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
                 if (!await b.IsVisibleAsync()) continue;
                 var name = await b.GetAttributeAsync("aria-label") ?? "";
                 if (name == "") name = (await b.InnerTextAsync()).Trim();
-                if (name.Contains(label)) return b;
+                if (name == label) return b;   // 정확 일치 최우선
+                if (contains is null && name.Contains(label) && !name.Contains("숨김") && !name.Contains("펼"))
+                    contains = b;
             }
             catch { /* 스캔 중 사라진 요소는 건너뜀 */ }
         }
-        return null;
+        return contains;
     }
 
     /// <summary>대화상자 안의 긍정(확인/예) 버튼이 나타나면 반환. 시간 내 없으면 null.</summary>
@@ -763,10 +770,17 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
     private static async Task<ILocator?> FindGridAsync(IPage page)
     {
+        // 성적(colcount=8) 그리드 우선 — 있으면 그걸로
         var grids = page.Locator(NeisSelectors.Grid);
         int n = await grids.CountAsync();
         for (int i = 0; i < n; i++)
             if (await grids.Nth(i).IsVisibleAsync()) return grids.Nth(i);
+
+        // 폴백: colcount 무관하게 보이는 CLX 그리드 아무거나 (학기말종합의견=5 등 다른 화면 대응)
+        var any = page.Locator("div.cl-grid[role='grid']");
+        n = await any.CountAsync();
+        for (int i = 0; i < n; i++)
+            if (await any.Nth(i).IsVisibleAsync()) return any.Nth(i);
         return null;
     }
 
