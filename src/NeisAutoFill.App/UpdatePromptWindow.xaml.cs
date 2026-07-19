@@ -73,12 +73,17 @@ public partial class UpdatePromptWindow : Window
         if (i < text.Length) target.Add(new Run(text[i..]));
     }
 
-    /// <summary>true = 지금 업데이트, false = 나중에.</summary>
-    public static bool Ask(string latest, string current, string notes, Window? owner)
+    /// <summary>true = 지금 업데이트, false = 나중에. 변경 내용은 여기서 안 보여준다 —
+    /// 업데이트가 끝나면 새 버전이 패치로그 창(ShowWhatsNew)으로 서식 입혀 보여준다.</summary>
+    public static bool Ask(string latest, string current, Window? owner)
     {
         var win = new UpdatePromptWindow { Owner = owner };
         win.HeadText.Text = $"새 버전 v{latest} 이 있습니다  (현재 v{current})";
-        win.SetNotes(string.IsNullOrWhiteSpace(notes) ? "이번 버전의 변경 내용 안내가 없습니다." : notes);
+        win.SubText.Text = "업데이트가 끝나면 새로워진 점을 보여드립니다.";
+        win.NotesPanel.Visibility = Visibility.Collapsed;   // 간단 확인만 — 노트 영역 숨김
+        win.MinHeight = 0;
+        win.SizeToContent = SizeToContent.Height;
+        win.ResizeMode = ResizeMode.NoResize;
         return win.ShowDialog() == true;
     }
 

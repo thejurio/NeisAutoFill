@@ -116,10 +116,8 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
             }
             if (zipUrl is null) return;
 
-            var notes = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
-
             var ok = await Application.Current.Dispatcher.InvokeAsync(() =>
-                UpdatePromptWindow.Ask(latest.ToString(3), CurrentVersion.ToString(3), notes,
+                UpdatePromptWindow.Ask(latest.ToString(3), CurrentVersion.ToString(3),
                     Application.Current.MainWindow));
             if (!ok) return;   // '나중에' — 다음 실행 때 다시 안내한다 (영구 건너뛰기 없음)
 

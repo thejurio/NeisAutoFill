@@ -38,8 +38,8 @@
                 </StackPanel>
             </Border>
 
-            <!-- 릴리스 노트 (마크다운 렌더 — ##=제목, **=굵게, -=불릿) -->
-            <Border Padding="8,6">
+            <!-- 릴리스 노트 (마크다운 렌더 — ##=제목, **=굵게, -=불릿). 업데이트 전 확인 창(Ask)에선 숨김 -->
+            <Border x:Name="NotesPanel" Padding="8,6">
                 <RichTextBox x:Name="NotesRich" IsReadOnly="True" IsDocumentEnabled="True"
                              BorderThickness="0" Background="Transparent"
                              VerticalScrollBarVisibility="Auto" FontSize="12.5"
