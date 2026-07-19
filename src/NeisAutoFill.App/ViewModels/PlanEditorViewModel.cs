@@ -30,6 +30,7 @@ public sealed class PlanEditorViewModel : ObservableObject
 
     // ── 전담 모드 (F9 M4a) — null 이면 담임(기존 동작) ──
     private readonly Services.SubjectModeStore? _subjectStore;
+    private string? _preferSubject;   // 메인에서 보던 과목 — 계획 로드 후 이 과목 시트를 우선 선택 (F9 M9)
 
     /// <summary>전담 모드인가 (학년·반 콤보 표시).</summary>
     public bool IsSubjectMode => _subjectStore is not null;
@@ -45,10 +46,12 @@ public sealed class PlanEditorViewModel : ObservableObject
         NeisAutoFill.Core.ClassRef? initial = null,
         Func<string, IProgress<string>,
             Func<IReadOnlyList<PlanUnit>, Task<IReadOnlyList<PlanUnit>?>>?,
-            Task<IReadOnlyList<NeisAutoFill.Generator.GasPlanImporter.GradePlanSet>>>? unitImporter = null)
+            Task<IReadOnlyList<NeisAutoFill.Generator.GasPlanImporter.GradePlanSet>>>? unitImporter = null,
+        string? initialSubject = null)
     {
         _scale = scale;
         _importer = importer;
+        _preferSubject = initialSubject;
         _unitImporter = unitImporter;
         _subjectStore = subjectStore;
 
@@ -72,11 +75,12 @@ public sealed class PlanEditorViewModel : ObservableObject
 
         if (_subjectStore is null)
         {
-            // 담임: 넘겨받은 명단·계획 그대로
+            // 담임: 넘겨받은 명단·계획 그대로. 메인에서 보던 과목이 있으면 그 시트를 우선 선택.
             foreach (var (no, name) in roster) Roster.Add(new RosterRow { No = no, Name = name });
             while (Roster.Count < EmptyRosterRows) Roster.Add(new RosterRow());
             foreach (var p in plans) Subjects.Add(new PlanSubjectEdit(p, scale));
-            SelectedSubject = Subjects.FirstOrDefault();
+            SelectedSubject = Subjects.FirstOrDefault(s => s.Name == _preferSubject)
+                              ?? Subjects.FirstOrDefault();
         }
         else
         {
@@ -238,7 +242,10 @@ public sealed class PlanEditorViewModel : ObservableObject
         if (_subjectStore is not null && _selectedGrade > 0)
             foreach (var p in _subjectStore.LoadPlan(_selectedGrade))
                 Subjects.Add(new PlanSubjectEdit(p, _scale));
-        SelectedSubject = Subjects.FirstOrDefault();
+        // 메인에서 보던 과목(실과 등)이 이 학년 계획에 있으면 그걸 선택 — 없으면 첫 과목. 한 번만 적용.
+        SelectedSubject = Subjects.FirstOrDefault(s => s.Name == _preferSubject)
+                          ?? Subjects.FirstOrDefault();
+        _preferSubject = null;
     }
 
     private void SaveCurrentGrade()

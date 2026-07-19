@@ -163,16 +163,18 @@
 
                                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="■" Padding="9,5" Command="{Binding CancelCommand}"
                                             ToolTip="진행 중인 나이스 입력을 중지합니다"/>
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="🚀 전과목 입력" Margin="0,0,4,0"
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}"
+                                            Content="{Binding DataContext.RunAllLabel, RelativeSource={RelativeSource AncestorType=Window}}" Margin="0,0,4,0"
                                             Command="{Binding DataContext.RunAllSubjectsCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             IsEnabled="{Binding DataContext.IsConnected, RelativeSource={RelativeSource AncestorType=Window}}"
                                             ToolTipService.ShowOnDisabled="True"
-                                            ToolTip="모든 과목을 순서대로 나이스에 입력합니다 (각 과목 검증 통과 시 자동 저장).&#10;나이스에 연결된 후 사용할 수 있습니다."/>
-                                    <Button DockPanel.Dock="Right" Style="{StaticResource AccentGhostButton}" Content="▶ 이 과목 입력" Margin="0,0,4,0"
+                                            ToolTip="여러 대상을 순서대로 나이스에 입력합니다 (각 대상 검증 통과 시 자동 저장).&#10;나이스에 연결된 후 사용할 수 있습니다."/>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource AccentGhostButton}"
+                                            Content="{Binding DataContext.RunOneLabel, RelativeSource={RelativeSource AncestorType=Window}}" Margin="0,0,4,0"
                                             Command="{Binding RunCommand}"
                                             IsEnabled="{Binding DataContext.IsConnected, RelativeSource={RelativeSource AncestorType=Window}}"
                                             ToolTipService.ShowOnDisabled="True"
-                                            ToolTip="현재 과목만 나이스에 입력합니다 (저장은 확인 후 직접).&#10;나이스에 연결된 후 사용할 수 있습니다."/>
+                                            ToolTip="지금 보는 대상만 나이스에 입력합니다 (저장은 확인 후 직접).&#10;나이스에 연결된 후 사용할 수 있습니다."/>
                                     <ToggleButton DockPanel.Dock="Right" Style="{StaticResource GhostToggle}" Content="📖 성취기준" Margin="0,0,10,0"
                                                   IsChecked="{Binding DataContext.ShowCriteriaPanel, RelativeSource={RelativeSource AncestorType=Window}}"/>
                                 </DockPanel>

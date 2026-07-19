@@ -319,9 +319,9 @@ public sealed class MainViewModel : ObservableObject
         if (_profiles.IsSubjectMode)
         {
             var store = new SubjectModeStore(_scales.Active);
-            // 메인에서 보던 반 탭(예: 5-1)을 자료준비 기본값으로 — 안에서 학년·반 전환 가능
+            // 메인에서 보던 반 탭(예: 3-2)과 과목(예: 실과)을 자료준비 기본값으로 — 안에서 학년·반·과목 전환 가능
             var svm = new PlanEditorViewModel(Array.Empty<SubjectPlan>(), Array.Empty<(string, string)>(),
-                _scales.Active, importer, store, SelectedSubject?.OwnerClass, unitImporter);
+                _scales.Active, importer, store, SelectedSubject?.OwnerClass, unitImporter, _currentSubject);
             var swin = new PlanEditorWindow(svm) { Owner = Application.Current.MainWindow };
             if (importPath is not null) swin.Loaded += async (_, _) => await svm.ImportPlanFileAsync(importPath);
             swin.ShowDialog();
@@ -335,7 +335,9 @@ public sealed class MainViewModel : ObservableObject
         if (roster.Count == 0 && Subjects.Count > 0)
             roster = Subjects[0].Snapshot().Students.Select(s => (s.No, s.Name)).ToList();
 
-        var vm = new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active, importer);
+        // 메인에서 보던 과목을 자료준비에서 바로 그 과목 시트로 보이게 (담임도)
+        var vm = new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active, importer,
+            initialSubject: SelectedSubject?.SubjectName);
         var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
         if (importPath is not null)
             win.Loaded += async (_, _) => await vm.ImportPlanFileAsync(importPath);
@@ -482,6 +484,8 @@ public sealed class MainViewModel : ObservableObject
     private void InitSubjectAxis()
     {
         if (!IsSubjectMode) return;
+        OnPropertyChanged(nameof(RunOneLabel));
+        OnPropertyChanged(nameof(RunAllLabel));
         var store = new SubjectModeStore(_scales.Active);
         _allClasses = store.ListClasses();
 
@@ -1069,6 +1073,12 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand RunAllSubjectsCommand { get; private set; } = null!;
 
+    // 입력 버튼 라벨 — 담임은 과목 축, 전담은 반 축(탭=반)이라 표현이 다르다 (F9 M9)
+    /// <summary>단건 입력 버튼: 담임 "▶ 이 과목 입력" / 전담 "▶ 이 반 입력".</summary>
+    public string RunOneLabel => IsSubjectMode ? "▶ 이 반 입력" : "▶ 이 과목 입력";
+    /// <summary>배치 입력 버튼: 담임 "🚀 전과목 입력" / 전담 "🚀 전체 반 입력".</summary>
+    public string RunAllLabel => IsSubjectMode ? "🚀 전체 반 입력" : "🚀 전과목 입력";
+
     private async Task RunAllSubjectsAsync()
     {
         if (!_engine.Connected)
@@ -1076,6 +1086,10 @@ public sealed class MainViewModel : ObservableObject
             ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.");
             return;
         }
+
+        // 전담: 탭=반이므로 "이 과목을 여러 반에 순회 입력" (담임은 아래 기존 경로 = 한 반에 과목 순회)
+        if (IsSubjectMode) { await RunAllClassesAsync(); return; }
+
         var allSheets = Subjects.Select(s => s.Snapshot()).ToList();
         if (!allSheets.Any(s => s.Students.Any(st => st.Grades.Count > 0)))
         { ShowError("입력할 성적이 없습니다. 성적표에 등급을 먼저 입력해 주세요."); return; }
@@ -1138,6 +1152,93 @@ public sealed class MainViewModel : ObservableObject
             },
             owner: Application.Current.MainWindow);
     }
+
+    /// <summary>전담 배치: 지금 보는 과목을, 고른 여러 반에 순회 입력 (F9 M9).
+    /// 각 반마다 이동→과목→조회→입력, 검증 통과 시 그 반 성적 파일에 저장하고 다음 반으로.</summary>
+    private async Task RunAllClassesAsync()
+    {
+        if (_currentSubject is null || Subjects.Count == 0)
+        { ShowError("먼저 과목을 골라 [이동]하세요."); return; }
+
+        // 각 반 탭 = 입력 후보. 등급이 하나라도 있는 반만 기본 체크
+        var tabsByClass = Subjects.Where(s => s.OwnerClass is not null)
+            .ToDictionary(s => s.OwnerClass!.Value.Key, s => s);
+        var picks = Subjects.Where(s => s.OwnerClass is not null).Select(s =>
+        {
+            var sheet = s.Snapshot();
+            int n = sheet.Students.Sum(st => st.Grades.Count(g => !string.IsNullOrWhiteSpace(g.Value)));
+            var pick = new SubjectPick(s.OwnerClass!.Value.Key, n, n > 0 ? $"등급 {n}건 입력 예정" : "입력할 등급 없음");
+            pick.IsChecked = n > 0;
+            return pick;
+        }).ToList();
+
+        if (!picks.Any(p => p.EligibleCount > 0))
+        { ShowError("입력할 성적이 없습니다. 반 탭에서 등급을 먼저 입력해 주세요."); return; }
+
+        var win = new BatchGenerateWindow(picks,
+            title: $"'{_currentSubject}' 여러 반 입력",
+            description: $"'{_currentSubject}' 성적을 입력할 반을 선택하세요. 각 반으로 이동·조회한 뒤 자동 입력합니다.",
+            startLabel: "🚀 입력 시작",
+            warning: "각 반 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 반으로 넘어갑니다. " +
+                     "검증에 실패한 반은 저장하지 않고 그 자리에서 중단합니다.")
+        { Owner = Application.Current.MainWindow };
+        if (win.ShowDialog() != true) return;
+
+        var chosen = picks.Where(p => p.IsChecked).Select(p => p.Name).ToList();
+        if (chosen.Count == 0) return;
+
+        _cts = new CancellationTokenSource();
+        var targets = chosen.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
+
+        // 한 반 입력: 그 반으로 이동·조회 후 입력, 통과하면 그 반 파일에 저장 (전과목 배치와 같은 러너 재사용)
+        Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runClass = async classKey =>
+        {
+            ProgressValue = 0;
+            var vm = tabsByClass[classKey];
+            var cls = vm.OwnerClass!.Value;
+            var sheet = vm.Snapshot();
+
+            var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, null, _cts.Token);
+            if (!okClass) return Fail(sheet, $"{cls.Key} 이동 실패: {whyClass}");
+            var (okSubj, whySubj) = await _engine.SelectSubjectAsync(_currentSubject!, _cts.Token);
+            if (!okSubj) return Fail(sheet, $"과목 전환 실패: {whySubj}");
+            var (okQ, whyQ) = await _engine.QueryAsync(_cts.Token);
+            if (!okQ) return Fail(sheet, $"조회 실패: {whyQ}");
+
+            var report = await _engine.RunSubjectAsync(
+                sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
+            var result = new Automation.BatchUploadRunner.SubjectResult(
+                report.Done.Count, report.Failed, report.Skipped.Count,
+                report.Skipped.Any(s => s.Reason == "사용자 취소"));
+
+            // 검증 통과(실패 0)면 나이스 저장 + 로컬 파일 저장
+            if (report.Failed.Count == 0)
+            {
+                var (okSave, whySave) = await _engine.SaveScreenAsync(_cts.Token);
+                if (!okSave) Log($"  ⚠ {cls.Key} 나이스 저장 건너뜀: {whySave}");
+                SaveSubjectTabsIfDirty();
+            }
+            return result;
+        };
+
+        var outcomes = await Automation.BatchUploadRunner.RunAsync(
+            targets, _engine, runClass, Log, unit: "반", _cts.Token);
+
+        Log($"'{_currentSubject}' 여러 반 입력 결과:");
+        foreach (var s in Automation.BatchUploadRunner.Summarize(outcomes)) Log("  " + s);
+
+        BatchResultWindow.ShowResult(outcomes, "반",
+            retry: async subs =>
+            {
+                _cts = new CancellationTokenSource();
+                var rt = subs.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
+                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, Log, "반", _cts.Token);
+            },
+            owner: Application.Current.MainWindow);
+    }
+
+    private static Automation.BatchUploadRunner.SubjectResult Fail(SubjectSheet sheet, string reason) =>
+        new(0, new[] { new SkipItem("", "", "", reason) }, 0, false);
 
     /// <summary>선택된 과목들로 (내 과목 → 화면 과목) 대상 목록을 만든다. 매핑이 없거나 '미선택'이면 같은 이름으로 폴백.</summary>
     private static List<Automation.BatchUploadRunner.SubjectTarget> BuildTargets(IEnumerable<SubjectPick> chosen) =>
