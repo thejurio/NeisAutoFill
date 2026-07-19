@@ -187,18 +187,16 @@ public sealed class MainViewModel : ObservableObject
     private void OpenPlanEditor(string? importPath = null)
     {
         // 담임 import: 과목 목록 인식 → 선택 콜백 → 고른 과목만 (F9 M4b)
-        var importer = (Func<string, IProgress<string>,
-            Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>?,
-            Task<IReadOnlyList<SubjectPlan>>>)
-            ((path, progress, select) => new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
-                .ImportAsync(path, _scales.Active, progress, select));
+        Task<IReadOnlyList<SubjectPlan>> Importer(string path, IProgress<string> progress,
+            Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>? select) =>
+            new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
+                .ImportAsync(path, _scales.Active, progress, select);
 
         // 전담 import: (학년·과목) 단위 인식 → 선택 콜백 → 학년별 세트 (F9 M4b)
-        var unitImporter = (Func<string, IProgress<string>,
-            Func<IReadOnlyList<NeisAutoFill.Core.PlanUnit>, Task<IReadOnlyList<NeisAutoFill.Core.PlanUnit>?>>?,
-            Task<IReadOnlyList<Generator.GasPlanImporter.GradePlanSet>>>)
-            ((path, progress, select) => new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
-                .ImportUnitsAsync(path, _scales.Active, progress, select));
+        Task<IReadOnlyList<Generator.GasPlanImporter.GradePlanSet>> UnitImporter(string path, IProgress<string> progress,
+            Func<IReadOnlyList<NeisAutoFill.Core.PlanUnit>, Task<IReadOnlyList<NeisAutoFill.Core.PlanUnit>?>>? select) =>
+            new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
+                .ImportUnitsAsync(path, _scales.Active, progress, select);
 
         // 전담: 자료 준비가 반별 명단·학년별 계획을 직접 저장(SubjectModeStore) — 담임 워크스페이스 저장 안 탐
         if (_profiles.IsSubjectMode)
@@ -206,7 +204,7 @@ public sealed class MainViewModel : ObservableObject
             var store = new SubjectModeStore(_scales.Active);
             // 메인에서 보던 반 탭(예: 3-2)과 과목(예: 실과)을 자료준비 기본값으로 — 안에서 학년·반·과목 전환 가능
             var svm = new PlanEditorViewModel(Array.Empty<SubjectPlan>(), Array.Empty<(string, string)>(),
-                _scales.Active, importer, store, SelectedSubject?.OwnerClass, unitImporter, _currentSubject);
+                _scales.Active, Importer, store, SelectedSubject?.OwnerClass, UnitImporter, _currentSubject);
             var swin = new PlanEditorWindow(svm) { Owner = Application.Current.MainWindow };
             if (importPath is not null) swin.Loaded += async (_, _) => await svm.ImportPlanFileAsync(importPath);
             swin.ShowDialog();
@@ -221,7 +219,7 @@ public sealed class MainViewModel : ObservableObject
             roster = Subjects[0].Snapshot().Students.Select(s => (s.No, s.Name)).ToList();
 
         // 메인에서 보던 과목을 자료준비에서 바로 그 과목 시트로 보이게 (담임도)
-        var vm = new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active, importer,
+        var vm = new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active, Importer,
             initialSubject: SelectedSubject?.SubjectName);
         var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
         if (importPath is not null)
