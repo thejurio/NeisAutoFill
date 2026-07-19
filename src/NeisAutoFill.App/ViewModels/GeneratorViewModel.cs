@@ -25,6 +25,30 @@ public sealed class GeneratorViewModel : ObservableObject
     private readonly NarrativeMirror _mirror;                        // 서술문.xlsx 저장
     private readonly Automation.Abstractions.INeisEngine _engine;
     private readonly Action<string> _mainLog;                        // 메인 창 로그로도 남김
+
+    // ── 전담 서술문 (F9 M11) — 창 안에서 교과·학년반을 골라 세특 생성·입력. null 이면 담임(기존) ──
+    /// <summary>전담 서술문 창 컨텍스트. 데이터 조립·narratives 전환은 메인이 맡는다.</summary>
+    /// <param name="Subjects">전담 전 과목</param>
+    /// <param name="ClassesOf">과목 → 그 과목을 가르치는 (학년,반) 목록</param>
+    /// <param name="Load">(학년,반,과목) → 성적표+계획 (narratives 도 그 반으로 전환). 과목 없으면 null</param>
+    /// <param name="InitialSubject">창 열 때 기본 선택 과목 (메인에서 보던 것)</param>
+    /// <param name="InitialClass">창 열 때 기본 선택 (학년,반)</param>
+    public sealed record SubjectModeGen(
+        IReadOnlyList<string> Subjects,
+        Func<string, IReadOnlyList<(int Grade, string Class)>> ClassesOf,
+        Func<int, string, string, (SubjectSheet Sheet, IReadOnlyList<SubjectPlan> Plans)?> Load,
+        string? InitialSubject,
+        (int Grade, string Class)? InitialClass);
+
+    private readonly SubjectModeGen? _sm;
+    private SubjectSheet? _smSheet;                       // 현재 (과목·반) 로드된 성적표
+    private IReadOnlyList<SubjectPlan> _smPlans = System.Array.Empty<SubjectPlan>();
+    public bool IsSubjectMode => _sm is not null;
+
+    /// <summary>내부에서 쓰는 시트/계획 — 전담이면 선택된 (과목·반) 것, 담임이면 주입된 것.</summary>
+    private IReadOnlyList<SubjectSheet> Sheets() =>
+        _sm is not null ? (_smSheet is { } s ? new[] { s } : System.Array.Empty<SubjectSheet>()) : _getSheets();
+    private IReadOnlyList<SubjectPlan> Plans() => _sm is not null ? _smPlans : _getPlans();
     private IReadOnlyList<SubjectPlan> _plans = Array.Empty<SubjectPlan>();
 
     // 과목별 생성 결과 보존 (과목 전환·창 재오픈에도 유지)
@@ -39,7 +63,8 @@ public sealed class GeneratorViewModel : ObservableObject
         GenerationQueue queue,
         NarrativeMirror mirror,
         Automation.Abstractions.INeisEngine engine,
-        Action<string> mainLog)
+        Action<string> mainLog,
+        SubjectModeGen? subjectMode = null)
     {
         _getSheets = getSheets;
         _getPlans = getPlans;
@@ -50,6 +75,7 @@ public sealed class GeneratorViewModel : ObservableObject
         _mirror = mirror;
         _engine = engine;
         _mainLog = mainLog;
+        _sm = subjectMode;
 
         _queue.JobStarted += job => FindItem(job)?.RestoreResult("⏳ 생성 중...");
         _queue.JobFinished += OnJobFinished;
@@ -80,7 +106,73 @@ public sealed class GeneratorViewModel : ObservableObject
         DeleteSubjectCommand = new RelayCommand(DeleteSubject);
         DeleteAllSubjectsCommand = new RelayCommand(DeleteAllSubjects);
 
+        if (_sm is not null) InitSubjectModeSelectors();   // 전담: 교과·학년반 선택기 채우고 초기 조합 로드
         RefreshSubjects();
+    }
+
+    // ── 전담 서술문 창의 교과·학년반 선택기 (F9 M11) ──
+    /// <summary>전담 전 과목 (교과 콤보).</summary>
+    public ObservableCollection<string> GenSubjects { get; } = new();
+    /// <summary>선택 과목을 가르치는 학년·반 (반 콤보). 예: "3-2".</summary>
+    public ObservableCollection<string> GenClasses { get; } = new();
+    private readonly Dictionary<string, (int Grade, string Class)> _genClassMap = new();
+
+    private string? _genSubject;
+    /// <summary>교과 선택 — 바꾸면 그 과목의 반 목록을 갱신하고 첫 반을 로드.</summary>
+    public string? GenSubject
+    {
+        get => _genSubject;
+        set { if (SetProperty(ref _genSubject, value)) { RefreshGenClasses(); LoadCurrentUnit(); } }
+    }
+
+    private string? _genClass;
+    /// <summary>학년·반 선택 — 바꾸면 그 반 자료를 로드.</summary>
+    public string? GenClass
+    {
+        get => _genClass;
+        set { if (SetProperty(ref _genClass, value)) LoadCurrentUnit(); }
+    }
+
+    private void InitSubjectModeSelectors()
+    {
+        foreach (var s in _sm!.Subjects) GenSubjects.Add(s);
+        _genSubject = _sm.InitialSubject is { } s0 && GenSubjects.Contains(s0) ? s0 : GenSubjects.FirstOrDefault();
+        RefreshGenClasses();
+        var initKey = _sm.InitialClass is { } ic ? $"{ic.Grade}-{ic.Class}" : null;
+        _genClass = initKey is not null && GenClasses.Contains(initKey) ? initKey : GenClasses.FirstOrDefault();
+        LoadUnitData();   // _smSheet/_smPlans 만 채움 (RefreshSubjects 는 생성자에서 이어 호출)
+    }
+
+    private void RefreshGenClasses()
+    {
+        GenClasses.Clear();
+        _genClassMap.Clear();
+        if (_genSubject is null) return;
+        foreach (var (g, c) in _sm!.ClassesOf(_genSubject))
+        {
+            var key = $"{g}-{c}";
+            _genClassMap[key] = (g, c);
+            GenClasses.Add(key);
+        }
+        if (_genClass is null || !GenClasses.Contains(_genClass))
+            _genClass = GenClasses.FirstOrDefault();
+        OnPropertyChanged(nameof(GenClass));
+    }
+
+    /// <summary>선택된 (교과·반)의 성적표·계획을 로드하고 화면을 갱신.</summary>
+    private void LoadCurrentUnit()
+    {
+        LoadUnitData();
+        RefreshSubjects();
+    }
+
+    private void LoadUnitData()
+    {
+        _smSheet = null;
+        _smPlans = Array.Empty<SubjectPlan>();
+        if (_genSubject is null || _genClass is null || !_genClassMap.TryGetValue(_genClass, out var gc)) return;
+        var loaded = _sm!.Load(gc.Grade, gc.Class, _genSubject);
+        if (loaded is { } lv) { _smSheet = lv.Sheet; _smPlans = lv.Plans; }
     }
 
     // ── 백그라운드 생성 ────────────────────
@@ -125,7 +217,7 @@ public sealed class GeneratorViewModel : ObservableObject
     /// <summary>과목 선택 대화상자를 띄워 선택된 과목 전체를 큐에 넣는다 (전과목 일괄 생성).</summary>
     private void GenerateSubjects()
     {
-        var sheets = _getSheets();
+        var sheets = Sheets();
         if (sheets.Count == 0)
         {
             MessageBox.Show("성적 자료가 없습니다. 메인 화면에서 성적을 먼저 준비해 주세요.", "안내",
@@ -308,7 +400,7 @@ public sealed class GeneratorViewModel : ObservableObject
     private Dictionary<string, List<NarrativeEntry>> CollectNarratives()
     {
         var result = new Dictionary<string, List<NarrativeEntry>>();
-        foreach (var sheet in _getSheets())
+        foreach (var sheet in Sheets())
         {
             var cached = _itemsBySubject.TryGetValue(sheet.SubjectName, out var items)
                 ? items.ToDictionary(i => (i.No, i.Name))
@@ -433,7 +525,7 @@ public sealed class GeneratorViewModel : ObservableObject
     private void ExportToExcel()
     {
         var data = new Dictionary<string, IReadOnlyList<(string, string, string)>>();
-        foreach (var sheet in _getSheets())
+        foreach (var sheet in Sheets())
         {
             var rows = new List<(string, string, string)>();
             var cached = _itemsBySubject.TryGetValue(sheet.SubjectName, out var items)
@@ -495,13 +587,13 @@ public sealed class GeneratorViewModel : ObservableObject
     /// <summary>메인 창에서 로드된 성적·평가계획을 다시 읽어 반영 (창 열 때마다 호출).</summary>
     public void RefreshSubjects()
     {
-        _plans = _getPlans();
+        _plans = Plans();
         PlanStatus = _plans.Count > 0
             ? $"평가계획: {string.Join(", ", _plans.Select(p => $"{p.SubjectName} {p.Domains.Count}영역"))}"
             : "(평가계획 없음 — 메인 [📁 자료 준비]에서 입력하거나 불러오면 평가기준이 서술문에 반영됩니다)";
 
         SubjectNames.Clear();
-        foreach (var s in _getSheets()) SubjectNames.Add(s.SubjectName);
+        foreach (var s in Sheets()) SubjectNames.Add(s.SubjectName);
         if (SelectedSubject is null || !SubjectNames.Contains(SelectedSubject))
             SelectedSubject = SubjectNames.FirstOrDefault();
         else
@@ -511,7 +603,7 @@ public sealed class GeneratorViewModel : ObservableObject
     private void RebuildStudents()
     {
         Students.Clear();
-        var sheet = _getSheets().FirstOrDefault(s => s.SubjectName == SelectedSubject);
+        var sheet = Sheets().FirstOrDefault(s => s.SubjectName == SelectedSubject);
         if (sheet is null) return;
 
         var plan = _plans.FirstOrDefault(p => p.SubjectName == sheet.SubjectName);
@@ -647,13 +739,21 @@ public sealed class GeneratorViewModel : ObservableObject
             return;
         }
 
+        // 전담이면 현재 선택된 (학년,반,과목) — 세특 이동·조회에 사용
+        (int Grade, string Class, string Subject)? ctx =
+            _sm is not null && _genSubject is not null && _genClass is not null
+            && _genClassMap.TryGetValue(_genClass, out var gc)
+                ? (gc.Grade, gc.Class, _genSubject)
+                : null;
         if (!dryRun)
         {
-            var ok = MessageBox.Show(
-                $"'{SelectedSubject}' {items.Count}명의 서술문을 나이스 화면에 입력합니다.\n" +
-                "(저장은 하지 않으며, 확인 후 나이스에서 직접 [저장]을 누르세요)\n\n" +
-                "나이스 화면이 해당 과목의 종합의견 입력 화면인지 확인하셨나요?",
-                "확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            var prompt = ctx is { } c
+                ? $"'{c.Grade}-{c.Class} {c.Subject}' 세특 {items.Count}명을 나이스에 입력합니다.\n" +
+                  "교과학습발달상황 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?"
+                : $"'{SelectedSubject}' {items.Count}명의 서술문을 나이스 화면에 입력합니다.\n" +
+                  "(저장은 하지 않으며, 확인 후 나이스에서 직접 [저장]을 누르세요)\n\n" +
+                  "나이스 화면이 해당 과목의 종합의견 입력 화면인지 확인하셨나요?";
+            var ok = MessageBox.Show(prompt, "확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (ok != MessageBoxResult.Yes) return;
         }
 
@@ -667,6 +767,19 @@ public sealed class GeneratorViewModel : ObservableObject
 
         try
         {
+            // 전담: 교과학습발달상황(세특) 화면으로 이동 → 학년·반·교과 선택 → 조회 (담임은 현재 화면 그대로)
+            if (ctx is { } tc && !dryRun)
+            {
+                _mainLog($"{tc.Grade}-{tc.Class} {tc.Subject} 세특 화면을 준비하고 있어요…");
+                var moved = await _engine.NavigateToAsync(
+                    Automation.Abstractions.NeisTarget.SubjectDevelopment, progress);
+                if (!moved) { MessageBox.Show("교과학습발달상황 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress);
+                if (!okAxis) { MessageBox.Show($"학년·반·교과를 맞추지 못했어요.\n{whyAxis}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                var (okQ, whyQ) = await _engine.QueryAsync();
+                if (!okQ) { MessageBox.Show($"명단을 불러오지 못했어요.\n{whyQ}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            }
+
             var report = await _engine.RunNarrativesAsync(
                 SelectedSubject, entries, dryRun,
                 _settings.Options.MaxNarrativeBytes, progress, CancellationToken.None,

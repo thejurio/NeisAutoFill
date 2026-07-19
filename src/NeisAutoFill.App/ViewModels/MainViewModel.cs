@@ -446,6 +446,47 @@ public sealed class MainViewModel : ObservableObject
         // 나이스 이동은 여기서 안 함 — 실제 [이 반 입력]할 때 그 반·과목으로 이동한다.
     }
 
+    /// <summary>전담 서술문 창용 컨텍스트 — 창 안에서 교과·학년반을 독립적으로 골라 로드 (F9 M11).
+    /// 데이터 조립·narratives 전환을 메인이 맡아, 서술문 창은 선택만 하면 된다. null 이면 담임.</summary>
+    private GeneratorViewModel.SubjectModeGen? BuildSubjectModeGen()
+    {
+        if (!IsSubjectMode) return null;
+        var store = new SubjectModeStore(_scales.Active);
+        var wsRoot = AppPaths.EnsureWorkspaceRoot();
+
+        // 과목 → 그 과목을 가르치는 반 목록 (그 학년 계획에 과목이 있는 반만)
+        IReadOnlyList<NeisAutoFill.Core.ClassRef> ClassesOf(string subject) =>
+            _allClasses.OrderBy(c => c.Grade).ThenBy(c => ClassNum(c.Class))
+                .Where(c => store.LoadPlan(c.Grade).Any(p => p.SubjectName == subject))
+                .ToList();
+
+        // (학년,반,과목) → 성적표 + 계획. narratives 도 그 반으로 전환한다.
+        (SubjectSheet Sheet, IReadOnlyList<SubjectPlan> Plans)? Load(int grade, string cls, string subject)
+        {
+            var plan = store.LoadPlan(grade).FirstOrDefault(p => p.SubjectName == subject);
+            if (plan is null) return null;
+            var c = new NeisAutoFill.Core.ClassRef(grade, cls);
+            var roster = store.LoadRoster(c);
+            var path = UnitPath(wsRoot, c, subject);
+            SubjectSheet? old = null;
+            if (File.Exists(path))
+                try { old = NeisAutoFill.Excel.WorkbookLoader.Load(path).FirstOrDefault(); }
+                catch { /* 손상 시 새로 */ }
+            var narrPath = NeisAutoFill.Core.ProfilePaths.DataFile(AppPaths.Root, c.Key, "narratives.json");
+            _narratives.SwitchTo(narrPath);
+            return (NeisAutoFill.Core.SheetSynchronizer.BuildUnitSheet(plan, roster, old),
+                    store.LoadPlan(grade).Where(p => p.SubjectName == subject).ToList());
+        }
+
+        return new GeneratorViewModel.SubjectModeGen(
+            SubjectChoices.ToList(),
+            s => ClassesOf(s).Select(c => (c.Grade, c.Class)).ToList(),
+            Load,
+            // 창 열 때 메인에서 보던 과목·반이 기본 선택되도록
+            _currentSubject,
+            SelectedSubject?.OwnerClass is { } oc ? (oc.Grade, oc.Class) : null);
+    }
+
     /// <summary>전담: 반 탭들을 SubjectViewModel 로 만들어 표시 (탭 머리글=반, 각 탭에 소속 반 기록).</summary>
     private void ReplaceClassTabs(IReadOnlyList<(SubjectSheet Sheet, NeisAutoFill.Core.ClassRef Owner)> tabs)
     {
@@ -646,10 +687,14 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             _generatorVm ??= new GeneratorViewModel(
+                // 담임: 메인의 전 과목 성적·계획. 전담이면 아래 subjectMode 가 자체 구동하므로 안 쓰임.
                 () => Subjects.Select(s => s.Snapshot()).ToList(),
                 () => _workspace.Plans,
-                _scales, _generatorSettings, _narratives, _generationQueue, _narrativeMirror, _engine, Log);
-            _generatorVm.RefreshSubjects();   // 메인에서 로드된 성적·평가계획을 자동 반영
+                _scales, _generatorSettings, _narratives, _generationQueue, _narrativeMirror, _engine, Log,
+                // 전담: 창 안에서 교과·학년반을 골라 세특 생성·입력 (메인에서 보던 조합이 기본 선택)
+                subjectMode: BuildSubjectModeGen());
+            if (!_generatorVm.IsSubjectMode)
+                _generatorVm.RefreshSubjects();   // 담임: 메인에서 로드된 성적·평가계획을 자동 반영
             new GeneratorWindow(_generatorVm) { Owner = Application.Current.MainWindow }.Show();
         }
         catch (Exception ex)

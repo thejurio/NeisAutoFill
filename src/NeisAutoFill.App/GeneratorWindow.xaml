@@ -38,8 +38,18 @@
                     <!-- 1줄: 생성 -->
                     <DockPanel LastChildFill="False" Margin="0,0,0,8">
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                            <TextBlock Text="과목" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,5,0"/>
-                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding SubjectNames}" SelectedItem="{Binding SelectedSubject}" MinWidth="120" Margin="0,0,10,0"/>
+                            <!-- 전담: 교과 + 학년반 선택 (창 안에서 조합을 바꿔 생성·입력) -->
+                            <StackPanel Orientation="Horizontal" Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="교과" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,5,0"/>
+                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding GenSubjects}" SelectedItem="{Binding GenSubject}" MinWidth="96" Margin="0,0,10,0"/>
+                                <TextBlock Text="학년·반" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,5,0"/>
+                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding GenClasses}" SelectedItem="{Binding GenClass}" MinWidth="72" Margin="0,0,10,0"/>
+                            </StackPanel>
+                            <!-- 담임: 과목 선택 -->
+                            <TextBlock Text="과목" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,5,0"
+                                       Visibility="{Binding IsSubjectMode, Converter={StaticResource TrueToCollapsed}}"/>
+                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding SubjectNames}" SelectedItem="{Binding SelectedSubject}" MinWidth="120" Margin="0,0,10,0"
+                                      Visibility="{Binding IsSubjectMode, Converter={StaticResource TrueToCollapsed}}"/>
                             <CheckBox Content="전체선택" IsChecked="{Binding SelectAll}" VerticalAlignment="Center" FontSize="12" Margin="0,0,14,0"/>
                             <TextBlock Text="이 과목 글자수" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,5,0"/>
                             <TextBox Text="{Binding SubjectTargetChars, UpdateSourceTrigger=LostFocus}" Width="52" VerticalContentAlignment="Center"
