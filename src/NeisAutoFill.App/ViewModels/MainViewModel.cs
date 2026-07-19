@@ -1092,76 +1092,12 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    // 전과목 배치에서 받은 학생 이름 매핑(화면이름→엑셀이름). 같은 반이면 전 과목 동일하므로 1회만 받고 재사용.
-    private IReadOnlyDictionary<string, string>? _batchNameMap;
+    // 매칭 확인 창구 — 분석·단계별 창·배치 이름 매핑 캐시를 전담 (R8, Helpers/MatchSession)
+    private Helpers.MatchSession? _matchSession;
+    private Helpers.MatchSession MatchSession => _matchSession ??= new Helpers.MatchSession(Log);
 
-    /// <summary>화면 파악 후 매칭 검토 콜백 — 문제 없으면 창 없이 진행, 있으면 미리보기 창에서 사용자 결정.
-    /// batch=true 면 이름 매핑을 캐시(_batchNameMap)에 담아 다음 과목부터 재사용(창 반복 방지, F9).</summary>
-    private Func<MatchContext, Task<MatchDecision?>> BuildResolveMatch(SubjectSheet sheet, bool batch = false) => ctx =>
-        Application.Current.Dispatcher.InvokeAsync(() =>
-        {
-            var issues = Core.Matching.MatchAnalyzer.Analyze(
-                ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, sheet.Students, sheet.Areas);
-            if (issues.Clean)
-                return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName, NameMap: batch ? _batchNameMap : null);
-
-            // 과목명만 다르고 학생·영역은 정상 → 복잡한 매핑 창 대신 "그래도 진행?" 만 묻는다
-            if (issues.SubjectOnlyMismatch)
-            {
-                var ok = MessageBox.Show(
-                    $"화면 과목은 '{issues.ScreenSubject}'인데 입력 대상은 '{sheet.SubjectName}'입니다.\n" +
-                    "학생·영역은 화면과 일치합니다. 이 화면에 그대로 입력할까요?",
-                    "과목 확인", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
-                return ok ? new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName, NameMap: batch ? _batchNameMap : null) : (MatchDecision?)null;
-            }
-
-            // 배치: 이름 불일치뿐(영역·중복·행수 정상)이고 캐시가 그 학생들을 다 덮으면 창 없이 재사용
-            if (batch && _batchNameMap is { } cached &&
-                issues.UnmatchedAreas.Count == 0 && !issues.DuplicateAreas && !issues.AreaCountMismatch &&
-                issues.UnmatchedStudents.All(s => cached.ContainsKey(s.Name)))
-            {
-                return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName, NameMap: cached);
-            }
-
-            // 창이 뜨더라도(영역 이슈 등) 앞 과목에서 지정한 이름 매핑을 초기값으로 채운다.
-            // 학생 이름창 → (필요시) 영역창 을 별도로 순차 표시.
-            var vm = new MatchPreviewViewModel(issues, sheet, batch ? _batchNameMap : null);
-            if (!ShowMatchSteps(vm)) return null;
-            var decision = vm.BuildDecision();
-            if (batch && decision?.NameMap is { } nm)   // 이번에 받은 이름 매핑을 캐시에 병합 → 다음 과목 재사용
-            {
-                var merged = new Dictionary<string, string>(_batchNameMap ?? new Dictionary<string, string>());
-                foreach (var kv in nm) merged[kv.Key] = kv.Value;
-                _batchNameMap = merged;
-            }
-            return decision;
-        }).Task;
-
-    /// <summary>매칭 확인을 단계별 창으로 — ① 과목 다르면 확인 메시지, ② 학생 이름창, ③ 영역창. 취소하면 false.</summary>
-    internal static bool ShowMatchSteps(MatchPreviewViewModel vm)
-    {
-        // 과목 불일치는 눈에 띄게 별도 메시지창으로 먼저 확인 (매핑창 안 체크박스는 놓치기 쉬움)
-        if (vm.HasSubjectWarning && !vm.SubjectAccepted)
-        {
-            var ok = MessageBox.Show(
-                vm.SubjectWarning + "\n\n이 화면에 그대로 입력할까요?",
-                "과목 확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (ok != MessageBoxResult.Yes) return false;
-            vm.SubjectAccepted = true;
-        }
-
-        if (vm.ShowStudentSection)
-        {
-            vm.CurrentStep = MatchPreviewViewModel.Step.Student;
-            if (new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow }.ShowDialog() != true) return false;
-        }
-        if (vm.HasAreaIssues)
-        {
-            vm.CurrentStep = MatchPreviewViewModel.Step.Area;
-            if (new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow }.ShowDialog() != true) return false;
-        }
-        return true;
-    }
+    private Func<MatchContext, Task<MatchDecision?>> BuildResolveMatch(SubjectSheet sheet, bool batch = false) =>
+        MatchSession.ForGrades(sheet, batch);
 
     // ── 전과목 자동 입력 (Phase 5.5, A안: 과목별 검증 통과 시 자동 저장) ──
 
@@ -1218,7 +1154,7 @@ public sealed class MainViewModel : ObservableObject
         if (sheets.Count == 0) return;
 
         _cts = new CancellationTokenSource();
-        _batchNameMap = null;   // 이번 배치의 이름 매핑 캐시 초기화 (첫 과목에서 받고 이후 재사용)
+        MatchSession.Reset();   // 이번 배치의 이름 매핑 캐시 초기화 (첫 과목에서 받고 이후 재사용)
         var bySubject = sheets.ToDictionary(s => s.SubjectName);
         var targets = BuildTargets(chosen);   // 내 과목 → 화면 과목 매핑 반영
 

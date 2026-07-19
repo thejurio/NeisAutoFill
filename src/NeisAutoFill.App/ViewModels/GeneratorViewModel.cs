@@ -512,7 +512,7 @@ public sealed class GeneratorViewModel : ObservableObject
             if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
         });
 
-        _batchNameMap = null;   // 이름 매핑 캐시 초기화 — 첫 과목에서 받고 이후 재사용
+        MatchSession.Reset();   // 이름 매핑 캐시 초기화 — 첫 과목에서 받고 이후 재사용
         _uploadCts = new CancellationTokenSource();
         var ct = _uploadCts.Token;
         IsUploading = true;
@@ -825,51 +825,13 @@ public sealed class GeneratorViewModel : ObservableObject
               " — [다르게 다시 생성]을 쓰거나, 학생별 특기사항을 넣으면 더 잘 구별됩니다.";
     }
 
-    /// <summary>
-    /// 서술문 입력 전 학생 매칭 확인 콜백 (등급과 동일한 확인 창 재사용, 학생 매핑만 노출).
-    /// 이름이 달라 자동 매칭 안 되는 학생을 사용자가 연결한다. Clean 이면 창 없이 진행.
-    /// </summary>
+    // 매칭 확인 창구 — 분석·단계별 창·배치 이름 매핑 캐시를 전담 (R8, Helpers/MatchSession)
+    private Helpers.MatchSession? _matchSession;
+    private Helpers.MatchSession MatchSession => _matchSession ??= new Helpers.MatchSession(_mainLog);
+
     private Func<Automation.Abstractions.MatchContext, Task<Automation.Abstractions.MatchDecision?>>
-        BuildNarrativeResolveMatch(IReadOnlyList<NarrativeEntry> entries, bool batch = false) => ctx =>
-        Application.Current.Dispatcher.InvokeAsync(() =>
-        {
-            var issues = MatchAnalyzer.AnalyzeNarratives(
-                ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, entries.Select(e => e.Name).ToList());
-            if (issues.Clean)
-                return new Automation.Abstractions.MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: batch ? _batchNameMap : null);
-
-            // 과목만 다르면 간단 확인 (등급과 동일 UX)
-            if (issues.SubjectOnlyMismatch)
-            {
-                var ok = MessageBox.Show(
-                    $"화면 과목은 '{issues.ScreenSubject}'인데 입력 대상은 '{ctx.TargetSubject}'입니다.\n" +
-                    "학생은 화면과 일치합니다. 이 화면에 그대로 입력할까요?",
-                    "과목 확인", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
-                return ok ? new Automation.Abstractions.MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: batch ? _batchNameMap : null)
-                          : (Automation.Abstractions.MatchDecision?)null;
-            }
-
-            // 배치: 이름 불일치뿐이고 캐시가 그 학생들을 다 덮으면 창 없이 재사용 (같은 반 = 같은 명단)
-            if (batch && _batchNameMap is { } cached && issues.UnmatchedStudents.All(s => cached.ContainsKey(s.Name)))
-                return new Automation.Abstractions.MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: cached);
-
-            // 학생 이름 불일치 → 확인 창 재사용 (합성 sheet 로 학생 옵션 제공; 영역은 없음)
-            var sheet = new SubjectSheet(ctx.TargetSubject, System.Array.Empty<string>(),
-                entries.Select(e => new Student(e.No, e.Name, new Dictionary<string, string>())).ToList());
-            var vm = new MatchPreviewViewModel(issues, sheet, batch ? _batchNameMap : null);
-            if (!MainViewModel.ShowMatchSteps(vm)) return null;   // 학생 이름창(서술문은 영역 없음)
-            var decision = vm.BuildDecision();
-            if (batch && decision?.NameMap is { } nm)
-            {
-                var merged = new Dictionary<string, string>(_batchNameMap ?? new Dictionary<string, string>());
-                foreach (var kv in nm) merged[kv.Key] = kv.Value;
-                _batchNameMap = merged;
-            }
-            return decision;
-        }).Task;
-
-    // 전과목/전체반 배치에서 받은 학생 이름 매핑 — 같은 반이면 동일하므로 1회만 받고 재사용
-    private IReadOnlyDictionary<string, string>? _batchNameMap;
+        BuildNarrativeResolveMatch(IReadOnlyList<NarrativeEntry> entries, bool batch = false) =>
+        MatchSession.ForNarratives(entries, batch);
 
     /// <summary>유사(복붙 의심) 학생을 표현을 달리해 다시 생성 — 그 학생만 재생성.</summary>
     internal void RegenerateDistinct(StudentGenItem item)

@@ -61,4 +61,22 @@ public class MatchAnalyzerTests
         Assert.True(issues.SubjectMismatch);
         Assert.False(issues.SubjectOnlyMismatch);   // 영역도 다르므로 간단 확인 대상 아님
     }
+
+    // ── R8: 배치 이름 매핑 캐시 재사용 판정 ─────────────────────
+    [Fact]
+    public void 캐시가_이름불일치_전원을_덮으면_NamesCoveredBy_참()
+    {
+        var students = new[] { Stu("1", "김하늘", "듣기") };
+        var screen = Screen(("1", "김수현", "듣기"), ("2", "이준", "듣기"));   // 둘 다 자료에 없음
+        var issues = MatchAnalyzer.Analyze("국어", "국어", screen, students, new[] { "듣기" });
+
+        Assert.True(issues.AreasClean);
+        // '입력 안 함'("")으로 뺀 학생도 결정된 것으로 인정돼야 한다 (건너뜀 반복 질문 방지)
+        var cache = new Dictionary<string, string> { ["김수현"] = "김하늘", ["이준"] = "" };
+        Assert.True(issues.NamesCoveredBy(cache));
+
+        var partial = new Dictionary<string, string> { ["김수현"] = "김하늘" };   // 이준 미결정
+        Assert.False(issues.NamesCoveredBy(partial));
+        Assert.False(issues.NamesCoveredBy(null));
+    }
 }

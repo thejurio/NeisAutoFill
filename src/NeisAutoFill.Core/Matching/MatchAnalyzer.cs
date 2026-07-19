@@ -28,6 +28,15 @@ public static class MatchAnalyzer
         public bool SubjectOnlyMismatch =>
             SubjectMismatch && UnmatchedStudents.Count == 0 &&
             UnmatchedAreas.Count == 0 && !DuplicateAreas && !AreaCountMismatch;
+
+        /// <summary>영역 쪽 문제가 하나도 없는가 (이름 이슈만 남은 상태 판정용, R8).</summary>
+        public bool AreasClean =>
+            UnmatchedAreas.Count == 0 && !DuplicateAreas && !AreaCountMismatch;
+
+        /// <summary>이름 불일치 학생 전원이 캐시된 매핑(이전 결정, ""=입력 안 함 포함)에 들어 있는가 —
+        /// true 면 창 없이 캐시를 재사용해도 안전하다 (배치 중 이름 매핑 1회 원칙, R8).</summary>
+        public bool NamesCoveredBy(IReadOnlyDictionary<string, string>? map) =>
+            map is not null && UnmatchedStudents.All(s => map.ContainsKey(s.Name));
     }
 
     public static Issues Analyze(
