@@ -108,10 +108,6 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         return new NeisStatus(NeisScreenKind.OtherNeisPage, url);
     }
 
-    /// <summary>교과별 평가 화면으로 이동 (하위호환 진입점 — 일반 NavigateToAsync 로 위임).</summary>
-    public Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
-        => NavigateToAsync(NeisTarget.Evaluation, progress, ct);
-
     /// <summary>목표 화면으로 앱이 직접 이동 (F9 M10). 세 화면 모두 메뉴 경로:
     /// 학급담임(상단 네비 — 어느 페이지에서도 보임) → 학생평가 → (교과평가|학기말종합의견|교과학습발달상황).
     /// 상단 '학급담임'을 먼저 눌러 그 카테고리로 돌아오므로 다른 메뉴 화면에서도 출발할 수 있다.

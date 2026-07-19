@@ -61,10 +61,6 @@ public interface INeisEngine
     /// <summary>지금 나이스가 어떤 상황인지 판별 (연결·로그인·화면 종류). 상태 표시·맞춤 안내용.</summary>
     Task<NeisStatus> DetectStatusAsync(CancellationToken ct = default);
 
-    /// <summary>교과별 평가 화면으로 앱이 직접 이동 시도 (메뉴: 학급담임→학생평가→교과평가→교과별평가).
-    /// 실제로 교과별 평가 화면이 떴을 때만 true. progress 로 단계별 진행/실패를 로그에 남긴다.</summary>
-    Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);
-
     /// <summary>목표 화면(교과평가/학기말종합의견/교과학습발달상황)으로 이동. 상단 '학급담임'부터 눌러
     /// 어느 페이지에서 출발해도 찾아간다. 실제 그 화면이 떴을 때만 true (F9 M10).</summary>
     Task<bool> NavigateToAsync(NeisTarget target, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);

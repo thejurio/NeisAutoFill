@@ -1039,7 +1039,7 @@ public sealed class MainViewModel : ObservableObject
         // OtherNeisPage 이면 교과별 평가로 앱이 직접 이동 (실패 시에만 안내)
         if (status.Kind == Automation.Abstractions.NeisScreenKind.OtherNeisPage)
         {
-            var moved = await _engine.TryGoToEvaluationAsync(navProg);
+            var moved = await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.Evaluation, navProg);
             if (!moved)
             {
                 ShowError("교과별 평가 화면으로 이동하지 못했어요. 나이스에서 [교과별 평가]를 열어 주세요.");
