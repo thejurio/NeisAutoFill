@@ -39,8 +39,10 @@ public sealed class MainViewModel : ObservableObject
         AppStateStore appState, GenerationQueue generationQueue, NarrativeMirror narrativeMirror,
         WorkspaceService workspace,
         Automation.EngineOptions engineOptions,
-        ProfileStore profiles)
+        ProfileStore profiles,
+        NeisSessionController session)
     {
+        _session = session;
         _engine = engine;
         _scales = scales;
         _generatorSettings = generatorSettings;
@@ -88,12 +90,23 @@ public sealed class MainViewModel : ObservableObject
             InitSubjectAxis();        // 전담: 등록된 반 목록·첫 조합 로드
         else
             RestoreLastFiles();       // 담임: 최근 사용 자료 자동 로드 (없으면 조용히 넘어감)
-        // 앱 시작부터 자동 연결·재연결 (이미 열린 브라우저도 자동 포착). 종료 시 함께 정리
-        Application.Current.Exit += (_, _) => _connectLoopCts.Cancel();
-        _ = AutoConnectLoopAsync(_connectLoopCts.Token);
+
+        // 연결·상태는 NeisSessionController 전담 (R9) — 여기선 로그·바인딩 중계만
+        _session.Log += Log;
+        _session.PropertyChanged += (_, e) =>
+        {
+            OnPropertyChanged(e.PropertyName);
+            if (e.PropertyName is nameof(IsConnected) or nameof(ConnectionHint))
+            {
+                OnPropertyChanged(nameof(ShowConnectionHint));
+                if (e.PropertyName == nameof(IsConnected)) RefreshNextStep();
+                else OnPropertyChanged(nameof(ShowNextStep));   // 연결 배너와 상호배타
+            }
+        };
+        _session.Start();
     }
 
-    private readonly CancellationTokenSource _connectLoopCts = new();
+    private readonly NeisSessionController _session;
 
     // ── 최근 파일 · 자동 로드 ──────────────────
 
@@ -110,143 +123,13 @@ public sealed class MainViewModel : ObservableObject
         if (_workspace.LastPlanPath is { } plan) LoadPlan(plan, silent: true);
     }
 
-    /// <summary>
-    /// 백그라운드 자동 연결 루프. 안 붙어 있으면 조용히 attach 시도(이미 열린 attach 가능 브라우저 자동 포착),
-    /// 붙어 있으면 생존 확인해 끊기면 재연결. 사용자가 [② 연결] 을 따로 누를 필요가 없다.
-    /// </summary>
-    private async Task AutoConnectLoopAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                if (!_engine.Connected)
-                {
-                    try
-                    {
-                        await _engine.AttachAsync(ct).ConfigureAwait(false);
-                        // 연결 직후에도 바로 상태 판별 — 로그인 전인데 '연결됨'으로 잠깐 뜨는 문제 방지
-                        var first = await _engine.DetectStatusAsync(ct).ConfigureAwait(false);
-                        Ui(() => { ApplyStatus(first); Log("브라우저 자동 연결됨."); });
-                    }
-                    catch (Exception ex)
-                    {
-                        Diag.Swallow(ex, "자동연결 attach");   // 조용히 재시도하되, 사용자에겐 다음 할 일을 안내
-                        // 브라우저 자체가 없음 vs 열렸지만 나이스 탭 없음 을 구분해 안내 (우리가 던진 메시지 기준)
-                        var hint = ex is InvalidOperationException && (ex.Message.Contains("neis") || ex.Message.Contains("탭"))
-                            ? "나이스 전용 브라우저는 열렸어요. 나이스에 로그인하고 [교과별 평가](또는 [학기말 종합의견])를 조회하면 자동으로 연결됩니다."
-                            : "아직 연결되지 않았어요. [🌐 NEIS 접속] 버튼으로 전용 브라우저를 여세요. (평소 쓰던 Edge 를 그냥 열면 연결되지 않습니다)";
-                        Ui(() => ConnectionHint = hint);
-                    }
-                }
-                else
-                {
-                    // 연결돼 있으면 지금 상황(로그인·화면 종류)까지 판별해 상태를 갱신 (F9 M8)
-                    var status = await _engine.DetectStatusAsync(ct).ConfigureAwait(false);
-                    Ui(() =>
-                    {
-                        var wasConnected = IsConnected;
-                        ApplyStatus(status);
-                        if (wasConnected && status.Kind == Automation.Abstractions.NeisScreenKind.Disconnected)
-                            Log("브라우저 연결이 끊어졌습니다. 재연결을 시도합니다.");
-                    });
-                }
-            }
-            catch (Exception ex) { Diag.Swallow(ex, "자동연결 루프"); }   // 루프는 어떤 경우에도 죽지 않는다
+    // ── 연결·상태 — NeisSessionController 위임 (R9). XAML 바인딩 경로 유지용 ──
 
-            try { await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { break; }
-        }
-    }
-
-    private static void Ui(Action a) => Application.Current?.Dispatcher.Invoke(a);
-
-    private void SetConnected(bool on)
-    {
-        ConnectionText = on ? "연결됨" : "미연결";
-        ConnectionBrush = new SolidColorBrush(on ? Color.FromRgb(0x22, 0xC5, 0x5E) : Color.FromRgb(0xEF, 0x44, 0x44));
-        IsConnected = on;
-        if (on) ConnectionHint = "";   // 연결되면 안내 배너 숨김
-    }
-
-    private static readonly Color StatusGreen = Color.FromRgb(0x22, 0xC5, 0x5E);
-    private static readonly Color StatusAmber = Color.FromRgb(0xF5, 0x9E, 0x0B);
-    private static readonly Color StatusRed = Color.FromRgb(0xEF, 0x44, 0x44);
-
-    /// <summary>나이스가 입력 준비(교과별 평가 화면) 상태인지 — 입력 전 사전 점검·안내용.</summary>
-    public bool NeisReady { get; private set; }
-
-    /// <summary>판별된 상황을 상태칩(색·글자)과 안내 배너에 반영 (F9 M8).</summary>
-    private void ApplyStatus(Automation.Abstractions.NeisStatus s)
-    {
-        switch (s.Kind)
-        {
-            case Automation.Abstractions.NeisScreenKind.Disconnected:
-                NeisReady = false; SetConnected(false); break;
-
-            case Automation.Abstractions.NeisScreenKind.NotNeisTab:
-                SetStatus(false, "나이스 열기", StatusAmber, ""); break;
-
-            case Automation.Abstractions.NeisScreenKind.LoggedOut:
-                SetStatus(false, "로그인 필요", StatusAmber, ""); break;
-
-            // 교과별 평가 화면이든 아니든 로그인돼 있으면 '연결됨' — 화면 이동은 앱이 알아서 한다
-            case Automation.Abstractions.NeisScreenKind.OtherNeisPage:
-            case Automation.Abstractions.NeisScreenKind.EvaluationReady:
-                SetStatus(true, "연결됨", StatusGreen, ""); break;
-        }
-    }
-
-    /// <summary>상태칩·안내를 한 번에 설정. ready = 교과별 평가 화면이라 입력 가능.
-    /// 브라우저는 붙어 있으므로 IsConnected(=버튼 활성)는 true 유지하되, 준비 여부는 NeisReady 로 구분.</summary>
-    private void SetStatus(bool ready, string text, Color color, string hint)
-    {
-        ConnectionText = text;
-        ConnectionBrush = new SolidColorBrush(color);
-        NeisReady = ready;
-        IsConnected = true;                 // 브라우저는 연결됨 — 버튼은 활성, 부적절하면 입력 시 안내
-        ConnectionHint = ready ? "" : hint;
-    }
-
-    /// <summary>상황별 입력 불가 안내 — 상황만 담백하게 (사용자가 할 일 나열 금지, F9 M8).</summary>
-    private static string StatusMessage(Automation.Abstractions.NeisScreenKind kind) => kind switch
-    {
-        Automation.Abstractions.NeisScreenKind.Disconnected => "나이스에 연결되어 있지 않습니다.",
-        Automation.Abstractions.NeisScreenKind.NotNeisTab => "현재 탭이 나이스가 아닙니다.",
-        Automation.Abstractions.NeisScreenKind.LoggedOut => "나이스에 로그인되어 있지 않습니다.",
-        Automation.Abstractions.NeisScreenKind.OtherNeisPage => "교과별 평가 화면이 아닙니다.",
-        _ => "입력할 수 있는 상태가 아닙니다.",
-    };
-
-    private bool _isConnected;
     /// <summary>나이스 연결 여부 — 입력 버튼 활성/[NEIS 접속] 버튼 표시 제어 (U3·U5).</summary>
-    public bool IsConnected
-    {
-        get => _isConnected;
-        private set
-        {
-            if (SetProperty(ref _isConnected, value))
-            {
-                OnPropertyChanged(nameof(ShowConnectionHint));
-                RefreshNextStep();
-            }
-        }
-    }
+    public bool IsConnected => _session.IsConnected;
 
-    private string _connectionHint = "";
     /// <summary>미연결 시 다음에 뭘 해야 하는지 안내 (실패 원인별). 연결되면 빈 문자열.</summary>
-    public string ConnectionHint
-    {
-        get => _connectionHint;
-        private set
-        {
-            if (SetProperty(ref _connectionHint, value))
-            {
-                OnPropertyChanged(nameof(ShowConnectionHint));
-                OnPropertyChanged(nameof(ShowNextStep));   // 연결 배너와 상호배타
-            }
-        }
-    }
+    public string ConnectionHint => _session.ConnectionHint;
 
     /// <summary>연결 안내 배너 표시 여부 — 미연결이고 안내 문구가 있을 때.</summary>
     public bool ShowConnectionHint => !IsConnected && !string.IsNullOrEmpty(ConnectionHint);
@@ -658,11 +541,8 @@ public sealed class MainViewModel : ObservableObject
     public string VersionText => "v" + (System.Reflection.Assembly.GetExecutingAssembly()
         .GetName().Version?.ToString(3) ?? "1.0");
 
-    private string _connectionText = "미연결";
-    public string ConnectionText { get => _connectionText; set => SetProperty(ref _connectionText, value); }
-
-    private Brush _connectionBrush = new SolidColorBrush(Color.FromRgb(0xEF, 0x44, 0x44));
-    public Brush ConnectionBrush { get => _connectionBrush; set => SetProperty(ref _connectionBrush, value); }
+    public string ConnectionText => _session.ConnectionText;      // 상태칩 글자 (R9 위임)
+    public Brush ConnectionBrush => _session.ConnectionBrush;     // 상태칩 색 (R9 위임)
 
     private string _excelName = "성적파일 없음";
     public string ExcelName { get => _excelName; set => SetProperty(ref _excelName, value); }
@@ -692,7 +572,7 @@ public sealed class MainViewModel : ObservableObject
                 // 담임: 메인의 전 과목 성적·계획. 전담이면 아래 subjectMode 가 자체 구동하므로 안 쓰임.
                 () => Subjects.Select(s => s.Snapshot()).ToList(),
                 () => _workspace.Plans,
-                _scales, _generatorSettings, _narratives, _generationQueue, _narrativeMirror, _engine, Log,
+                _scales, _generatorSettings, _narratives, _generationQueue, _narrativeMirror, _engine, _session, Log,
                 // 전담: 창 안에서 교과·학년반을 골라 세특 생성·입력 (메인에서 보던 조합이 기본 선택)
                 subjectMode: BuildSubjectModeGen());
             if (_generatorVm.IsSubjectMode)
@@ -1009,35 +889,15 @@ public sealed class MainViewModel : ObservableObject
     private async Task<Automation.BatchUploadRunner.SubjectOutcome?> RunSubjectCoreAsync(
         SubjectSheet sheet, bool dryRun, NeisAutoFill.Core.ClassRef? subjectModeClass)
     {
-        if (!_engine.Connected)
-        {
-            ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속]으로 브라우저를 열고 로그인·조회하면 자동으로 연결됩니다.");
-            return null;
-        }
-
         // 시작 확인창 없음 — 단건 입력은 저장을 안 하고(나이스 [저장]은 사용자가 직접),
         // 문제가 있으면 매칭창이, 끝나면 결과 대시보드가 뜨므로 사전 확인은 군더더기다.
 
-        // 사전 점검 — 앱이 못 푸는 상황(로그인 안 됨·브라우저/탭)만 안내하고 멈춘다.
-        // 교과별 평가 화면이 아닌 건 앱이 스스로 이동해야 할 일이라 메시지를 띄우지 않는다 (F9 M8).
-        var status = await _engine.DetectStatusAsync();
-        if (status.Kind is Automation.Abstractions.NeisScreenKind.Disconnected
-                        or Automation.Abstractions.NeisScreenKind.NotNeisTab
-                        or Automation.Abstractions.NeisScreenKind.LoggedOut)
-        {
-            ShowError(StatusMessage(status.Kind));
-            return null;
-        }
+        // 사전 점검+이동 게이트 (R9) — 앱이 못 푸는 상황만 안내하고, 화면이 다르면 스스로 이동.
         var navProg = new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message));
-        // OtherNeisPage 이면 교과별 평가로 앱이 직접 이동 (실패 시에만 안내)
-        if (status.Kind == Automation.Abstractions.NeisScreenKind.OtherNeisPage)
+        if (await _session.EnsureReadyAsync(Automation.Abstractions.NeisTarget.Evaluation, navProg) is { } blocked)
         {
-            var moved = await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.Evaluation, navProg);
-            if (!moved)
-            {
-                ShowError("교과별 평가 화면으로 이동하지 못했어요. 나이스에서 [교과별 평가]를 열어 주세요.");
-                return null;
-            }
+            ShowError(blocked);
+            return null;
         }
 
         // 전담: 그 반·과목으로 나이스를 맞추고, 이동 직후엔 명단이 없으니 반드시 [조회] 한다.

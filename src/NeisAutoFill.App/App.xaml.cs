@@ -40,6 +40,7 @@ public partial class App : Application
         services.AddSingleton(_ => new NarrativeStore(AppPaths.NarrativesJson));
         services.AddSingleton<GenerationQueue>();
         services.AddSingleton<NarrativeMirror>();
+        services.AddSingleton<NeisSessionController>();   // 연결 루프·상태칩·사전점검 게이트 (R9)
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
 

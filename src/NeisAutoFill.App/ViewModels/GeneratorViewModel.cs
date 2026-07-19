@@ -24,6 +24,7 @@ public sealed class GeneratorViewModel : ObservableObject
     private readonly GenerationQueue _queue;                         // 백그라운드 생성
     private readonly NarrativeMirror _mirror;                        // 서술문.xlsx 저장
     private readonly Automation.Abstractions.INeisEngine _engine;
+    private readonly Services.NeisSessionController _session;        // 사전 점검·화면 이동 게이트 (R9)
     private readonly Action<string> _mainLog;                        // 메인 창 로그로도 남김
 
     // ── 전담 서술문 (F9 M11) — 창 안에서 교과·학년반을 골라 세특 생성·입력. null 이면 담임(기존) ──
@@ -73,9 +74,11 @@ public sealed class GeneratorViewModel : ObservableObject
         GenerationQueue queue,
         NarrativeMirror mirror,
         Automation.Abstractions.INeisEngine engine,
+        Services.NeisSessionController session,
         Action<string> mainLog,
         SubjectModeGen? subjectMode = null)
     {
+        _session = session;
         _getSheets = getSheets;
         _getPlans = getPlans;
         _scales = scales;
@@ -456,10 +459,9 @@ public sealed class GeneratorViewModel : ObservableObject
     /// <summary>전과목 서술문 자동 입력 (Phase 5.5, A안: 과목별 검증 통과 시 자동 저장).</summary>
     private async Task UploadAllAsync()
     {
-        if (!_engine.Connected)
+        if (_session.ConnectCheck() is { } notConnected)
         {
-            MessageBox.Show("나이스에 아직 연결되지 않았습니다. 메인 화면에서 [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.",
-                "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(notConnected, "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -474,13 +476,12 @@ public sealed class GeneratorViewModel : ObservableObject
             return;
         }
 
-        // 학기말종합의견 화면으로 자동 이동 (전담과 동일 — 이후 과목 전환·조회는 배치 러너가 함)
+        // 사전 점검+학기말종합의견 화면 이동 게이트 (R9) — 로그인 안 됨 등도 여기서 잡힌다
         var navProg = new Progress<Automation.Abstractions.ProgressInfo>(p =>
         { if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message); });
-        if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, navProg))
+        if (await _session.EnsureReadyAsync(Automation.Abstractions.NeisTarget.TermOpinion, navProg) is { } blocked)
         {
-            MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요. 나이스에서 직접 열어 주세요.",
-                "안내", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(blocked, "안내", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -861,10 +862,9 @@ public sealed class GeneratorViewModel : ObservableObject
     private async Task<Automation.BatchUploadRunner.SubjectOutcome?> UploadCoreAsync(bool dryRun)
     {
         if (SelectedSubject is null) return null;
-        if (!_engine.Connected)
+        if (_session.ConnectCheck() is { } notConnected)
         {
-            MessageBox.Show("나이스에 아직 연결되지 않았습니다. 메인 화면에서 [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.",
-                "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(notConnected, "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
             return null;
         }
 
