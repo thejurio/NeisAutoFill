@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:NeisAutoFill.App.ViewModels"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="NEIS 교과평가 자동입력기" Height="740" Width="1020" MinWidth="880" MinHeight="580"
+        Title="NEIS 교과평가 자동입력기" Height="740" Width="1070" MinWidth="930" MinHeight="580"
         Icon="app.ico" WindowStyle="None" ResizeMode="CanResize"
         AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver" Closing="Window_Closing"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
@@ -61,8 +61,9 @@
                     <DockPanel Margin="14,10">
                         <!-- 오른쪽: 나이스 접속·연결 상태 + 설정 -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <!-- 화면 진단 버튼 — 클릭 가능한 메뉴·요소를 덤프해 셀렉터 확정에 사용 -->
+                            <!-- 화면 진단 버튼 — 기본 숨김. ❓ 버튼을 Ctrl+Shift+클릭하면 나타남/사라짐 -->
                             <Button Style="{StaticResource GhostButton}" Content="🔎 진단" Command="{Binding InspectCommand}" Margin="0,0,6,0"
+                                    Visibility="{Binding ShowDiagButton, Converter={StaticResource BoolToVis}}"
                                     ToolTip="현재 나이스 화면의 클릭 가능한 메뉴·요소를 읽기 전용으로 덤프합니다.&#10;단축키: Ctrl+Shift+V  ·  저장 위치: %AppData%\NeisAutoFill\dom_inspect_*.txt"/>
                             <Button Style="{StaticResource PrimaryButton}" Content="🌐 NEIS 접속" Command="{Binding LaunchEdgeCommand}" Margin="0,0,4,0"
                                     Visibility="{Binding IsConnected, Converter={StaticResource TrueToCollapsed}}"
@@ -76,6 +77,7 @@
                             <Button Style="{StaticResource GhostButton}" Content="⚙ 설정" Command="{Binding OpenScaleEditorCommand}" Margin="0,0,4,0"
                                     ToolTip="AI 서술문(글자 수·톤) · 평가 단계 · 교육청 · 자동클릭 속도"/>
                             <Button Style="{StaticResource GhostButton}" Content="❓" Command="{Binding HelpCommand}" Padding="9,7"
+                                    PreviewMouseLeftButtonDown="Help_PreviewMouseLeftButtonDown"
                                     ToolTip="사용법 안내 페이지 열기"/>
                         </StackPanel>
                         <!-- 왼쪽 (U6): 작업 흐름 그룹 │ 파일 그룹 -->
@@ -95,7 +97,7 @@
                                     ToolTip="AI 서술문 생성·나이스 입력 창을 엽니다"/>
                             <Border Width="1" Background="{StaticResource Line}" Margin="10,2,4,2"/>
                             <StackPanel Orientation="Horizontal" Margin="6,0,6,0">
-                                <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}"/>
+                                <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}" Padding="9,7"/>
                                 <Button Style="{StaticResource GhostButtonRight}" Content="▼" Click="Recent_Click" ToolTip="최근 파일"/>
                             </StackPanel>
                             <Button Style="{StaticResource GhostButton}" Content="📤 내보내기" Command="{Binding ExportGradesCommand}"

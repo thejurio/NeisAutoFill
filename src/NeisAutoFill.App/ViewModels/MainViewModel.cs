@@ -183,17 +183,15 @@ public sealed class MainViewModel : ObservableObject
                 NeisReady = false; SetConnected(false); break;
 
             case Automation.Abstractions.NeisScreenKind.NotNeisTab:
-                SetStatus(false, "나이스 아님", StatusAmber, "현재 탭이 나이스가 아닙니다."); break;
+                SetStatus(false, "나이스 열기", StatusAmber, ""); break;
 
             case Automation.Abstractions.NeisScreenKind.LoggedOut:
-                SetStatus(false, "로그인 안 됨", StatusAmber, "나이스에 로그인되어 있지 않습니다."); break;
+                SetStatus(false, "로그인 필요", StatusAmber, ""); break;
 
+            // 교과별 평가 화면이든 아니든 로그인돼 있으면 '연결됨' — 화면 이동은 앱이 알아서 한다
             case Automation.Abstractions.NeisScreenKind.OtherNeisPage:
-                SetStatus(false, "교과별 평가 화면 아님", StatusAmber, "교과별 평가 화면이 아닙니다."); break;
-
             case Automation.Abstractions.NeisScreenKind.EvaluationReady:
-                var subj = string.IsNullOrEmpty(s.ScreenSubject) ? "" : $" · {s.ScreenSubject}";
-                SetStatus(true, $"입력 준비{subj}", StatusGreen, ""); break;
+                SetStatus(true, "연결됨", StatusGreen, ""); break;
         }
     }
 
@@ -975,28 +973,28 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
         var navProg = new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message));
-        // OtherNeisPage 이면 교과별 평가로 앱이 직접 이동 시도 (단계별 로그, 실패 시에만 안내)
+        // OtherNeisPage 이면 교과별 평가로 앱이 직접 이동 (실패 시에만 안내)
         if (status.Kind == Automation.Abstractions.NeisScreenKind.OtherNeisPage)
         {
             var moved = await _engine.TryGoToEvaluationAsync(navProg);
             if (!moved)
             {
-                ShowError("교과별 평가 화면으로 이동하지 못했습니다. 나이스에서 [교과별 평가]를 열어 주세요.");
+                ShowError("교과별 평가 화면으로 이동하지 못했어요. 나이스에서 [교과별 평가]를 열어 주세요.");
                 return;
             }
         }
 
         // 전담: 그 반·과목으로 나이스를 맞추고, 이동 직후엔 명단이 없으니 반드시 [조회] 한다.
+        // (콤보 찾기·선택 같은 중계는 화면에 안 보이게 — 진행은 아래 한 줄로만 알린다)
         if (subjectModeClass is { } cls)
         {
-            var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, navProg);
-            if (!okClass) { ShowError($"나이스 {cls.Grade}-{cls.Class} 이동 실패:\n{whyClass}"); return; }
+            Log($"{cls.Grade}학년 {cls.Class}반 {sheet.SubjectName} 화면을 준비하고 있어요…");
+            var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, null);
+            if (!okClass) { ShowError($"{cls.Grade}학년 {cls.Class}반으로 이동하지 못했어요.\n{whyClass}"); return; }
             var (okSubj, whySubj) = await _engine.SelectSubjectAsync(sheet.SubjectName);
-            if (!okSubj) { ShowError($"나이스 '{sheet.SubjectName}' 과목 전환 실패:\n{whySubj}"); return; }
-            // 콤보가 기본값과 같아 조회가 생략됐을 수 있으므로 명시적으로 조회 → 명단 로드
-            var (okQ, whyQ) = await _engine.QueryAsync();
-            if (!okQ) { ShowError($"나이스 조회 실패:\n{whyQ}"); return; }
-            Log($"나이스 {cls.Grade}-{cls.Class} · {sheet.SubjectName} 이동·조회 완료 — 입력 시작");
+            if (!okSubj) { ShowError($"'{sheet.SubjectName}' 과목으로 바꾸지 못했어요.\n{whySubj}"); return; }
+            var (okQ, whyQ) = await _engine.QueryAsync();   // 콤보가 그대로여도 명단이 뜨도록 조회
+            if (!okQ) { ShowError($"명단을 불러오지 못했어요.\n{whyQ}"); return; }
         }
 
         _cts = new CancellationTokenSource();
@@ -1005,15 +1003,16 @@ public sealed class MainViewModel : ObservableObject
         {
             var report = await _engine.RunSubjectAsync(
                 sheet, _scales.Active, dryRun, _progress, BuildResolveMatch(sheet), _cts.Token);
-            Log(new string('=', 50));
-            Log($"[{sheet.SubjectName}] {(dryRun ? "검증" : "입력")} 완료: " +
-                $"성공 {report.Done.Count} / 건너뜀 {report.Skipped.Count} / 실패 {report.Failed.Count}");
-            foreach (var s in report.Skipped) Log($"  건너뜀: {s.No}번 {s.Name} '{s.Area}' ({s.Reason})");
-            foreach (var f in report.Failed) Log($"  실패: {f.No}번 {f.Name} '{f.Area}' ({f.Reason})");
+            var act = dryRun ? "확인" : "입력";
+            var tail = (report.Skipped.Count + report.Failed.Count) > 0
+                ? $" (건너뜀 {report.Skipped.Count}·안 됨 {report.Failed.Count})" : "";
+            Log($"✔ {sheet.SubjectName} {act} 완료 — {report.Done.Count}명{tail}");
+            foreach (var s in report.Skipped) Log($"  · {s.No}번 {s.Name} '{s.Area}' 건너뜀 ({s.Reason})");
+            foreach (var f in report.Failed) Log($"  · {f.No}번 {f.Name} '{f.Area}' 안 됨 ({f.Reason})");
             if (report.Missing.Count > 0)
-                Log($"  ⚠ 화면에서 파악 못한 행 {string.Join(",", report.Missing)} — 나이스에서 직접 확인 필요");
+                Log($"  일부 학생을 화면에서 못 찾았어요 — 나이스에서 확인해 주세요");
             if (!dryRun)
-                Log("※ 저장하지 않았습니다. 나이스에서 값 확인 후 [저장]을 눌러주세요.");
+                Log("아직 저장 전이에요. 나이스에서 값 확인 후 [저장]을 눌러 주세요.");
 
             // 건너뜀·실패·누락이 있으면 팝업으로도 알림 (로그를 못 볼 수 있으므로)
             int problems = report.Skipped.Count + report.Failed.Count + report.Missing.Count;
@@ -1168,14 +1167,20 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand InspectCommand { get; private set; } = null!;
 
+    private bool _showDiagButton;
+    /// <summary>진단 버튼 표시 여부 — 기본 숨김. ❓를 Ctrl+Shift+클릭하면 토글 (개발·문의용).</summary>
+    public bool ShowDiagButton { get => _showDiagButton; set => SetProperty(ref _showDiagButton, value); }
+    public void ToggleDiagButton() => ShowDiagButton = !ShowDiagButton;
+
     private async Task InspectAsync()
     {
         if (!_engine.Connected) { ShowError("나이스 연결 후 사용하세요. [🌐 NEIS 접속]으로 브라우저를 여세요."); return; }
         try
         {
-            // 3초 여유 — 그동안 나이스 창을 원하는 화면/메뉴 상태로 두면 그 상태가 진단된다
-            for (int s = 3; s >= 1; s--) { Log($"{s}초 후 화면을 진단합니다 — 나이스를 원하는 화면 상태로 두세요."); await Task.Delay(1000); }
-            Log("화면 진단 중... (클릭 가능한 메뉴·요소 수집)");
+            // 3초 여유 — 그동안 나이스 창을 원하는 화면 상태로 두면 그 상태가 진단된다
+            Log("3초 뒤 화면을 살펴봐요 — 나이스를 원하는 화면으로 두세요.");
+            await Task.Delay(3000);
+            Log("화면을 살펴보는 중…");
             var report = await _engine.InspectDomAsync();
             AppPaths.EnsureRoot();
             var file = Path.Combine(AppPaths.Root, $"dom_inspect_{DateTime.Now:yyyyMMdd_HHmmss}.txt");

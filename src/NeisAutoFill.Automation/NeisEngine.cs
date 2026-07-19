@@ -112,7 +112,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     public async Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
     {
         if (_page is null) return false;
-        if ((await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) { progress?.Report(new("이미 교과별 평가 화면")); return true; }
+        if ((await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) return true;
 
         // 각 단계: 접미사(0/2/3단계)를 붙인 '구체 라벨'을 먼저 — 하단 탭·제목의 같은 글자와 안 헷갈리게.
         // 실측(dom_inspect): "학급담임 0단계 메뉴항목" / "학생평가 2단계 메뉴항목" / "교과평가 3단계" / 탭 "교과별 평가"
@@ -124,17 +124,17 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             (name: "교과별 평가", labels: new[] { "교과별 평가", "교과별평가" }),
         };
 
+        progress?.Report(new("교과별 평가 화면으로 이동하고 있어요…"));
         try
         {
             foreach (var (name, labels) in path)
             {
-                var hit = await ClickMenuLabelAsync(labels, ct);
-                if (hit is null)
+                // 성공 단계는 조용히 — 막힌 단계만 알린다
+                if (await ClickMenuLabelAsync(labels, ct) is null)
                 {
-                    progress?.Report(new($"메뉴 이동 실패 — '{name}' 단계를 화면에서 찾지 못했습니다"));
+                    progress?.Report(new($"'{name}' 메뉴를 찾지 못해 이동을 멈췄어요"));
                     return false;
                 }
-                progress?.Report(new($"메뉴 이동: '{name}' 클릭 ({hit})"));
                 await Task.Delay(800, ct);           // 하위 메뉴/화면 렌더 대기
             }
 
@@ -146,9 +146,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
                 if ((await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) return true;
                 await Task.Delay(600, ct);
             }
-            progress?.Report(new("메뉴는 눌렀으나 교과별 평가 화면이 확인되지 않았습니다"));
         }
-        catch (Exception ex) { progress?.Report(new($"메뉴 이동 오류: {ex.Message}")); }
+        catch { /* 실패는 false — 호출부가 안내 */ }
         return false;
     }
 

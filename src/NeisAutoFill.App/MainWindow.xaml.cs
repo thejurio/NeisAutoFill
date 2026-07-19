@@ -219,4 +219,15 @@ public partial class MainWindow : Window
     private void BulkClear_Click(object sender, RoutedEventArgs e) => _gradeGrid.BulkClear();
 
     private void SelectAllCells_Click(object sender, RoutedEventArgs e) => _gradeGrid.SelectAll();
+
+    /// <summary>❓ 버튼을 Ctrl+Shift+클릭하면 진단 버튼을 토글 (숨김↔표시). 그냥 클릭은 도움말 열기.</summary>
+    private void Help_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        const ModifierKeys combo = ModifierKeys.Control | ModifierKeys.Shift;
+        if ((Keyboard.Modifiers & combo) == combo)
+        {
+            _vm.ToggleDiagButton();
+            e.Handled = true;   // 도움말은 열지 않음
+        }
+    }
 }
