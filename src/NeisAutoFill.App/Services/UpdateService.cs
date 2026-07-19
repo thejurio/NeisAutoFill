@@ -28,6 +28,51 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
     public static Version CurrentVersion =>
         Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
 
+    /// <summary>업데이트 직후 1회 — 저장된 마지막 실행 버전보다 현재가 높으면
+    /// 현재 버전 릴리스 노트(패치로그)를 보여주고 버전을 기록한다.</summary>
+    public async Task ShowWhatsNewIfUpdatedAsync()
+    {
+        var current = CurrentVersion;
+        var lastStr = settings.Options.LastRunVersion?.Trim() ?? "";
+
+        // 첫 실행(기록 없음)은 패치로그 대신 조용히 버전만 기록 — 온보딩 화면이 안내를 맡는다
+        if (string.IsNullOrEmpty(lastStr) || !Version.TryParse(lastStr, out var last))
+        {
+            SaveLastRunVersion(current);
+            return;
+        }
+        if (current <= last) return;   // 업데이트 아님
+
+        // 현재 버전 태그의 릴리스 노트·게시 일시 조회 (실패해도 창은 띄움 — 안내문으로)
+        string notes = "";
+        DateTime? publishedAt = null;
+        var repo = settings.Options.UpdateRepo?.Trim();
+        if (!string.IsNullOrEmpty(repo) && repo.Contains('/'))
+        {
+            try
+            {
+                var json = await Http.GetStringAsync(
+                    $"https://api.github.com/repos/{repo}/releases/tags/v{current.ToString(3)}");
+                using var doc = JsonDocument.Parse(json);
+                notes = doc.RootElement.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+                if (doc.RootElement.TryGetProperty("published_at", out var pa) &&
+                    DateTime.TryParse(pa.GetString(), out var dt))
+                    publishedAt = dt.ToLocalTime();
+            }
+            catch { /* 오프라인 등 — 노트 없이 진행 */ }
+        }
+
+        await Application.Current.Dispatcher.InvokeAsync(() =>
+            UpdatePromptWindow.ShowWhatsNew(current.ToString(3), notes, publishedAt, Application.Current.MainWindow));
+        SaveLastRunVersion(current);   // 확인 후 기록 — 다음 실행부턴 안 뜸
+    }
+
+    private void SaveLastRunVersion(Version v)
+    {
+        settings.Options = settings.Options with { LastRunVersion = v.ToString(3) };
+        settings.Save();
+    }
+
     /// <summary>백그라운드 확인 — 새 버전이 있으면 사용자에게 묻고 업데이트 진행.</summary>
     public async Task CheckAndPromptAsync()
     {

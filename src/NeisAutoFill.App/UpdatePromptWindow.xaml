@@ -15,7 +15,7 @@
             <Border DockPanel.Dock="Top" Height="40" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
                 <DockPanel LastChildFill="False">
                     <Image Source="app.ico" Width="18" Height="18" Margin="12,0,8,0" DockPanel.Dock="Left" VerticalAlignment="Center"/>
-                    <TextBlock DockPanel.Dock="Left" Text="새 버전 안내" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
+                    <TextBlock x:Name="TitleText" DockPanel.Dock="Left" Text="새 버전 안내" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
                     <Button DockPanel.Dock="Right" Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="Later_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
                 </DockPanel>
             </Border>
@@ -23,10 +23,10 @@
             <!-- 하단 버튼 -->
             <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="16,10">
                 <DockPanel LastChildFill="False">
-                    <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource Sub}"
+                    <TextBlock x:Name="FootText" DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="11.5" Foreground="{StaticResource Sub}"
                                Text="다운로드 후 자동으로 재시작됩니다."/>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="지금 업데이트" Click="Now_Click" Padding="18,7" Margin="6,0,0,0"/>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="나중에" Click="Later_Click" Padding="18,7"/>
+                    <Button x:Name="NowBtn" DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="지금 업데이트" Click="Now_Click" Padding="18,7" Margin="6,0,0,0"/>
+                    <Button x:Name="LaterBtn" DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="나중에" Click="Later_Click" Padding="18,7"/>
                 </DockPanel>
             </Border>
 
@@ -34,17 +34,16 @@
             <Border DockPanel.Dock="Top" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="16,12">
                 <StackPanel>
                     <TextBlock x:Name="HeadText" FontWeight="Bold" FontSize="15" Foreground="{StaticResource Ink}"/>
-                    <TextBlock Text="바뀐 내용을 확인하고 업데이트하세요." FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,3,0,0"/>
+                    <TextBlock x:Name="SubText" Text="바뀐 내용을 확인하고 업데이트하세요." FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,3,0,0"/>
                 </StackPanel>
             </Border>
 
-            <!-- 릴리스 노트 -->
-            <Border Padding="16,12">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <TextBox x:Name="NotesBox" IsReadOnly="True" BorderThickness="0" Background="Transparent"
-                             TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource Ink}"
-                             VerticalScrollBarVisibility="Disabled"/>
-                </ScrollViewer>
+            <!-- 릴리스 노트 (마크다운 렌더 — ##=제목, **=굵게, -=불릿) -->
+            <Border Padding="8,6">
+                <RichTextBox x:Name="NotesRich" IsReadOnly="True" IsDocumentEnabled="True"
+                             BorderThickness="0" Background="Transparent"
+                             VerticalScrollBarVisibility="Auto" FontSize="12.5"
+                             Foreground="{StaticResource Ink}"/>
             </Border>
         </DockPanel>
     </Border>

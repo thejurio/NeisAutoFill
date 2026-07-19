@@ -59,8 +59,13 @@ public partial class App : Application
 
         provider.GetRequiredService<MainWindow>().Show();
 
-        // 자동업데이트 확인 (백그라운드 — 설정에 UpdateRepo 가 있을 때만 동작)
-        _ = provider.GetRequiredService<UpdateService>().CheckAndPromptAsync();
+        var update = provider.GetRequiredService<UpdateService>();
+        // 업데이트 직후면 패치로그(새로워진 점) 1회 표시 → 이어서 새 버전 확인 (백그라운드)
+        _ = Task.Run(async () =>
+        {
+            await update.ShowWhatsNewIfUpdatedAsync();
+            await update.CheckAndPromptAsync();
+        });
 
         // 프로그램 시작을 GAS RequestLog 시트에 기록 (백그라운드)
         var version = UpdateService.CurrentVersion.ToString(3);

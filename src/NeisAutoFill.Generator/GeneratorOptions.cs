@@ -46,4 +46,7 @@ public sealed record GeneratorOptions
 
     /// <summary>화면 표시 배율 (글꼴·요소 크기). 1.0=보통, 1.15=크게, 1.3=더 크게. 0.8~2.0 로 제한.</summary>
     public double UiScale { get; init; } = 1.0;
+
+    /// <summary>마지막으로 실행된 앱 버전 — 업데이트 직후 "새로워진 점"(패치로그) 1회 표시 판별용.</summary>
+    public string LastRunVersion { get; init; } = "";
 }
