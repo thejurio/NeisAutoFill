@@ -38,13 +38,16 @@ public static class BatchUploadRunner
     /// <param name="targets">전환할 과목들 (Display=내 과목, Screen=화면 과목). 보통 둘이 같다.</param>
     /// <param name="runSubject">과목 하나 입력 실행 (전환 완료 후 Display 이름으로 호출됨)</param>
     /// <param name="unit">요약 문구 단위 (등급="건", 서술문="명")</param>
+    /// <param name="switchSubjects">대상이 과목이라 러너가 과목 콤보를 전환할지.
+    /// 전담 전체반 배치는 대상이 반("3-1")이고 이동·전환을 runSubject 안에서 하므로 false (F9 버그수정).</param>
     public static async Task<List<SubjectOutcome>> RunAsync(
         IReadOnlyList<SubjectTarget> targets,
         INeisEngine engine,
         Func<string, Task<SubjectResult>> runSubject,
         Action<string> log,
         string unit,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool switchSubjects = true)
     {
         var outcomes = new List<SubjectOutcome>();
         try
@@ -54,15 +57,18 @@ public static class BatchUploadRunner
                 var subject = targets[i].Display;
                 var screen = targets[i].Screen;
                 log(new string('─', 50));
-                log($"[전과목 {i + 1}/{targets.Count}] '{subject}'" +
-                    (screen != subject ? $" → 화면 '{screen}'" : "") + " 과목으로 전환 중...");
+                log($"[{i + 1}/{targets.Count}] '{subject}'" +
+                    (screen != subject ? $" → 화면 '{screen}'" : "") + " 진행 중...");
 
-                var (selOk, selWhy) = await engine.SelectSubjectAsync(screen, ct);
-                if (!selOk)
+                if (switchSubjects)
                 {
-                    outcomes.Add(new SubjectOutcome(subject, SubjectStatus.SwitchFailed, 0, 0,
-                        Array.Empty<SkipItem>(), $"과목 전환 실패 — {selWhy}"));
-                    break;   // 화면 상태를 모르는 채 계속 가지 않는다
+                    var (selOk, selWhy) = await engine.SelectSubjectAsync(screen, ct);
+                    if (!selOk)
+                    {
+                        outcomes.Add(new SubjectOutcome(subject, SubjectStatus.SwitchFailed, 0, 0,
+                            Array.Empty<SkipItem>(), $"과목 전환 실패 — {selWhy}"));
+                        break;   // 화면 상태를 모르는 채 계속 가지 않는다
+                    }
                 }
 
                 var r = await runSubject(subject);

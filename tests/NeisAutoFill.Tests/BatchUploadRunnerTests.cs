@@ -65,6 +65,19 @@ public class BatchUploadRunnerTests
     }
 
     [Fact]
+    public async Task switchSubjects_false면_과목전환_안하고_돈다()
+    {
+        // 전담 전체반: 대상이 반("3-1")이라 과목 콤보 전환을 끄면 SelectSubject 가 불리면 안 된다
+        var eng = new FakeEngine { OnSelect = s => throw new Exception($"과목 전환 호출됨: {s}") };
+        var targets = new[] { new BatchUploadRunner.SubjectTarget("3-1", "3-1"),
+                              new BatchUploadRunner.SubjectTarget("3-2", "3-2") };
+        var outcomes = await BatchUploadRunner.RunAsync(
+            targets, eng, _ => Task.FromResult(Ok(3)), _ => { }, "건", CancellationToken.None,
+            switchSubjects: false);
+        Assert.All(outcomes, o => Assert.Equal(BatchUploadRunner.SubjectStatus.Success, o.Status));
+    }
+
+    [Fact]
     public async Task 한_과목_실패하면_그_뒤는_미도달()
     {
         var outcomes = await Run(new FakeEngine(), new[] { "국어", "수학", "영어" },

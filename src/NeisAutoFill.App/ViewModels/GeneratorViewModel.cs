@@ -620,18 +620,15 @@ public sealed class GeneratorViewModel : ObservableObject
             var report = await _engine.RunNarrativesAsync(
                 subject, pc.Entries, dryRun: false, _settings.Options.MaxNarrativeBytes,
                 progress, ct, BuildNarrativeResolveMatch(pc.Entries));
-            if (report.Failed.Count == 0)
-            {
-                var (okSave, whySave) = await _engine.SaveScreenAsync(ct);
-                if (!okSave) _mainLog($"  ⚠ {classKey} 나이스 저장 건너뜀: {whySave}");
-            }
+            // 나이스 [저장]은 러너가 검증 통과 시 일관되게 누른다 (여기서 또 누르면 이중 저장 → 실패)
             return new Automation.BatchUploadRunner.SubjectResult(
                 report.Done.Count, report.Failed, report.Skipped.Count,
                 report.Skipped.Any(s => s.Reason == "사용자 취소"));
         };
 
         List<Automation.BatchUploadRunner.SubjectOutcome> outcomes;
-        try { outcomes = await Automation.BatchUploadRunner.RunAsync(targets, _engine, runClass, _mainLog, unit: "명", ct); }
+        // switchSubjects:false — 대상이 반("3-1")이라 러너의 과목 전환을 끈다 (이동은 runClass 가 함)
+        try { outcomes = await Automation.BatchUploadRunner.RunAsync(targets, _engine, runClass, _mainLog, unit: "명", ct, switchSubjects: false); }
         finally { IsUploading = false; }
         _mainLog($"'{subject}' 여러 반 세특 입력 결과: " +
             string.Join(" / ", Automation.BatchUploadRunner.Summarize(outcomes)));
@@ -640,7 +637,7 @@ public sealed class GeneratorViewModel : ObservableObject
             retry: async subs =>
             {
                 var rt = subs.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
-                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, _mainLog, "명", CancellationToken.None);
+                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, _mainLog, "명", CancellationToken.None, switchSubjects: false);
             },
             owner: Application.Current.MainWindow);
     }

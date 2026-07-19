@@ -1207,7 +1207,7 @@ public sealed class MainViewModel : ObservableObject
 
         var win = new BatchGenerateWindow(picks,
             title: "전과목 나이스 입력",
-            description: "나이스에 입력할 과목을 선택하세요. 나이스 화면이 [교과별 평가] 조회 화면인지 확인한 뒤 시작하세요.",
+            description: "나이스에 입력할 과목을 선택하세요. 교과별 평가 화면으로 자동 이동해 과목마다 조회·입력·저장합니다.",
             startLabel: "🚀 입력 시작",
             warning: "각 과목 입력 후 값 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 과목으로 넘어갑니다. " +
                      "검증에 실패한 과목은 저장하지 않고 그 자리에서 중단합니다.")
@@ -1301,6 +1301,10 @@ public sealed class MainViewModel : ObservableObject
             var cls = vm.OwnerClass!.Value;
             var sheet = vm.Snapshot();
 
+            // 교과별 평가 화면이 아니면 먼저 이동 (다른 화면에서 눌러도 동작)
+            if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.Evaluation,
+                    new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message)), _cts.Token))
+                return Fail(sheet, "교과별 평가 화면 이동 실패");
             var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, null, _cts.Token);
             if (!okClass) return Fail(sheet, $"{cls.Key} 이동 실패: {whyClass}");
             var (okSubj, whySubj) = await _engine.SelectSubjectAsync(_currentSubject!, _cts.Token);
@@ -1310,22 +1314,17 @@ public sealed class MainViewModel : ObservableObject
 
             var report = await _engine.RunSubjectAsync(
                 sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
-            var result = new Automation.BatchUploadRunner.SubjectResult(
+
+            // 나이스 [저장]은 러너가 검증 통과 시 일관되게 누른다 (여기서 또 누르면 이중 저장 → 실패)
+            if (report.Failed.Count == 0) SaveSubjectTabsIfDirty();   // 로컬 파일 저장만
+            return new Automation.BatchUploadRunner.SubjectResult(
                 report.Done.Count, report.Failed, report.Skipped.Count,
                 report.Skipped.Any(s => s.Reason == "사용자 취소"));
-
-            // 검증 통과(실패 0)면 나이스 저장 + 로컬 파일 저장
-            if (report.Failed.Count == 0)
-            {
-                var (okSave, whySave) = await _engine.SaveScreenAsync(_cts.Token);
-                if (!okSave) Log($"  ⚠ {cls.Key} 나이스 저장 건너뜀: {whySave}");
-                SaveSubjectTabsIfDirty();
-            }
-            return result;
         };
 
+        // switchSubjects:false — 대상이 반("3-1")이라 러너의 과목 전환을 끈다 (이동은 runClass 가 함)
         var outcomes = await Automation.BatchUploadRunner.RunAsync(
-            targets, _engine, runClass, Log, unit: "건", _cts.Token);
+            targets, _engine, runClass, Log, unit: "건", _cts.Token, switchSubjects: false);
 
         Log($"'{_currentSubject}' 여러 반 입력 결과:");
         foreach (var s in Automation.BatchUploadRunner.Summarize(outcomes)) Log("  " + s);
@@ -1335,7 +1334,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 _cts = new CancellationTokenSource();
                 var rt = subs.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
-                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, Log, "건", _cts.Token);
+                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, Log, "건", _cts.Token, switchSubjects: false);
             },
             owner: Application.Current.MainWindow);
     }
