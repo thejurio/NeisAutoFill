@@ -693,7 +693,11 @@ public sealed class MainViewModel : ObservableObject
                 _scales, _generatorSettings, _narratives, _generationQueue, _narrativeMirror, _engine, Log,
                 // 전담: 창 안에서 교과·학년반을 골라 세특 생성·입력 (메인에서 보던 조합이 기본 선택)
                 subjectMode: BuildSubjectModeGen());
-            if (!_generatorVm.IsSubjectMode)
+            if (_generatorVm.IsSubjectMode)
+                // 싱글턴이라 열 때마다 메인에서 지금 보는 (과목·반)으로 맞춘다
+                _generatorVm.FocusUnit(_currentSubject,
+                    SelectedSubject?.OwnerClass is { } oc ? (oc.Grade, oc.Class) : null);
+            else
                 _generatorVm.RefreshSubjects();   // 담임: 메인에서 로드된 성적·평가계획을 자동 반영
             new GeneratorWindow(_generatorVm) { Owner = Application.Current.MainWindow }.Show();
         }
@@ -1119,10 +1123,10 @@ public sealed class MainViewModel : ObservableObject
     public ICommand RunAllSubjectsCommand { get; private set; } = null!;
 
     // 입력 버튼 라벨 — 담임은 과목 축, 전담은 반 축(탭=반)이라 표현이 다르다 (F9 M9)
-    /// <summary>단건 입력 버튼: 담임 "▶ 이 과목 입력" / 전담 "▶ 이 반 입력".</summary>
+    /// <summary>단건 입력 버튼: 담임 "▶ 이 과목 입력" / 전담 "▶ 이 반 입력"(지금 반+과목 하나).</summary>
     public string RunOneLabel => IsSubjectMode ? "▶ 이 반 입력" : "▶ 이 과목 입력";
-    /// <summary>배치 입력 버튼: 담임 "🚀 전과목 입력" / 전담 "🚀 전체 반 입력".</summary>
-    public string RunAllLabel => IsSubjectMode ? "🚀 전체 반 입력" : "🚀 전과목 입력";
+    /// <summary>배치 입력: 담임 "🚀 전과목 입력" / 전담 "🚀 이 과목 전체반 입력"(이 과목이 있는 모든 반).</summary>
+    public string RunAllLabel => IsSubjectMode ? "🚀 이 과목 전체반 입력" : "🚀 전과목 입력";
 
     private async Task RunAllSubjectsAsync()
     {

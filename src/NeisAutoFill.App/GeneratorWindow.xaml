@@ -59,8 +59,9 @@
                             <Button Style="{StaticResource GhostButton}" Content="⛔ 중지" Command="{Binding CancelGenerationCommand}" Margin="0,0,8,0"
                                     Visibility="{Binding IsGenerating, Converter={StaticResource BoolToVis}}"/>
                             <Button Style="{StaticResource PrimaryButton}" Content="🌐 전과목 생성" Command="{Binding GenerateSubjectsCommand}" Margin="0,0,4,0"
+                                    Visibility="{Binding ShowBatchGenerate, Converter={StaticResource BoolToVis}}"
                                     ToolTip="여러 과목을 한 번에 백그라운드로 생성합니다"/>
-                            <Button Style="{StaticResource AccentGhostButton}" Content="🚀 이 과목 생성" Command="{Binding GenerateAllCommand}" Margin="0,0,4,0"/>
+                            <Button Style="{StaticResource AccentGhostButton}" Content="{Binding GenerateOneLabel}" Command="{Binding GenerateAllCommand}" Margin="0,0,4,0"/>
                             <Button Style="{StaticResource AccentGhostButton}" Content="☑ 선택만 생성" Command="{Binding GenerateSelectedCommand}"/>
                         </StackPanel>
                     </DockPanel>
@@ -84,9 +85,9 @@
                                 </Button.ContextMenu>
                             </Button>
                         </StackPanel>
-                        <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="🚀 전과목 입력" Command="{Binding UploadAllCommand}"
-                                ToolTip="모든 과목의 서술문을 순서대로 나이스에 입력합니다. 각 과목 검증 통과 시 자동 [저장] 후 다음 과목으로 넘어갑니다."/>
-                        <Button DockPanel.Dock="Right" Style="{StaticResource AccentGhostButton}" Content="▶ 이 과목 입력" Command="{Binding UploadCommand}" Margin="0,0,6,0"/>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="{Binding UploadAllLabel}" Command="{Binding UploadAllCommand}"
+                                ToolTip="여러 대상의 서술문을 순서대로 나이스에 입력합니다. 각 대상 검증 통과 시 자동 [저장] 후 다음으로 넘어갑니다."/>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource AccentGhostButton}" Content="{Binding UploadOneLabel}" Command="{Binding UploadCommand}" Margin="0,0,6,0"/>
                     </DockPanel>
                 </StackPanel>
             </Border>

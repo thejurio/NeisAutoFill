@@ -145,6 +145,8 @@
                             <DockPanel Margin="14,10,14,0">
                                 <!-- U4: 한 줄 — 일괄 입력(좌) + 성취기준·나이스 입력(우). U3: 미연결 시 입력 비활성 -->
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False">
+                                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="☑ 전체 선택" Padding="10,5" Margin="0,0,10,0" Click="SelectAllCells_Click"
+                                            ToolTip="표의 모든 칸을 선택합니다.&#10;💡 학생 이름을 클릭하면 그 학생 전체, 영역 제목을 클릭하면 그 영역 전체가 선택됩니다 (Ctrl+클릭 = 선택 추가)"/>
                                     <TextBlock DockPanel.Dock="Left" Text="일괄 입력:" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,8,0"/>
                                     <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding DataContext.BulkGradeLabels, RelativeSource={RelativeSource AncestorType=Window}}" VerticalAlignment="Center">
                                         <ItemsControl.ItemsPanel>
@@ -158,8 +160,6 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="지우기" Padding="10,5" Margin="0,0,6,0" Click="BulkClear_Click"/>
-                                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="☑ 전체 선택" Padding="10,5" Click="SelectAllCells_Click"
-                                            ToolTip="표의 모든 칸을 선택합니다.&#10;💡 학생 이름을 클릭하면 그 학생 전체, 영역 제목을 클릭하면 그 영역 전체가 선택됩니다 (Ctrl+클릭 = 선택 추가)"/>
 
                                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="■" Padding="9,5" Command="{Binding CancelCommand}"
                                             ToolTip="진행 중인 나이스 입력을 중지합니다"/>

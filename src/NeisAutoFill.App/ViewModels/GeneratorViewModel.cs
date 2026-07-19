@@ -45,6 +45,16 @@ public sealed class GeneratorViewModel : ObservableObject
     private IReadOnlyList<SubjectPlan> _smPlans = System.Array.Empty<SubjectPlan>();
     public bool IsSubjectMode => _sm is not null;
 
+    // 입력·생성 버튼 라벨 — 전담은 (교과·반) 하나라 "이 반" 표현, 담임은 "과목" 표현 (F9 M11)
+    /// <summary>생성 버튼: 담임 "🚀 이 과목 생성" / 전담 "🚀 이 반 생성".</summary>
+    public string GenerateOneLabel => IsSubjectMode ? "🚀 이 반 생성" : "🚀 이 과목 생성";
+    /// <summary>입력 버튼: 담임 "▶ 이 과목 입력" / 전담 "▶ 이 반 입력"(지금 반+과목 하나).</summary>
+    public string UploadOneLabel => IsSubjectMode ? "▶ 이 반 입력" : "▶ 이 과목 입력";
+    /// <summary>배치 입력: 담임 "🚀 전과목 입력" / 전담 "🚀 이 과목 전체반 입력"(이 과목이 있는 모든 반).</summary>
+    public string UploadAllLabel => IsSubjectMode ? "🚀 이 과목 전체반 입력" : "🚀 전과목 입력";
+    /// <summary>전과목 '생성' 배치는 전담에선 과목 하나라 숨긴다 (입력은 전체 반이므로 유지).</summary>
+    public bool ShowBatchGenerate => !IsSubjectMode;
+
     /// <summary>내부에서 쓰는 시트/계획 — 전담이면 선택된 (과목·반) 것, 담임이면 주입된 것.</summary>
     private IReadOnlyList<SubjectSheet> Sheets() =>
         _sm is not null ? (_smSheet is { } s ? new[] { s } : System.Array.Empty<SubjectSheet>()) : _getSheets();
@@ -141,6 +151,22 @@ public sealed class GeneratorViewModel : ObservableObject
         var initKey = _sm.InitialClass is { } ic ? $"{ic.Grade}-{ic.Class}" : null;
         _genClass = initKey is not null && GenClasses.Contains(initKey) ? initKey : GenClasses.FirstOrDefault();
         LoadUnitData();   // _smSheet/_smPlans 만 채움 (RefreshSubjects 는 생성자에서 이어 호출)
+    }
+
+    /// <summary>창을 열 때마다 메인에서 지금 보는 (과목·반)으로 선택기를 맞춘다 (F9 M11).
+    /// 생성기는 싱글턴이라 첫 생성값에 고정되므로, 열 때마다 이 메서드로 동기화한다.</summary>
+    public void FocusUnit(string? subject, (int Grade, string Class)? cls)
+    {
+        if (_sm is null) return;
+        if (subject is not null && GenSubjects.Contains(subject)) _genSubject = subject;
+        OnPropertyChanged(nameof(GenSubject));
+        RefreshGenClasses();   // 과목의 반 목록 재구성 (없으면 첫 반)
+
+        var key = cls is { } c ? $"{c.Grade}-{c.Class}" : null;
+        if (key is not null && GenClasses.Contains(key)) _genClass = key;
+        OnPropertyChanged(nameof(GenClass));
+
+        LoadCurrentUnit();     // 그 조합 로드 + 화면 갱신
     }
 
     private void RefreshGenClasses()
@@ -428,6 +454,10 @@ public sealed class GeneratorViewModel : ObservableObject
                 "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
+
+        // 전담: 지금 교과를 여러 반에 순회 세특 입력 (성적 [전체 반 입력]과 대칭)
+        if (_sm is not null) { await UploadAllClassesAsync(); return; }
+
         var allBySubject = CollectNarratives();
         if (allBySubject.Count == 0)
         {
@@ -492,6 +522,103 @@ public sealed class GeneratorViewModel : ObservableObject
             },
             owner: Application.Current.MainWindow);
     }
+
+    /// <summary>전담: 지금 교과의 세특을 고른 여러 반에 순회 입력 (F9 M11 — 성적 전체 반 입력과 대칭).
+    /// 각 반마다 세특 화면 이동→학년·반·교과 선택→조회→입력, 통과 시 나이스 [저장] 후 다음 반.</summary>
+    private async Task UploadAllClassesAsync()
+    {
+        var subject = _genSubject;
+        if (subject is null) return;
+
+        // 각 반의 세특 서술문 수집 (반별 store 를 로드해 읽음)
+        var perClass = new List<(int Grade, string Class, List<NarrativeEntry> Entries)>();
+        foreach (var (g, c) in _sm!.ClassesOf(subject))
+        {
+            if (_sm.Load(g, c, subject) is not { } lv) continue;   // narratives 도 이 반으로 전환됨
+            var rows = new List<NarrativeEntry>();
+            foreach (var st in lv.Sheet.Students)
+            {
+                var text = _store.Get(subject, st.No, st.Name);
+                if (!string.IsNullOrWhiteSpace(text)) rows.Add(new NarrativeEntry(st.No, st.Name, text!.Trim()));
+            }
+            if (rows.Count > 0) perClass.Add((g, c, rows));
+        }
+        LoadUnitData();   // 보던 반으로 복원
+
+        if (perClass.Count == 0)
+        {
+            MessageBox.Show("입력할 세특 서술문이 없습니다. 먼저 생성해 주세요.", "안내",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var picks = perClass.Select(pc =>
+        {
+            var pick = new SubjectPick($"{pc.Grade}-{pc.Class}", pc.Entries.Count, $"세특 {pc.Entries.Count}명 입력 예정");
+            pick.IsChecked = true;
+            return pick;
+        }).ToList();
+
+        var win = new BatchGenerateWindow(picks,
+            title: $"'{subject}' 여러 반 세특 입력",
+            description: $"'{subject}' 세특을 입력할 반을 선택하세요. 각 반으로 이동·조회한 뒤 자동 입력합니다.",
+            startLabel: "🚀 입력 시작",
+            warning: "각 반 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 반으로 넘어갑니다. " +
+                     "검증에 실패한 반은 저장하지 않고 그 자리에서 중단합니다.")
+        { Owner = Application.Current.MainWindow };
+        if (win.ShowDialog() != true) return;
+
+        var chosen = picks.Where(p => p.IsChecked).Select(p => p.Name).ToHashSet();
+        var targets = perClass.Where(pc => chosen.Contains($"{pc.Grade}-{pc.Class}"))
+            .Select(pc => new Automation.BatchUploadRunner.SubjectTarget($"{pc.Grade}-{pc.Class}", $"{pc.Grade}-{pc.Class}"))
+            .ToList();
+        if (targets.Count == 0) return;
+
+        var progress = new Progress<Automation.Abstractions.ProgressInfo>(p =>
+        {
+            if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
+        });
+
+        Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runClass = async classKey =>
+        {
+            var pc = perClass.First(x => $"{x.Grade}-{x.Class}" == classKey);
+            _mainLog($"{pc.Grade}-{pc.Class} {subject} 세특 화면을 준비하고 있어요…");
+            if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.SubjectDevelopment, progress))
+                return Fail($"{classKey} 세특 화면 이동 실패");
+            var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(pc.Grade, pc.Class, subject, progress);
+            if (!okAxis) return Fail($"{classKey} 학년·반·교과 선택 실패: {whyAxis}");
+            var (okQ, whyQ) = await _engine.QueryAsync();
+            if (!okQ) return Fail($"{classKey} 조회 실패: {whyQ}");
+
+            var report = await _engine.RunNarrativesAsync(
+                subject, pc.Entries, dryRun: false, _settings.Options.MaxNarrativeBytes,
+                progress, CancellationToken.None, BuildNarrativeResolveMatch(pc.Entries));
+            if (report.Failed.Count == 0)
+            {
+                var (okSave, whySave) = await _engine.SaveScreenAsync();
+                if (!okSave) _mainLog($"  ⚠ {classKey} 나이스 저장 건너뜀: {whySave}");
+            }
+            return new Automation.BatchUploadRunner.SubjectResult(
+                report.Done.Count, report.Failed, report.Skipped.Count,
+                report.Skipped.Any(s => s.Reason == "사용자 취소"));
+        };
+
+        var outcomes = await Automation.BatchUploadRunner.RunAsync(
+            targets, _engine, runClass, _mainLog, unit: "반", CancellationToken.None);
+        _mainLog($"'{subject}' 여러 반 세특 입력 결과: " +
+            string.Join(" / ", Automation.BatchUploadRunner.Summarize(outcomes)));
+
+        BatchResultWindow.ShowResult(outcomes, "반",
+            retry: async subs =>
+            {
+                var rt = subs.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
+                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, _mainLog, "반", CancellationToken.None);
+            },
+            owner: Application.Current.MainWindow);
+    }
+
+    private static Automation.BatchUploadRunner.SubjectResult Fail(string reason) =>
+        new(0, new[] { new SkipItem("", "", "", reason) }, 0, false);
 
     /// <summary>선택된 과목들로 (내 과목 → 화면 과목) 대상 목록. 매핑 없거나 '미선택'이면 같은 이름.</summary>
     private static List<Automation.BatchUploadRunner.SubjectTarget> BuildTargets(IEnumerable<SubjectPick> chosen) =>

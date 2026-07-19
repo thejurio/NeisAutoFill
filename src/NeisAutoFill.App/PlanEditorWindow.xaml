@@ -45,9 +45,10 @@
                     <Border DockPanel.Dock="Top" Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="8,6" Margin="0,0,0,8"
                             Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}">
                         <DockPanel>
-                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="＋ 학년·반" Command="{Binding AddClassCommand}" Padding="8,3" FontSize="11"/>
-                            <Button DockPanel.Dock="Right" Style="{StaticResource DangerGhostButton}" Content="제거" Command="{Binding RemoveClassCommand}" Padding="8,3" FontSize="11" Margin="0,0,4,0"
+                            <!-- 제거 먼저 선언(=오른쪽 끝), ＋ 추가 다음(=그 왼쪽) → 시각적으로 [＋ 학년·반][제거] (추가가 앞) -->
+                            <Button DockPanel.Dock="Right" Style="{StaticResource DangerGhostButton}" Content="제거" Command="{Binding RemoveClassCommand}" Padding="8,3" FontSize="11"
                                     ToolTip="선택한 반을 목록에서 지웁니다 (파일은 남습니다)"/>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="＋ 학년·반" Command="{Binding AddClassCommand}" Padding="8,3" FontSize="11" Margin="0,0,4,0"/>
                             <TextBlock DockPanel.Dock="Left" Text="반" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,6,0"/>
                             <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding ClassOptions}" SelectedItem="{Binding SelectedClassRef}"
                                       MinWidth="90" HorizontalAlignment="Left"/>
