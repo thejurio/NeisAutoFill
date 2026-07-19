@@ -21,6 +21,16 @@ public sealed record TeachingUnit(int Grade, string Class, string Subject)
     public string Display => $"{Grade}-{Class} {Subject}";
 }
 
+/// <summary>평가계획 파일에서 AI 가 발견한 (학년, 과목) 단위 (F9 M4b).
+/// 학년 표기가 문서에 없으면 Grade=0 (불명) — 사용자가 선택 창에서 지정한다.</summary>
+public sealed record PlanUnit(int Grade, string Subject)
+{
+    /// <summary>학년이 확정됐는지 (0 = 문서에 학년 표기 없어 사용자 지정 필요).</summary>
+    public bool HasGrade => Grade is >= 1 and <= 6;
+    /// <summary>표시용. 예: "3학년 영어" / 불명이면 "(학년?) 영어".</summary>
+    public string Display => (HasGrade ? $"{Grade}학년" : "(학년?)") + $" {Subject}";
+}
+
 /// <summary>
 /// 전담 모드의 파일 경로 규칙 (순수). 담임과 완전히 분리된 "전담\" 하위에 정규화 저장.
 /// 명단은 반별 1개, 평가계획은 (학년·과목)별 1개 → 같은 학년·과목이면 여러 반이 공유.

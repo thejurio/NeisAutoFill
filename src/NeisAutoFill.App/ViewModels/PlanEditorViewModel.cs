@@ -18,7 +18,15 @@ public sealed class PlanEditorViewModel : ObservableObject
 
     private readonly GradeScale _scale;
 
-    private readonly Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>? _importer;
+    // 담임 import: 과목 목록 인식 후 selectSubjects 로 고른 과목만 불러온다 (F9 M4b)
+    private readonly Func<string, IProgress<string>,
+        Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>?,
+        Task<IReadOnlyList<SubjectPlan>>>? _importer;
+
+    // 전담 import: (학년·과목) 단위 인식 후 selectUnits 로 고른 것만 학년별로 불러온다 (F9 M4b)
+    private readonly Func<string, IProgress<string>,
+        Func<IReadOnlyList<PlanUnit>, Task<IReadOnlyList<PlanUnit>?>>?,
+        Task<IReadOnlyList<NeisAutoFill.Generator.GasPlanImporter.GradePlanSet>>>? _unitImporter;
 
     // ── 전담 모드 (F9 M4a) — null 이면 담임(기존 동작) ──
     private readonly Services.SubjectModeStore? _subjectStore;
@@ -32,11 +40,18 @@ public sealed class PlanEditorViewModel : ObservableObject
         IReadOnlyList<SubjectPlan> plans,
         IReadOnlyList<(string No, string Name)> roster,
         GradeScale scale,
-        Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>? importer = null,
-        Services.SubjectModeStore? subjectStore = null)
+        Func<string, IProgress<string>,
+            Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>?,
+            Task<IReadOnlyList<SubjectPlan>>>? importer = null,
+        Services.SubjectModeStore? subjectStore = null,
+        NeisAutoFill.Core.ClassRef? initial = null,
+        Func<string, IProgress<string>,
+            Func<IReadOnlyList<PlanUnit>, Task<IReadOnlyList<PlanUnit>?>>?,
+            Task<IReadOnlyList<NeisAutoFill.Generator.GasPlanImporter.GradePlanSet>>>? unitImporter = null)
     {
         _scale = scale;
         _importer = importer;
+        _unitImporter = unitImporter;
         _subjectStore = subjectStore;
 
         // 커맨드를 먼저 만든다 — SelectedSubject setter 가 커맨드를 참조하므로 데이터 채우기보다 앞서야 함
@@ -76,8 +91,13 @@ public sealed class PlanEditorViewModel : ObservableObject
             var grades = _subjectStore.ListGrades()
                 .Concat(ClassOptions.Select(c => c.Grade)).Distinct().OrderBy(g => g);
             foreach (var g in grades) GradeOptions.Add(g);
-            _selectedClassRef = ClassOptions.FirstOrDefault();
-            _selectedGrade = GradeOptions.FirstOrDefault();
+            // 메인에서 보던 반(initial)이 있으면 그걸 기본값으로 — 없으면 첫 항목 (ClassRef 는 struct)
+            _selectedClassRef = initial is { } iv && ClassOptions.Any(c => c.Key == iv.Key)
+                ? iv
+                : (ClassOptions.Count > 0 ? ClassOptions[0] : (NeisAutoFill.Core.ClassRef?)null);
+            _selectedGrade = initial is { } gv && GradeOptions.Contains(gv.Grade)
+                ? gv.Grade
+                : (_selectedClassRef?.Grade ?? GradeOptions.FirstOrDefault());
             LoadCurrentClass();   // 명단
             LoadCurrentGrade();   // 계획
         }
@@ -338,7 +358,12 @@ public sealed class PlanEditorViewModel : ObservableObject
     /// </summary>
     public async Task ImportPlanFileAsync(string path)
     {
-        if (Subjects.Any(s => s.BuildPlan(out _) is { Domains.Count: > 0 }))
+        var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
+        var isAi = ext is not (".xlsx" or ".xlsm");
+
+        // 전담 AI 경로는 (학년·과목) 선택 창이 곧 확인 단계 → 사전 교체 경고 생략.
+        // 그 외(담임·전담 xlsx)는 현재 편집 중인 계획을 덮으므로 확인.
+        if (!(IsSubjectMode && isAi) && Subjects.Any(s => s.BuildPlan(out _) is { Domains.Count: > 0 }))
         {
             var ok = System.Windows.MessageBox.Show(
                 "이미 입력된 평가계획이 있습니다. 불러온 내용으로 교체할까요?",
@@ -346,16 +371,26 @@ public sealed class PlanEditorViewModel : ObservableObject
             if (ok != System.Windows.MessageBoxResult.Yes) return;
         }
 
-        var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
         var fileName = System.IO.Path.GetFileName(path);
         IsImporting = true;
-        ImportStatus = ext is ".xlsx" or ".xlsm"
-            ? $"⏳ '{fileName}' 읽는 중..."
-            : $"⏳ AI 가 '{fileName}' 을(를) 분석하는 중... (수십 초 걸릴 수 있습니다)";
+        ImportStatus = isAi
+            ? $"⏳ AI 가 '{fileName}' 을(를) 분석하는 중... (수십 초 걸릴 수 있습니다)"
+            : $"⏳ '{fileName}' 읽는 중...";
         try
         {
+            var progress = new Progress<string>(s => ImportStatus = $"⏳ {s}");
+
+            // 전담 + AI: 한 파일에서 (학년·과목) 분리 인식 → 선택 → 학년별 파일로 저장 (F9 M4b)
+            if (IsSubjectMode && isAi)
+            {
+                if (_unitImporter is null) throw new InvalidOperationException("AI 가져오기를 사용할 수 없습니다.");
+                var sets = await _unitImporter(path, progress, SelectUnitsAsync);
+                ApplyUnitSets(sets);
+                return;
+            }
+
             IReadOnlyList<SubjectPlan> plans;
-            if (ext is ".xlsx" or ".xlsm")
+            if (!isAi)
             {
                 // 기존 엑셀 양식 — AI 없이 로컬 파싱 (명단 시트가 있고 현재 명단이 비어 있으면 명단도 채움)
                 plans = Excel.PlanWorkbookLoader.Load(path, _scale);
@@ -373,9 +408,7 @@ public sealed class PlanEditorViewModel : ObservableObject
             else
             {
                 if (_importer is null) throw new InvalidOperationException("AI 가져오기를 사용할 수 없습니다.");
-                // 과목별 진행 상황을 오버레이에 실시간 표시
-                var progress = new Progress<string>(s => ImportStatus = $"⏳ {s}");
-                plans = await _importer(path, progress);
+                plans = await _importer(path, progress, SelectSubjectsAsync);   // 담임: 과목 선택 창
             }
 
             Subjects.Clear();
@@ -388,6 +421,10 @@ public sealed class PlanEditorViewModel : ObservableObject
                 ? $"✔ {plans.Count}개 과목 인식 · ⚠ 확인 필요 {warnN}건 — 아래 목록의 과목을 표에서 확인하세요."
                 : $"✔ {plans.Count}개 과목 인식 완료 — 내용을 확인·수정한 뒤 [저장 후 적용]을 누르세요.";
         }
+        catch (OperationCanceledException)
+        {
+            ImportStatus = "";   // 사용자가 선택 창에서 취소 — 조용히 종료
+        }
         catch (Exception ex)
         {
             ImportStatus = "";
@@ -395,6 +432,63 @@ public sealed class PlanEditorViewModel : ObservableObject
                 System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
         finally { IsImporting = false; }
+    }
+
+    /// <summary>담임: 인식된 과목 중 불러올 것을 고르는 선택 창. null = 취소.</summary>
+    private Task<IReadOnlyList<string>?> SelectSubjectsAsync(IReadOnlyList<string> subjects) =>
+        Task.FromResult(System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var vm = PlanPickerViewModel.ForSubjects(subjects);
+            var win = new PlanPickerWindow(vm) { Owner = OwnerWindow() };
+            return win.ShowDialog() == true ? vm.SelectedSubjects() : null;
+        }));
+
+    /// <summary>전담: 인식된 (학년·과목) 중 불러올 것을 고르는 선택 창 (학년 불명은 지정). null = 취소.</summary>
+    private Task<IReadOnlyList<PlanUnit>?> SelectUnitsAsync(IReadOnlyList<PlanUnit> units) =>
+        Task.FromResult(System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        {
+            var vm = PlanPickerViewModel.ForUnits(units, _selectedGrade);
+            var win = new PlanPickerWindow(vm) { Owner = OwnerWindow() };
+            return win.ShowDialog() == true ? vm.SelectedUnits() : null;
+        }));
+
+    private static System.Windows.Window? OwnerWindow() =>
+        System.Windows.Application.Current.Windows.OfType<PlanEditorWindow>().FirstOrDefault()
+        ?? System.Windows.Application.Current.MainWindow;
+
+    /// <summary>전담: 인식된 학년별 계획을 각 학년 파일에 병합 저장하고, 현재 편집 화면을 갱신한다.
+    /// 같은 과목이 이미 있으면 새로 인식한 것으로 교체, 없으면 추가 (다른 과목은 보존).</summary>
+    private void ApplyUnitSets(IReadOnlyList<NeisAutoFill.Generator.GasPlanImporter.GradePlanSet> sets)
+    {
+        if (_subjectStore is null || sets.Count == 0) { ImportStatus = ""; return; }
+
+        int savedSubjects = 0;
+        foreach (var set in sets)
+        {
+            var merged = _subjectStore.LoadPlan(set.Grade).ToList();   // 그 학년 기존 계획
+            foreach (var p in set.Plans)
+            {
+                merged.RemoveAll(m => m.SubjectName == p.SubjectName);   // 같은 과목은 교체
+                merged.Add(p);
+                savedSubjects++;
+            }
+            _subjectStore.SavePlan(set.Grade, merged);
+
+            if (!GradeOptions.Contains(set.Grade))                      // 새 학년이면 콤보에 반영
+            {
+                var list = GradeOptions.Concat(new[] { set.Grade }).OrderBy(g => g).ToList();
+                GradeOptions.Clear();
+                foreach (var g in list) GradeOptions.Add(g);
+            }
+        }
+
+        // 불러온 첫 학년으로 화면을 옮겨 결과를 보여준다 (SelectedGrade setter 가 LoadCurrentGrade 호출)
+        var firstGrade = sets[0].Grade;
+        if (_selectedGrade == firstGrade) LoadCurrentGrade();
+        else SelectedGrade = firstGrade;
+
+        var gradeList = string.Join("·", sets.Select(s => $"{s.Grade}학년"));
+        ImportStatus = $"✔ {gradeList} 총 {savedSubjects}개 과목 저장 완료 — 학년 콤보로 확인하세요.";
     }
 
     /// <summary>행 삭제 — 지운 번호보다 큰 번호들은 하나씩 당긴다 (18 삭제 → 19가 18로).</summary>

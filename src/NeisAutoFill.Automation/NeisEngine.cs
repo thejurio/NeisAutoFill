@@ -78,7 +78,9 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     /// 나이스가 라벨 버그를 고치면 자연히 false 가 되어, 폴백 의존이 사라졌음을 알 수 있다.</summary>
     public bool LastSubjectComboUsedFallback { get; private set; }
 
-    private async Task<(ILocator? Combo, string? Subject)> FindSubjectComboAsync()
+    /// <summary>화면의 aria-label 콤보들과 그 라벨 목록(인덱스 보존)을 함께 반환.
+    /// 과목·학년·반 콤보 탐색이 공유한다.</summary>
+    private async Task<(ILocator Combos, List<string?> Labels)> ReadComboLabelsAsync()
     {
         var page = RequirePage();
         var combos = page.Locator("div[role='combobox'][aria-label]");
@@ -96,12 +98,29 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             }
             catch { labels.Add(null); }   // 스캔 중 사라진 요소
         }
+        return (combos, labels);
+    }
+
+    private async Task<(ILocator? Combo, string? Subject)> FindSubjectComboAsync()
+    {
+        var (combos, labels) = await ReadComboLabelsAsync();
 
         // 분류·선택은 순수 로직(테스트됨). 정상 '교과' 우선, 없으면 라벨 버그 폴백.
         var (idx, value, usedFallback) = Core.SubjectComboClassifier.Pick(labels);
         LastSubjectComboUsedFallback = usedFallback;
         return idx >= 0 ? (combos.Nth(idx), value) : (null, null);
     }
+
+    /// <summary>조회조건 콤보를 라벨 키("학년"/"반")로 찾는다 (전담 반·학년 전환용, F9 M6).</summary>
+    private async Task<(ILocator? Combo, string? Value)> FindQueryComboAsync(string key)
+    {
+        var (combos, labels) = await ReadComboLabelsAsync();
+        var (idx, value) = Core.SubjectComboClassifier.FindQueryCombo(labels, key);
+        return idx >= 0 ? (combos.Nth(idx), value) : (null, null);
+    }
+
+    private static string DigitsOf(string? s) =>
+        new string((s ?? "").Where(char.IsDigit).ToArray());
 
     // ── Phase 5.5 전과목 자동 업로드 ────────────────────────────
     // ★ 버튼·대화상자 셀렉터는 잠정 (NeisSelectors 주석 참조) — 첫 실기기 실행은 반드시 지켜볼 것.
@@ -147,6 +166,82 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             catch { /* 갱신 중 일시 오류는 무시하고 재시도 */ }
         }
         return (false, "조회 후 화면 갱신을 확인하지 못했습니다");
+    }
+
+    // ── F9 M6 전담: 학년·반 조회조건 전환 ────────────────────────
+    // ★ 첫 실기기 실행은 반드시 지켜볼 것 — 옵션 텍스트 형식("5" vs "5학년")은 실측 미확정.
+    //   현재값과 같으면 콤보를 열지 않고 건너뛰므로, 자기 반(예: 5-1) 확인은 안전하다.
+
+    public async Task<(bool Ok, string Why)> SelectClassAsync(
+        int grade, string @class, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
+    {
+        var page = RequirePage();
+
+        progress?.Report(new($"학년 콤보 확인 중 (목표 {grade}학년)…"));
+        var g = await PickQueryComboAsync("학년", grade, progress, ct);
+        if (!g.Ok) return g;
+
+        int classNum = int.TryParse(DigitsOf(@class), out var cn) ? cn : 0;
+        progress?.Report(new($"반 콤보 확인 중 (목표 {classNum}반)…"));
+        var c = await PickQueryComboAsync("반", classNum, progress, ct);
+        if (!c.Ok) return c;
+
+        // 둘 다 이미 목표값이면 화면 그대로 — 불필요한 [조회] 생략
+        if (g.Why == "skip" && c.Why == "skip")
+        {
+            progress?.Report(new($"이미 {grade}-{classNum} 화면입니다 (조회 생략)"));
+            return (true, "이미 해당 학년·반");
+        }
+
+        var query = await FindButtonAsync(NeisSelectors.QueryButtonName);
+        if (query is null) return (false, "[조회] 버튼을 찾지 못했습니다");
+        progress?.Report(new("[조회] 실행…"));
+        await query.ClickAsync();
+
+        // 그리드가 다시 잡힐 때까지 대기
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(600, ct);
+            try
+            {
+                if (await FindGridAsync(page) is not null)
+                {
+                    await Task.Delay(800, ct);   // 렌더 여유
+                    return (true, "");
+                }
+            }
+            catch { /* 갱신 중 일시 오류 무시 */ }
+        }
+        return (false, "조회 후 화면 갱신을 확인하지 못했습니다");
+    }
+
+    /// <summary>조회조건 콤보를 목표 숫자로 맞춘다. 이미 맞으면 Why="skip" 으로 건너뜀.
+    /// 옵션 텍스트가 "5"/"5학년" 어느 쪽이든 숫자만 비교해 매칭한다.</summary>
+    private async Task<(bool Ok, string Why)> PickQueryComboAsync(
+        string key, int number, IProgress<ProgressInfo>? progress, CancellationToken ct)
+    {
+        var (combo, current) = await FindQueryComboAsync(key);
+        if (combo is null)
+            return (false, $"{key} 콤보를 화면에서 찾지 못했습니다 (교과별 평가 화면인지 확인)");
+
+        if (DigitsOf(current) == number.ToString())
+            return (true, "skip");   // 이미 목표값
+
+        // 옵션을 읽어 숫자가 일치하는 실제 표시 텍스트를 찾는다
+        var options = await _combo!.OpenAndReadOptionsAsync(combo);
+        var target = options.FirstOrDefault(o => DigitsOf(o) == number.ToString());
+        if (target is null)
+            return (false, $"{key} 콤보에 '{number}' 옵션이 없습니다 (있는 옵션: {string.Join(" / ", options)})");
+
+        // 팝업이 닫힌 뒤 콤보 재탐색(재렌더 대비) 후 선택
+        (combo, _) = await FindQueryComboAsync(key);
+        if (combo is null) return (false, $"{key} 콤보 재탐색 실패");
+        var pick = await _combo!.OpenAndPickAsync(combo, target);
+        if (!pick.Ok) return (false, $"{key} 선택 실패: {pick.Reason}");
+        progress?.Report(new($"{key} → {target} 선택됨"));
+        return (true, "");
     }
 
     public async Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default)

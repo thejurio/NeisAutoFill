@@ -45,6 +45,55 @@ public class PlanImportTests
             GasPlanImporter.ParseResponse("<html>oops</html>", GradePresets.ThreeLevel));
     }
 
+    // ── F9 M4b: 전담 (학년·과목) 단위 인식 ────────────────────────
+    [Fact]
+    public void ParseUnits_maps_grade_subject_pairs()
+    {
+        var body = """
+        {"ok":true,"units":[
+          {"grade":3,"subject":"영어"},
+          {"grade":4,"subject":"과학"},
+          {"grade":0,"subject":"음악"}
+        ]}
+        """;
+        var units = GasPlanImporter.ParseUnitsResponse(body);
+
+        Assert.Equal(3, units.Count);
+        Assert.Equal(3, units[0].Grade);
+        Assert.Equal("영어", units[0].Subject);
+        Assert.True(units[0].HasGrade);
+        Assert.False(units[2].HasGrade);              // grade 0 = 학년 불명
+        Assert.Equal("(학년?) 음악", units[2].Display);
+    }
+
+    [Fact]
+    public void ParseUnits_drops_창체_and_out_of_range_grade_and_dupes()
+    {
+        var body = """
+        {"ok":true,"units":[
+          {"grade":9,"subject":"국어"},
+          {"grade":3,"subject":"국어"},
+          {"grade":3,"subject":"국어"},
+          {"grade":5,"subject":"창의적 체험활동"},
+          {"grade":2,"subject":"  "}
+        ]}
+        """;
+        var units = GasPlanImporter.ParseUnitsResponse(body);
+
+        Assert.Equal(2, units.Count);                 // 창체·공백 제외, 중복 제거
+        Assert.Equal(0, units[0].Grade);              // 9 → 범위 밖 → 불명(0)
+        Assert.Equal("국어", units[0].Subject);
+        Assert.Equal(new NeisAutoFill.Core.PlanUnit(3, "국어"), units[1]);
+    }
+
+    [Fact]
+    public void ParseUnits_empty_on_failure_or_garbage()
+    {
+        Assert.Empty(GasPlanImporter.ParseUnitsResponse("""{"ok":false,"error":"x"}"""));
+        Assert.Empty(GasPlanImporter.ParseUnitsResponse("<html>oops</html>"));
+        Assert.Empty(GasPlanImporter.ParseUnitsResponse("""{"ok":true}"""));
+    }
+
     [Fact]
     public void Flatten_section_xml_keeps_table_structure()
     {

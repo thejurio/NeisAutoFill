@@ -46,6 +46,11 @@ public interface INeisEngine
     /// <summary>화면 상단 과목 콤보로 과목을 전환하고 [조회] 후 갱신을 기다린다 (Phase 5.5).</summary>
     Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default);
 
+    /// <summary>조회조건의 학년·반 콤보를 목표값으로 맞추고 [조회] 한다 (전담 F9 M6).
+    /// 이미 해당 학년·반이면 조회를 생략(안전). progress 로 찾은 콤보·선택 과정을 보고한다.</summary>
+    Task<(bool Ok, string Why)> SelectClassAsync(
+        int grade, string @class, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);
+
     /// <summary>현재 화면의 [저장] 버튼을 눌러 저장한다 (전과목 자동 업로드 전용 — A안).
     /// 저장 확인/완료 대화상자가 뜨면 긍정 버튼을 눌러 마무리.</summary>
     Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default);

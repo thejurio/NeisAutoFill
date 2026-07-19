@@ -24,6 +24,9 @@ public class BatchUploadRunnerTests
             => Task.FromResult<IReadOnlyList<string>>(System.Array.Empty<string>());
         public Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default)
             => Task.FromResult(OnSelect(subjectName));
+        public Task<(bool Ok, string Why)> SelectClassAsync(int grade, string @class,
+            IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
+            => Task.FromResult((true, ""));
         public Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default)
             => Task.FromResult(OnSave());
         public Task<RunReport> RunSubjectAsync(SubjectSheet sheet, GradeScale scale, bool dryRun,

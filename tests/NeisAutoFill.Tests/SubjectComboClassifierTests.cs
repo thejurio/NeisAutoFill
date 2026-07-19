@@ -85,4 +85,42 @@ public class SubjectComboClassifierTests
         Assert.Equal(-1, idx);
         Assert.False(usedFallback);
     }
+
+    // ── F9 M6: 학년·반 조회조건 콤보 찾기 ────────────────────────
+    [Fact]
+    public void FindQueryCombo_학년_라벨을_키로_찾고_값반환()
+    {
+        var labels = new string?[] { "학년도, 2026", "학년, 5", "학기, 2", "반, 1", "교과, 국어" };
+        var (idx, value) = FindQueryCombo(labels, "학년");
+        Assert.Equal(1, idx);
+        Assert.Equal("5", value);
+    }
+
+    [Fact]
+    public void FindQueryCombo_반_라벨을_찾는다()
+    {
+        var labels = new string?[] { "학년도, 2026", "학년, 5", "반, 3", "교과, 수학" };
+        var (idx, value) = FindQueryCombo(labels, "반");
+        Assert.Equal(2, idx);
+        Assert.Equal("3", value);
+    }
+
+    [Fact]
+    public void FindQueryCombo_학년은_학년도와_안헷갈린다()
+    {
+        // "학년도"가 "학년" 앞에 와도 정확히 키 일치(부분일치 아님)해야 한다
+        var labels = new string?[] { "학년도, 2026", "학년, 4" };
+        var (idx, value) = FindQueryCombo(labels, "학년");
+        Assert.Equal(1, idx);
+        Assert.Equal("4", value);
+    }
+
+    [Fact]
+    public void FindQueryCombo_없으면_음수()
+    {
+        var labels = new string?[] { "학년도, 2026", "교과, 국어", null };
+        var (idx, value) = FindQueryCombo(labels, "반");
+        Assert.Equal(-1, idx);
+        Assert.Null(value);
+    }
 }

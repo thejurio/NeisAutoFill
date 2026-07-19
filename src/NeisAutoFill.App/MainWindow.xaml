@@ -232,22 +232,30 @@
                 </Grid>
 
                 <!-- ===== 상태바 (U2: 마지막 로그 한 줄 + 진행 + 로그 펼치기) ===== -->
-                <Border Grid.Row="3" Padding="14,7" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
-                    <DockPanel>
-                        <ToggleButton DockPanel.Dock="Right" Style="{StaticResource GhostToggle}" Content="≡ 로그" Padding="10,4" FontSize="12"
-                                      IsChecked="{Binding LogExpanded}" Margin="10,0,0,0"
-                                      ToolTip="작업 기록 전체를 펼쳐 봅니다. 문의할 때 이 내용을 복사해 주세요."/>
-                        <Border DockPanel.Dock="Right" Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="10,3" Margin="10,0,0,0"
-                                Visibility="{Binding GenerationStatus, Converter={StaticResource StringToVis}}">
-                            <TextBlock Text="{Binding GenerationStatus}" FontSize="11.5" FontWeight="SemiBold"
-                                       Foreground="{StaticResource Neis}" VerticalAlignment="Center"/>
-                        </Border>
-                        <ProgressBar DockPanel.Dock="Right" Width="140" Height="6" Minimum="0" Maximum="{Binding ProgressMax}" Value="{Binding ProgressValue}"
-                                     Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"
-                                     VerticalAlignment="Center" Margin="10,0,0,0"/>
-                        <TextBlock Text="{Binding LastLogLine}" Foreground="{Binding LastLogBrush}" FontSize="12.5"
+                <Border Grid.Row="3" Padding="14,7" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0"
+                        ClipToBounds="True">
+                    <!-- star 컬럼(로그 한 줄) + Auto 컬럼(진행·토글). 긴 줄은 우측을 밀지 않고 … 로 잘린다 -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding LastLogLine}" Foreground="{Binding LastLogBrush}" FontSize="12.5"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                    </DockPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ProgressBar Width="140" Height="6" Minimum="0" Maximum="{Binding ProgressMax}" Value="{Binding ProgressValue}"
+                                         Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"
+                                         VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            <Border Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="10,3" Margin="10,0,0,0"
+                                    Visibility="{Binding GenerationStatus, Converter={StaticResource StringToVis}}">
+                                <TextBlock Text="{Binding GenerationStatus}" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Neis}" VerticalAlignment="Center"/>
+                            </Border>
+                            <ToggleButton Style="{StaticResource GhostToggle}" Content="≡ 로그" Padding="10,4" FontSize="12"
+                                          IsChecked="{Binding LogExpanded}" Margin="10,0,0,0"
+                                          ToolTip="작업 기록 전체를 펼쳐 봅니다. 문의할 때 이 내용을 복사해 주세요."/>
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
                 <!-- ===== 로그 (기본 접힘 — 상태바 [≡ 로그] 로 펼침) ===== -->

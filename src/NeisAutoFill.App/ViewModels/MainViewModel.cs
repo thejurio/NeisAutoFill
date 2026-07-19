@@ -244,16 +244,27 @@ public sealed class MainViewModel : ObservableObject
 
     private void OpenPlanEditor(string? importPath = null)
     {
-        var importer = (Func<string, IProgress<string>, Task<IReadOnlyList<SubjectPlan>>>)
-            (async (path, progress) => await new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
-                .ImportAsync(path, _scales.Active, progress));
+        // 담임 import: 과목 목록 인식 → 선택 콜백 → 고른 과목만 (F9 M4b)
+        var importer = (Func<string, IProgress<string>,
+            Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>?,
+            Task<IReadOnlyList<SubjectPlan>>>)
+            ((path, progress, select) => new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
+                .ImportAsync(path, _scales.Active, progress, select));
+
+        // 전담 import: (학년·과목) 단위 인식 → 선택 콜백 → 학년별 세트 (F9 M4b)
+        var unitImporter = (Func<string, IProgress<string>,
+            Func<IReadOnlyList<NeisAutoFill.Core.PlanUnit>, Task<IReadOnlyList<NeisAutoFill.Core.PlanUnit>?>>?,
+            Task<IReadOnlyList<Generator.GasPlanImporter.GradePlanSet>>>)
+            ((path, progress, select) => new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
+                .ImportUnitsAsync(path, _scales.Active, progress, select));
 
         // 전담: 자료 준비가 반별 명단·학년별 계획을 직접 저장(SubjectModeStore) — 담임 워크스페이스 저장 안 탐
         if (_profiles.IsSubjectMode)
         {
             var store = new SubjectModeStore(_scales.Active);
+            // 메인에서 보던 반(예: 5-1)을 자료준비 기본값으로 — 안에서 학년·반 전환 가능
             var svm = new PlanEditorViewModel(Array.Empty<SubjectPlan>(), Array.Empty<(string, string)>(),
-                _scales.Active, importer, store);
+                _scales.Active, importer, store, _currentClass, unitImporter);
             var swin = new PlanEditorWindow(svm) { Owner = Application.Current.MainWindow };
             if (importPath is not null) swin.Loaded += async (_, _) => await svm.ImportPlanFileAsync(importPath);
             swin.ShowDialog();
@@ -350,8 +361,31 @@ public sealed class MainViewModel : ObservableObject
     private void GoUnit()
     {
         if (PickGrade <= 0 || string.IsNullOrEmpty(PickClass)) return;
-        _currentClass = new NeisAutoFill.Core.ClassRef(PickGrade, PickClass!);
+        var c = new NeisAutoFill.Core.ClassRef(PickGrade, PickClass!);
+        _currentClass = c;
         LoadUnitForCurrentAxis();
+
+        // 나이스에 연결돼 있으면 그 학년·반으로 화면도 이동 (F9 M6). 연결 전이면 로컬 전환만.
+        if (IsConnected)
+            _ = NavigateNeisToClassAsync(c);
+    }
+
+    /// <summary>나이스 조회조건을 현재 반의 학년·반으로 맞춘다 (전담 F9 M6).
+    /// 실패해도 로컬 전환은 유지 — 원인을 로그로만 남긴다(중단형 개입 없음).</summary>
+    private async Task NavigateNeisToClassAsync(NeisAutoFill.Core.ClassRef c)
+    {
+        var progress = new Progress<Automation.Abstractions.ProgressInfo>(p => Ui(() => Log(p.Message)));
+        try
+        {
+            var (ok, why) = await _engine.SelectClassAsync(c.Grade, c.Class, progress).ConfigureAwait(false);
+            Ui(() => Log(ok
+                ? $"나이스 이동 완료: {c.Grade}-{c.Class}"
+                : $"⚠ 나이스 {c.Grade}-{c.Class} 이동 실패 — {why}"));
+        }
+        catch (Exception ex)
+        {
+            Ui(() => Log($"⚠ 나이스 이동 중 오류: {ex.Message}"));
+        }
     }
 
     /// <summary>전담 모드 초기화 — 등록된 학년·반 목록을 채우고 첫 조합을 로드 (앱 시작 시).</summary>

@@ -50,4 +50,21 @@ public static class SubjectComboClassifier
         }
         return fallbackIdx >= 0 ? (fallbackIdx, fallbackValue, true) : (-1, null, false);
     }
+
+    /// <summary>조회조건 콤보를 라벨 키로 찾는다 (전담 반·학년 전환용, F9 M6).
+    /// 라벨 "학년, 5" → key="학년"이면 매칭. 반환: (인덱스, 현재값). 못 찾으면 (-1, null).
+    /// 정상 라벨 기준 — 종합의견 화면 라벨버그(전부 "학기,…")일 땐 못 찾을 수 있으나,
+    /// 학년·반 전환은 교과별 평가(정상 라벨) 화면에서만 쓰이므로 문제 없다.</summary>
+    public static (int Index, string? Value) FindQueryCombo(IReadOnlyList<string?> ariaLabels, string key)
+    {
+        for (int i = 0; i < ariaLabels.Count; i++)
+        {
+            var label = ariaLabels[i];
+            if (string.IsNullOrWhiteSpace(label)) continue;
+            var parts = label.Split(',', 2);
+            if (parts.Length == 2 && parts[0].Trim() == key)
+                return (i, parts[1].Trim());
+        }
+        return (-1, null);
+    }
 }
