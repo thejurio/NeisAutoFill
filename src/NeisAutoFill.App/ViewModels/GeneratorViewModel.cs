@@ -891,15 +891,7 @@ public sealed class GeneratorViewModel : ObservableObject
     {
         var outcome = await UploadCoreAsync(dryRun);
         if (outcome is null || dryRun) return;
-
-        // 결과 대시보드 — 배치와 동일한 창. 재시도는 같은 창을 새 결과로 갱신(창 중첩 없음).
-        BatchResultWindow.ShowResult(new[] { outcome }, "명",
-            retry: async _ =>
-            {
-                var again = await UploadCoreAsync(dryRun: false);
-                return new[] { again ?? outcome };
-            },
-            owner: Application.Current.MainWindow);
+        Helpers.UploadOutcomes.ShowSingle(outcome, retry: () => UploadCoreAsync(dryRun: false));
     }
 
     /// <summary>서술문 단건 입력 본체 — 대시보드 없이 실행하고 결과(Outcome)만 반환.
@@ -986,27 +978,14 @@ public sealed class GeneratorViewModel : ObservableObject
 
             // 결과를 Outcome 으로 반환 — 대시보드 표시는 래퍼(UploadAsync)가 담당
             var label = ctx is { } lc ? $"{lc.Grade}-{lc.Class} {lc.Subject}" : SelectedSubject!;
-            var status = report.Failed.Count > 0 ? Automation.BatchUploadRunner.SubjectStatus.Failed
-                       : report.Done.Count == 0 ? Automation.BatchUploadRunner.SubjectStatus.Skipped
-                       : Automation.BatchUploadRunner.SubjectStatus.Success;
-            var msg = status switch
-            {
-                Automation.BatchUploadRunner.SubjectStatus.Failed =>
-                    $"입력 실패 {report.Failed.Count}명 — 저장하지 않았습니다",
-                Automation.BatchUploadRunner.SubjectStatus.Skipped => "입력할 서술문 없음",
-                _ => $"{report.Done.Count}명 입력 (저장은 나이스에서 직접)" +
-                     (report.Skipped.Count > 0 ? $" · 건너뜀 {report.Skipped.Count}명" : ""),
-            };
-            return new Automation.BatchUploadRunner.SubjectOutcome(
-                label, status, report.Done.Count, report.Skipped.Count, report.Failed, msg);
+            return Helpers.UploadOutcomes.Single(label,
+                report.Done.Count, report.Skipped.Count, report.Failed.Count, report.Failed, "입력할 서술문 없음");
         }
         catch (OperationCanceledException)
         {
             _mainLog("⛔ 서술문 입력 중지됨");
             var label = ctx is { } lc ? $"{lc.Grade}-{lc.Class} {lc.Subject}" : SelectedSubject!;
-            return new Automation.BatchUploadRunner.SubjectOutcome(
-                label, Automation.BatchUploadRunner.SubjectStatus.Cancelled, 0, 0,
-                Array.Empty<SkipItem>(), "사용자 중지 — 저장 안 함");
+            return Helpers.UploadOutcomes.Cancelled(label);
         }
         catch (Exception ex)
         {

@@ -1000,15 +1000,8 @@ public sealed class MainViewModel : ObservableObject
     {
         var outcome = await RunSubjectCoreAsync(sheet, dryRun, subjectModeClass);
         if (outcome is null || dryRun) return;
-
-        // 결과 대시보드 — 배치와 동일한 창. 재시도는 같은 창을 새 결과로 갱신(창 중첩 없음).
-        BatchResultWindow.ShowResult(new[] { outcome }, "명",
-            retry: async _ =>
-            {
-                var again = await RunSubjectCoreAsync(sheet, dryRun: false, subjectModeClass);
-                return new[] { again ?? outcome };
-            },
-            owner: Application.Current.MainWindow);
+        Helpers.UploadOutcomes.ShowSingle(outcome,
+            retry: () => RunSubjectCoreAsync(sheet, dryRun: false, subjectModeClass));
     }
 
     /// <summary>단건 입력 본체 — 대시보드 없이 실행하고 결과(Outcome)만 돌려준다.
@@ -1083,26 +1076,13 @@ public sealed class MainViewModel : ObservableObject
 
             // 결과를 Outcome 으로 반환 — 대시보드 표시는 래퍼(RunSubjectAsync)가 담당
             var label = subjectModeClass is { } lc ? $"{lc.Grade}-{lc.Class} {sheet.SubjectName}" : sheet.SubjectName;
-            var runStatus = report.Failed.Count > 0 ? Automation.BatchUploadRunner.SubjectStatus.Failed
-                          : doneN == 0 ? Automation.BatchUploadRunner.SubjectStatus.Skipped
-                          : Automation.BatchUploadRunner.SubjectStatus.Success;
-            var msg = runStatus switch
-            {
-                Automation.BatchUploadRunner.SubjectStatus.Failed =>
-                    $"입력 실패 {failN}명 — 저장하지 않았습니다",
-                Automation.BatchUploadRunner.SubjectStatus.Skipped => "입력할 값 없음",
-                _ => $"{doneN}명 입력 (저장은 나이스에서 직접)" + (skipN > 0 ? $" · 건너뜀 {skipN}명" : ""),
-            };
-            return new Automation.BatchUploadRunner.SubjectOutcome(
-                label, runStatus, doneN, skipN, report.Failed, msg);
+            return Helpers.UploadOutcomes.Single(label, doneN, skipN, failN, report.Failed, "입력할 값 없음");
         }
         catch (OperationCanceledException)
         {
             Log("⛔ 사용자 중지");
             var label = subjectModeClass is { } lc ? $"{lc.Grade}-{lc.Class} {sheet.SubjectName}" : sheet.SubjectName;
-            return new Automation.BatchUploadRunner.SubjectOutcome(
-                label, Automation.BatchUploadRunner.SubjectStatus.Cancelled, 0, 0,
-                Array.Empty<SkipItem>(), "사용자 중지 — 저장 안 함");
+            return Helpers.UploadOutcomes.Cancelled(label);
         }
         catch (Exception ex)
         {
