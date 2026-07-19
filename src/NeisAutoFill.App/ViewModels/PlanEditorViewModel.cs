@@ -30,8 +30,6 @@ public sealed class PlanEditorViewModel : ObservableObject
 
     // ── 전담 모드 (F9 M4a) — null 이면 담임(기존 동작) ──
     private readonly Services.SubjectModeStore? _subjectStore;
-    private NeisAutoFill.Core.ClassRef? _currentClass;   // 현재 편집 중인 반 (명단)
-    private int _currentGrade;                            // 현재 편집 중인 학년 (계획)
 
     /// <summary>전담 모드인가 (학년·반 콤보 표시).</summary>
     public bool IsSubjectMode => _subjectStore is not null;

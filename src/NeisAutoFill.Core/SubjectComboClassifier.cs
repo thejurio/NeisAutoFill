@@ -53,18 +53,24 @@ public static class SubjectComboClassifier
 
     /// <summary>조회조건 콤보를 라벨 키로 찾는다 (전담 반·학년 전환용, F9 M6).
     /// 라벨 "학년, 5" → key="학년"이면 매칭. 반환: (인덱스, 현재값). 못 찾으면 (-1, null).
-    /// 정상 라벨 기준 — 종합의견 화면 라벨버그(전부 "학기,…")일 땐 못 찾을 수 있으나,
-    /// 학년·반 전환은 교과별 평가(정상 라벨) 화면에서만 쓰이므로 문제 없다.</summary>
-    public static (int Index, string? Value) FindQueryCombo(IReadOnlyList<string?> ariaLabels, string key)
+    ///
+    /// ★ 실측 버그(2026-07-19): 교과별 평가 화면에 "학년" 라벨 콤보가 둘이다 —
+    ///   학년도(예: "학년, 2026")와 진짜 학년("학년, 5"). prefer 로 값이 학년(1~6)인 쪽을 고른다.
+    /// prefer 가 참인 후보를 우선, 없으면 첫 key 일치를 폴백으로 돌려준다.</summary>
+    public static (int Index, string? Value) FindQueryCombo(
+        IReadOnlyList<string?> ariaLabels, string key, Func<string, bool>? prefer = null)
     {
+        int firstIdx = -1; string? firstVal = null;
         for (int i = 0; i < ariaLabels.Count; i++)
         {
             var label = ariaLabels[i];
             if (string.IsNullOrWhiteSpace(label)) continue;
             var parts = label.Split(',', 2);
-            if (parts.Length == 2 && parts[0].Trim() == key)
-                return (i, parts[1].Trim());
+            if (parts.Length != 2 || parts[0].Trim() != key) continue;
+            var val = parts[1].Trim();
+            if (prefer is null || prefer(val)) return (i, val);   // 선호 조건 맞으면 즉시 확정
+            if (firstIdx < 0) { firstIdx = i; firstVal = val; }   // 아니면 첫 후보만 폴백으로 기억
         }
-        return (-1, null);
+        return (firstIdx, firstVal);
     }
 }

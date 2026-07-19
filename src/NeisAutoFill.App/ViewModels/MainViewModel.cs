@@ -137,9 +137,17 @@ public sealed class MainViewModel : ObservableObject
                         Ui(() => ConnectionHint = hint);
                     }
                 }
-                else if (!await _engine.IsAliveAsync().ConfigureAwait(false))
+                else
                 {
-                    Ui(() => { SetConnected(false); Log("브라우저 연결이 끊어졌습니다. 재연결을 시도합니다."); });
+                    // 연결돼 있으면 지금 상황(로그인·화면 종류)까지 판별해 상태를 갱신 (F9 M8)
+                    var status = await _engine.DetectStatusAsync(ct).ConfigureAwait(false);
+                    Ui(() =>
+                    {
+                        var wasConnected = IsConnected;
+                        ApplyStatus(status);
+                        if (wasConnected && status.Kind == Automation.Abstractions.NeisScreenKind.Disconnected)
+                            Log("브라우저 연결이 끊어졌습니다. 재연결을 시도합니다.");
+                    });
                 }
             }
             catch (Exception ex) { Diag.Swallow(ex, "자동연결 루프"); }   // 루프는 어떤 경우에도 죽지 않는다
@@ -158,6 +166,57 @@ public sealed class MainViewModel : ObservableObject
         IsConnected = on;
         if (on) ConnectionHint = "";   // 연결되면 안내 배너 숨김
     }
+
+    private static readonly Color StatusGreen = Color.FromRgb(0x22, 0xC5, 0x5E);
+    private static readonly Color StatusAmber = Color.FromRgb(0xF5, 0x9E, 0x0B);
+    private static readonly Color StatusRed = Color.FromRgb(0xEF, 0x44, 0x44);
+
+    /// <summary>나이스가 입력 준비(교과별 평가 화면) 상태인지 — 입력 전 사전 점검·안내용.</summary>
+    public bool NeisReady { get; private set; }
+
+    /// <summary>판별된 상황을 상태칩(색·글자)과 안내 배너에 반영 (F9 M8).</summary>
+    private void ApplyStatus(Automation.Abstractions.NeisStatus s)
+    {
+        switch (s.Kind)
+        {
+            case Automation.Abstractions.NeisScreenKind.Disconnected:
+                NeisReady = false; SetConnected(false); break;
+
+            case Automation.Abstractions.NeisScreenKind.NotNeisTab:
+                SetStatus(false, "나이스 아님", StatusAmber, "현재 탭이 나이스가 아닙니다."); break;
+
+            case Automation.Abstractions.NeisScreenKind.LoggedOut:
+                SetStatus(false, "로그인 안 됨", StatusAmber, "나이스에 로그인되어 있지 않습니다."); break;
+
+            case Automation.Abstractions.NeisScreenKind.OtherNeisPage:
+                SetStatus(false, "교과별 평가 화면 아님", StatusAmber, "교과별 평가 화면이 아닙니다."); break;
+
+            case Automation.Abstractions.NeisScreenKind.EvaluationReady:
+                var subj = string.IsNullOrEmpty(s.ScreenSubject) ? "" : $" · {s.ScreenSubject}";
+                SetStatus(true, $"입력 준비{subj}", StatusGreen, ""); break;
+        }
+    }
+
+    /// <summary>상태칩·안내를 한 번에 설정. ready = 교과별 평가 화면이라 입력 가능.
+    /// 브라우저는 붙어 있으므로 IsConnected(=버튼 활성)는 true 유지하되, 준비 여부는 NeisReady 로 구분.</summary>
+    private void SetStatus(bool ready, string text, Color color, string hint)
+    {
+        ConnectionText = text;
+        ConnectionBrush = new SolidColorBrush(color);
+        NeisReady = ready;
+        IsConnected = true;                 // 브라우저는 연결됨 — 버튼은 활성, 부적절하면 입력 시 안내
+        ConnectionHint = ready ? "" : hint;
+    }
+
+    /// <summary>상황별 입력 불가 안내 — 상황만 담백하게 (사용자가 할 일 나열 금지, F9 M8).</summary>
+    private static string StatusMessage(Automation.Abstractions.NeisScreenKind kind) => kind switch
+    {
+        Automation.Abstractions.NeisScreenKind.Disconnected => "나이스에 연결되어 있지 않습니다.",
+        Automation.Abstractions.NeisScreenKind.NotNeisTab => "현재 탭이 나이스가 아닙니다.",
+        Automation.Abstractions.NeisScreenKind.LoggedOut => "나이스에 로그인되어 있지 않습니다.",
+        Automation.Abstractions.NeisScreenKind.OtherNeisPage => "교과별 평가 화면이 아닙니다.",
+        _ => "입력할 수 있는 상태가 아닙니다.",
+    };
 
     private bool _isConnected;
     /// <summary>나이스 연결 여부 — 입력 버튼 활성/[NEIS 접속] 버튼 표시 제어 (U3·U5).</summary>
@@ -262,9 +321,9 @@ public sealed class MainViewModel : ObservableObject
         if (_profiles.IsSubjectMode)
         {
             var store = new SubjectModeStore(_scales.Active);
-            // 메인에서 보던 반(예: 5-1)을 자료준비 기본값으로 — 안에서 학년·반 전환 가능
+            // 메인에서 보던 반 탭(예: 5-1)을 자료준비 기본값으로 — 안에서 학년·반 전환 가능
             var svm = new PlanEditorViewModel(Array.Empty<SubjectPlan>(), Array.Empty<(string, string)>(),
-                _scales.Active, importer, store, _currentClass, unitImporter);
+                _scales.Active, importer, store, SelectedSubject?.OwnerClass, unitImporter);
             var swin = new PlanEditorWindow(svm) { Owner = Application.Current.MainWindow };
             if (importPath is not null) swin.Loaded += async (_, _) => await svm.ImportPlanFileAsync(importPath);
             swin.ShowDialog();
@@ -320,130 +379,135 @@ public sealed class MainViewModel : ObservableObject
 
     public ObservableCollection<SubjectViewModel> Subjects { get; } = new();
 
-    // ── 전담: 메인 학년·반 축 (F9 M5) — 학년·반 분리, [이동]으로 명시 적용 ──
-    /// <summary>전담 모드인가 — 상단 학년·반 콤보 표시.</summary>
+    // ── 전담: 메인 과목 축 (F9 M7) — 과목=콤보+[이동], 반=탭 ──
+    // 전담은 적은 과목을 여러 반에 걸쳐 입력하므로, 자주 바꾸는 반이 탭·과목이 선택기가 된다.
+    /// <summary>전담 모드인가 — 상단 과목 콤보 표시.</summary>
     public bool IsSubjectMode => _profiles.IsSubjectMode;
 
     private IReadOnlyList<NeisAutoFill.Core.ClassRef> _allClasses = Array.Empty<NeisAutoFill.Core.ClassRef>();
 
-    /// <summary>등록된 학년 목록.</summary>
-    public ObservableCollection<int> GradeChoices { get; } = new();
-    /// <summary>선택된 학년의 반 목록 (반 콤보). 학년 콤보를 바꾸면 갱신되지만 자료는 안 바뀐다.</summary>
-    public ObservableCollection<string> ClassChoices { get; } = new();
+    /// <summary>등록된 전 과목 목록 (과목 콤보).</summary>
+    public ObservableCollection<string> SubjectChoices { get; } = new();
 
-    private int _pickGrade;
-    /// <summary>학년 콤보 선택값 — 바꾸면 반 목록만 갱신(자료 로드 안 함).</summary>
-    public int PickGrade
+    private string? _pickSubject;
+    /// <summary>과목 콤보 선택값 — [이동]을 눌러야 그 과목의 반 탭들로 전환된다.</summary>
+    public string? PickSubject { get => _pickSubject; set => SetProperty(ref _pickSubject, value); }
+
+    /// <summary>[이동] — 선택한 과목을 가르치는 반들을 탭으로 띄운다.</summary>
+    public ICommand GoSubjectCommand => _goSubject ??= new RelayCommand(GoSubject,
+        () => !string.IsNullOrEmpty(PickSubject));
+    private ICommand? _goSubject;
+
+    private string? _currentSubject;   // 현재 탭들이 보고 있는 과목
+
+    private static int ClassNum(string cls) => int.TryParse(new string(cls.Where(char.IsDigit).ToArray()), out var n) ? n : 0;
+
+    /// <summary>과목의 (반,과목) 성적 파일 경로.</summary>
+    private static string UnitPath(string wsRoot, NeisAutoFill.Core.ClassRef c, string subject) =>
+        NeisAutoFill.Core.SubjectModePaths.UnitGradeFile(wsRoot, new NeisAutoFill.Core.TeachingUnit(c.Grade, c.Class, subject));
+
+    /// <summary>[이동] — 선택 과목을 가르치는 반(그 학년 계획에 이 과목이 있는 반)들을 탭으로 구성.</summary>
+    private void GoSubject()
     {
-        get => _pickGrade;
-        set { if (SetProperty(ref _pickGrade, value)) RefreshClassChoices(); }
-    }
+        if (string.IsNullOrEmpty(PickSubject)) return;
+        SaveSubjectTabsIfDirty();   // 보던 과목의 반 탭들 저장
+        _currentSubject = PickSubject;
 
-    private string? _pickClass;
-    /// <summary>반 콤보 선택값 — 선택만. [이동]을 눌러야 전환된다.</summary>
-    public string? PickClass { get => _pickClass; set => SetProperty(ref _pickClass, value); }
+        var store = new SubjectModeStore(_scales.Active);
+        var wsRoot = AppPaths.EnsureWorkspaceRoot();
+        var planByGrade = new Dictionary<int, IReadOnlyList<SubjectPlan>>();
 
-    /// <summary>[이동] — 선택한 학년·반으로 성적표 전환.</summary>
-    public ICommand GoUnitCommand => _goUnit ??= new RelayCommand(GoUnit,
-        () => PickGrade > 0 && !string.IsNullOrEmpty(PickClass));
-    private ICommand? _goUnit;
-
-    private NeisAutoFill.Core.ClassRef? _currentClass;   // 실제로 로드된 반
-
-    private void RefreshClassChoices()
-    {
-        ClassChoices.Clear();
-        foreach (var c in _allClasses.Where(c => c.Grade == PickGrade)) ClassChoices.Add(c.Class);
-        PickClass = ClassChoices.FirstOrDefault();
-        (_goUnit as RelayCommand)?.RaiseCanExecuteChanged();
-    }
-
-    private void GoUnit()
-    {
-        if (PickGrade <= 0 || string.IsNullOrEmpty(PickClass)) return;
-        var c = new NeisAutoFill.Core.ClassRef(PickGrade, PickClass!);
-        _currentClass = c;
-        LoadUnitForCurrentAxis();
-
-        // 나이스에 연결돼 있으면 그 학년·반으로 화면도 이동 (F9 M6). 연결 전이면 로컬 전환만.
-        if (IsConnected)
-            _ = NavigateNeisToClassAsync(c);
-    }
-
-    /// <summary>나이스 조회조건을 현재 반의 학년·반으로 맞춘다 (전담 F9 M6).
-    /// 실패해도 로컬 전환은 유지 — 원인을 로그로만 남긴다(중단형 개입 없음).</summary>
-    private async Task NavigateNeisToClassAsync(NeisAutoFill.Core.ClassRef c)
-    {
-        var progress = new Progress<Automation.Abstractions.ProgressInfo>(p => Ui(() => Log(p.Message)));
-        try
+        var tabs = new List<(SubjectSheet Sheet, NeisAutoFill.Core.ClassRef Owner)>();
+        foreach (var c in _allClasses.OrderBy(c => c.Grade).ThenBy(c => ClassNum(c.Class)))
         {
-            var (ok, why) = await _engine.SelectClassAsync(c.Grade, c.Class, progress).ConfigureAwait(false);
-            Ui(() => Log(ok
-                ? $"나이스 이동 완료: {c.Grade}-{c.Class}"
-                : $"⚠ 나이스 {c.Grade}-{c.Class} 이동 실패 — {why}"));
+            if (!planByGrade.TryGetValue(c.Grade, out var plans))
+                planByGrade[c.Grade] = plans = store.LoadPlan(c.Grade);
+            var plan = plans.FirstOrDefault(p => p.SubjectName == _currentSubject);
+            if (plan is null) continue;   // 이 반 학년엔 이 과목이 없음 → 탭 제외
+
+            var roster = store.LoadRoster(c);
+            var path = UnitPath(wsRoot, c, _currentSubject);
+            SubjectSheet? old = null;
+            if (File.Exists(path))
+                try { old = NeisAutoFill.Excel.WorkbookLoader.Load(path).FirstOrDefault(); }
+                catch { /* 손상 시 새로 */ }
+            tabs.Add((NeisAutoFill.Core.SheetSynchronizer.BuildUnitSheet(plan, roster, old), c));
         }
-        catch (Exception ex)
+
+        if (tabs.Count == 0)
         {
-            Ui(() => Log($"⚠ 나이스 이동 중 오류: {ex.Message}"));
+            Subjects.Clear();
+            Log($"'{_currentSubject}' 을(를) 가르치는 반이 없습니다 — 자료 준비에서 그 학년 계획에 이 과목을 넣으세요.");
+            return;
+        }
+
+        ReplaceClassTabs(tabs);
+        Log($"전담 {_currentSubject} — {tabs.Count}개 반 ({string.Join(", ", tabs.Select(t => t.Owner.Key))})");
+        // 나이스 이동은 여기서 안 함 — 실제 [이 반 입력]할 때 그 반·과목으로 이동한다.
+    }
+
+    /// <summary>전담: 반 탭들을 SubjectViewModel 로 만들어 표시 (탭 머리글=반, 각 탭에 소속 반 기록).</summary>
+    private void ReplaceClassTabs(IReadOnlyList<(SubjectSheet Sheet, NeisAutoFill.Core.ClassRef Owner)> tabs)
+    {
+        Subjects.Clear();
+        foreach (var (sheet, owner) in tabs)
+            Subjects.Add(new SubjectViewModel(this, sheet, tabLabel: owner.Key, ownerClass: owner));
+        SelectedSubject = Subjects.FirstOrDefault();
+        NextStepDismissed = false;
+        RefreshNextStep();
+        OnPropertyChanged(nameof(RecentEntries));
+    }
+
+    /// <summary>전담: 편집된 반 탭들을 각자의 (반,과목) 성적 파일에 저장.</summary>
+    private void SaveSubjectTabsIfDirty()
+    {
+        if (!IsSubjectMode || _currentSubject is null) return;
+        var wsRoot = AppPaths.EnsureWorkspaceRoot();
+        foreach (var vm in Subjects.Where(s => s.IsDirty && s.OwnerClass is not null))
+        {
+            var path = UnitPath(wsRoot, vm.OwnerClass!.Value, _currentSubject);
+            var err = _workspace.SaveGrades(new[] { vm.Snapshot() }, path);
+            if (err is null) vm.MarkSaved();
         }
     }
 
-    /// <summary>전담 모드 초기화 — 등록된 학년·반 목록을 채우고 첫 조합을 로드 (앱 시작 시).</summary>
+    /// <summary>탭(반)이 바뀌면 그 반의 서술문 파일로 전환한다. (나이스 이동은 탭 훑기가 아니라
+    /// 실제 [이 반 입력]할 때만 — 매 탭 클릭마다 나이스가 움직이면 안 되므로.)</summary>
+    private void OnSubjectTabChanged(SubjectViewModel? tab)
+    {
+        if (!IsSubjectMode || tab?.OwnerClass is not { } c) return;
+        var narrPath = NeisAutoFill.Core.ProfilePaths.DataFile(AppPaths.Root, c.Key, "narratives.json");
+        _narratives.SwitchTo(narrPath);
+    }
+
+    /// <summary>전담 모드 초기화 — 등록된 전 과목을 채우고 첫 과목을 로드 (앱 시작 시).</summary>
     private void InitSubjectAxis()
     {
         if (!IsSubjectMode) return;
         var store = new SubjectModeStore(_scales.Active);
         _allClasses = store.ListClasses();
-        foreach (var g in _allClasses.Select(c => c.Grade).Distinct().OrderBy(g => g)) GradeChoices.Add(g);
-        _pickGrade = GradeChoices.FirstOrDefault();
-        OnPropertyChanged(nameof(PickGrade));
-        RefreshClassChoices();
-        if (_pickGrade > 0 && PickClass is not null) GoUnit();   // 첫 조합 자동 로드 (시작 시엔 편함)
+
+        // 등록된 모든 학년 계획에서 과목명을 모은다 (등장 순서 보존)
+        foreach (var g in _allClasses.Select(c => c.Grade).Distinct().OrderBy(g => g))
+            foreach (var p in store.LoadPlan(g))
+                if (!SubjectChoices.Contains(p.SubjectName)) SubjectChoices.Add(p.SubjectName);
+
+        _pickSubject = SubjectChoices.FirstOrDefault();
+        OnPropertyChanged(nameof(PickSubject));
+        (_goSubject as RelayCommand)?.RaiseCanExecuteChanged();
+        if (_pickSubject is not null) GoSubject();   // 첫 과목 자동 로드 (시작 시엔 편함)
     }
-
-    /// <summary>현재 (반) 축으로 성적표를 구성한다. 그 반 명단 + 해당 학년 계획의 모든 과목을 합쳐,
-    /// 과목마다 SubjectSheet 를 만들어 탭으로 표시. 성적·서술문은 조합별 경로에 저장.</summary>
-    private void LoadUnitForCurrentAxis()
-    {
-        if (!IsSubjectMode || _currentClass is not { } c) return;
-
-        // 편집 중이던 조합의 성적 저장 (있으면)
-        if (_currentUnitGradePath is not null && Subjects.Any(s => s.IsDirty))
-            _workspace.SaveGrades(Subjects.Select(s => s.Snapshot()).ToList(), _currentUnitGradePath);
-
-        var store = new SubjectModeStore(_scales.Active);
-        var roster = store.LoadRoster(c);
-        var plans = store.LoadPlan(c.Grade);   // 그 학년의 과목별 계획
-
-        // 조합별 저장 경로 지정 (성적·서술문). 대표 과목 조합으로 폴더 결정 — 반 단위 폴더 사용.
-        var wsRoot = AppPaths.EnsureWorkspaceRoot();
-        var unit0 = new NeisAutoFill.Core.TeachingUnit(c.Grade, c.Class, plans.FirstOrDefault()?.SubjectName ?? "과목");
-        _currentUnitGradePath = NeisAutoFill.Core.SubjectModePaths.UnitGradeFile(wsRoot, unit0);
-        var narrPath = NeisAutoFill.Core.ProfilePaths.DataFile(AppPaths.Root, $"{c.Grade}-{c.Class}", "narratives.json");
-        _narratives.SwitchTo(narrPath);
-
-        // 과목마다 성적표 구성 (기존 성적 있으면 이월)
-        IReadOnlyList<SubjectSheet>? existing = null;
-        if (File.Exists(_currentUnitGradePath))
-            try { existing = NeisAutoFill.Excel.WorkbookLoader.Load(_currentUnitGradePath); }
-            catch { /* 손상 시 새로 */ }
-        var sheets = plans.Select(p =>
-        {
-            var old = existing?.FirstOrDefault(s => s.SubjectName == p.SubjectName);
-            return NeisAutoFill.Core.SheetSynchronizer.BuildUnitSheet(p, roster, old);
-        }).ToList();
-
-        ReplaceSubjects(sheets, keepSelected: false);
-        Log($"전담 {c.Grade}-{c.Class} — {plans.Count}과목, 명단 {roster.Count}명");
-    }
-
-    private string? _currentUnitGradePath;
 
     private SubjectViewModel? _selectedSubject;
     public SubjectViewModel? SelectedSubject
     {
         get => _selectedSubject;
-        set { if (SetProperty(ref _selectedSubject, value)) RefreshCriteriaPanel(); }
+        set
+        {
+            if (!SetProperty(ref _selectedSubject, value)) return;
+            RefreshCriteriaPanel();
+            OnSubjectTabChanged(value);   // 전담: 반 탭 전환 시 서술문·나이스 이동
+        }
     }
 
     // ── 성취기준 참조 패널 (토글) ──────────────
@@ -474,7 +538,13 @@ public sealed class MainViewModel : ObservableObject
     private void RefreshCriteriaPanel()
     {
         var subjectName = SelectedSubject?.SubjectName;
-        var plan = subjectName is null ? null : _workspace.Plans.FirstOrDefault(p => p.SubjectName == subjectName);
+        // 전담: 계획은 SubjectModeStore(그 반의 학년)에 있다. 담임: workspace 계획.
+        SubjectPlan? plan;
+        if (IsSubjectMode && SelectedSubject?.OwnerClass is { } oc && subjectName is not null)
+            plan = new SubjectModeStore(_scales.Active).LoadPlan(oc.Grade)
+                       .FirstOrDefault(p => p.SubjectName == subjectName);
+        else
+            plan = subjectName is null ? null : _workspace.Plans.FirstOrDefault(p => p.SubjectName == subjectName);
         if (plan is null)
         {
             CriteriaPanelItems = Array.Empty<CriteriaPanelBuilder.DomainView>();
@@ -733,9 +803,21 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>편집이 잦아들면 저장 대상 파일에 조용히 저장. 실패(파일 잠금 등)는 로그만 남기고 dirty 유지.</summary>
     private void AutoSaveGrades()
     {
-        // 전담: 현재 조합의 성적 파일에 저장
-        var savePath = IsSubjectMode ? _currentUnitGradePath : _workspace.GradeFilePath;
-        if (savePath is null || !Subjects.Any(s => s.IsDirty)) return;
+        if (!Subjects.Any(s => s.IsDirty)) return;
+
+        // 전담: 반 탭마다 각자의 (반,과목) 성적 파일에 저장
+        if (IsSubjectMode)
+        {
+            var before = Subjects.Count(s => s.IsDirty);
+            SaveSubjectTabsIfDirty();
+            var left = Subjects.Count(s => s.IsDirty);
+            if (left == 0) Log($"자동 저장됨: {_currentSubject} {before}개 반");
+            else Log($"⚠ 자동 저장 실패 — 성적 파일이 엑셀에서 열려 있으면 닫아 주세요. 다음 편집·종료 때 다시 시도합니다.");
+            return;
+        }
+
+        var savePath = _workspace.GradeFilePath;
+        if (savePath is null) return;
         var error = _workspace.SaveGrades(Subjects.Select(s => s.Snapshot()).ToList(), savePath);
         if (error is null)
         {
@@ -751,8 +833,9 @@ public sealed class MainViewModel : ObservableObject
     {
         if (!Subjects.Any(s => s.IsDirty)) return true;
 
-        // 저장 대상 파일이 있으면 조용히 자동 저장 (평소 자동 저장과 같은 동작)
-        if (_workspace.GradeFilePath is not null)
+        // 저장 대상 파일이 있으면 조용히 자동 저장 (평소 자동 저장과 같은 동작).
+        // 전담은 반 탭마다 (반,과목) 파일로 저장되므로 workspace 경로가 없어도 자동 저장한다.
+        if (IsSubjectMode || _workspace.GradeFilePath is not null)
         {
             AutoSaveGrades();
             if (!Subjects.Any(s => s.IsDirty)) return true;   // 저장 성공
@@ -859,21 +942,61 @@ public sealed class MainViewModel : ObservableObject
         Log($"성적 저장: {Path.GetFileName(path)}");
     }
 
-    public async Task RunSubjectAsync(SubjectSheet sheet, bool dryRun)
+    public async Task RunSubjectAsync(SubjectSheet sheet, bool dryRun,
+        NeisAutoFill.Core.ClassRef? subjectModeClass = null)
     {
         if (!_engine.Connected)
         {
             ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속]으로 브라우저를 열고 로그인·조회하면 자동으로 연결됩니다.");
             return;
         }
+
+        // 확인은 맨 앞에서 한 번만 — 이후 이동·조회·입력은 전부 자동 (되묻지 않음)
         if (!dryRun)
         {
-            var ok = MessageBox.Show(
-                $"'{sheet.SubjectName}' {sheet.Students.Count}명의 평가를 나이스 화면에 입력합니다.\n" +
-                "(저장은 하지 않으며, 확인 후 나이스에서 직접 [저장]을 누르세요)\n\n" +
-                $"나이스 화면이 '{sheet.SubjectName}' 조회 상태인가요?",
-                "확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            var prompt = subjectModeClass is { } sc
+                ? $"'{sc.Grade}-{sc.Class} {sheet.SubjectName}' {sheet.Students.Count}명의 평가를 나이스에 입력합니다.\n" +
+                  "교과별 평가 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?"
+                : $"'{sheet.SubjectName}' {sheet.Students.Count}명의 평가를 나이스 화면에 입력합니다.\n" +
+                  "(저장은 하지 않으며, 확인 후 나이스에서 직접 [저장]을 누르세요)\n\n" +
+                  $"나이스 화면이 '{sheet.SubjectName}' 조회 상태인가요?";
+            var ok = MessageBox.Show(prompt, "확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (ok != MessageBoxResult.Yes) return;
+        }
+
+        // 사전 점검 — 앱이 못 푸는 상황(로그인 안 됨·브라우저/탭)만 안내하고 멈춘다.
+        // 교과별 평가 화면이 아닌 건 앱이 스스로 이동해야 할 일이라 메시지를 띄우지 않는다 (F9 M8).
+        var status = await _engine.DetectStatusAsync();
+        if (status.Kind is Automation.Abstractions.NeisScreenKind.Disconnected
+                        or Automation.Abstractions.NeisScreenKind.NotNeisTab
+                        or Automation.Abstractions.NeisScreenKind.LoggedOut)
+        {
+            ShowError(StatusMessage(status.Kind));
+            return;
+        }
+        var navProg = new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message));
+        // OtherNeisPage 이면 교과별 평가로 앱이 직접 이동 시도 (단계별 로그, 실패 시에만 안내)
+        if (status.Kind == Automation.Abstractions.NeisScreenKind.OtherNeisPage)
+        {
+            var moved = await _engine.TryGoToEvaluationAsync(navProg);
+            if (!moved)
+            {
+                ShowError("교과별 평가 화면으로 이동하지 못했습니다. 나이스에서 [교과별 평가]를 열어 주세요.");
+                return;
+            }
+        }
+
+        // 전담: 그 반·과목으로 나이스를 맞추고, 이동 직후엔 명단이 없으니 반드시 [조회] 한다.
+        if (subjectModeClass is { } cls)
+        {
+            var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, navProg);
+            if (!okClass) { ShowError($"나이스 {cls.Grade}-{cls.Class} 이동 실패:\n{whyClass}"); return; }
+            var (okSubj, whySubj) = await _engine.SelectSubjectAsync(sheet.SubjectName);
+            if (!okSubj) { ShowError($"나이스 '{sheet.SubjectName}' 과목 전환 실패:\n{whySubj}"); return; }
+            // 콤보가 기본값과 같아 조회가 생략됐을 수 있으므로 명시적으로 조회 → 명단 로드
+            var (okQ, whyQ) = await _engine.QueryAsync();
+            if (!okQ) { ShowError($"나이스 조회 실패:\n{whyQ}"); return; }
+            Log($"나이스 {cls.Grade}-{cls.Class} · {sheet.SubjectName} 이동·조회 완료 — 입력 시작");
         }
 
         _cts = new CancellationTokenSource();
@@ -1047,15 +1170,20 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task InspectAsync()
     {
-        if (!_engine.Connected) { ShowError("나이스 연결 후 사용하세요."); return; }
+        if (!_engine.Connected) { ShowError("나이스 연결 후 사용하세요. [🌐 NEIS 접속]으로 브라우저를 여세요."); return; }
         try
         {
+            // 3초 여유 — 그동안 나이스 창을 원하는 화면/메뉴 상태로 두면 그 상태가 진단된다
+            for (int s = 3; s >= 1; s--) { Log($"{s}초 후 화면을 진단합니다 — 나이스를 원하는 화면 상태로 두세요."); await Task.Delay(1000); }
+            Log("화면 진단 중... (클릭 가능한 메뉴·요소 수집)");
             var report = await _engine.InspectDomAsync();
-            Log(report);
             AppPaths.EnsureRoot();
             var file = Path.Combine(AppPaths.Root, $"dom_inspect_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
             File.WriteAllText(file, report);
+            Log(report);
             Log($"진단 리포트 저장: {file}");
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(file) { UseShellExecute = true }); }
+            catch { /* 열기 실패는 무시 — 파일은 저장됨 */ }
         }
         catch (Exception ex) { Log($"진단 오류: {ex.Message}"); }
     }

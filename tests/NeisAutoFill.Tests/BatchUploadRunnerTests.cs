@@ -19,6 +19,9 @@ public class BatchUploadRunnerTests
         public void LaunchEdge() { }
         public Task<bool> AttachAsync(CancellationToken ct = default) => Task.FromResult(true);
         public Task<bool> IsAliveAsync() => Task.FromResult(true);
+        public Task<NeisStatus> DetectStatusAsync(CancellationToken ct = default)
+            => Task.FromResult(new NeisStatus(NeisScreenKind.EvaluationReady));
+        public Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default) => Task.FromResult(true);
         public Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default) => Task.FromResult<string?>(null);
         public Task<IReadOnlyList<string>> ReadSubjectOptionsAsync(CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<string>>(System.Array.Empty<string>());
@@ -27,6 +30,7 @@ public class BatchUploadRunnerTests
         public Task<(bool Ok, string Why)> SelectClassAsync(int grade, string @class,
             IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
             => Task.FromResult((true, ""));
+        public Task<(bool Ok, string Why)> QueryAsync(CancellationToken ct = default) => Task.FromResult((true, ""));
         public Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default)
             => Task.FromResult(OnSave());
         public Task<RunReport> RunSubjectAsync(SubjectSheet sheet, GradeScale scale, bool dryRun,

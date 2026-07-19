@@ -21,6 +21,13 @@ public sealed class SubjectViewModel : ObservableObject
     private readonly Dictionary<string, string> _areaByCol = new();   // 컬럼ID → 영역명
 
     public string SubjectName { get; }
+
+    /// <summary>탭 머리글에 표시할 이름. 담임=과목명, 전담=반("3-1"). 기본은 과목명 (F9 M7).</summary>
+    public string TabLabel { get; }
+
+    /// <summary>이 탭이 속한 반 (전담: 반이 탭). 담임이면 null.</summary>
+    public NeisAutoFill.Core.ClassRef? OwnerClass { get; }
+
     public IReadOnlyList<string> Areas => _areas;
     public string AreasText => "영역: " + string.Join(", ", _areas);
     public DataTable Grid { get; }
@@ -41,10 +48,13 @@ public sealed class SubjectViewModel : ObservableObject
     public ICommand RunCommand { get; }
     public ICommand CancelCommand { get; }
 
-    public SubjectViewModel(MainViewModel main, SubjectSheet sheet)
+    public SubjectViewModel(MainViewModel main, SubjectSheet sheet,
+        string? tabLabel = null, NeisAutoFill.Core.ClassRef? ownerClass = null)
     {
         _main = main;
         SubjectName = sheet.SubjectName;
+        TabLabel = tabLabel ?? sheet.SubjectName;
+        OwnerClass = ownerClass;
         _areas = sheet.Areas;
 
         Grid = new DataTable();
@@ -85,7 +95,7 @@ public sealed class SubjectViewModel : ObservableObject
             _main.NotifyGradesEdited();    // 디바운스 자동 저장 예약
         };
 
-        RunCommand = new AsyncRelayCommand(() => _main.RunSubjectAsync(Snapshot(), dryRun: false));
+        RunCommand = new AsyncRelayCommand(() => _main.RunSubjectAsync(Snapshot(), dryRun: false, OwnerClass));
         CancelCommand = new RelayCommand(() => _main.Cancel());
     }
 

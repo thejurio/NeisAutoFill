@@ -63,6 +63,129 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         }
     }
 
+    /// <summary>지금 나이스 상황 판별 (F9 M8) — 연결·로그인·화면 종류.
+    /// ★ 로그인/화면 판별 마커는 실측 미확정 — 첫 실기기에서 로그로 각 상태가 맞는지 확인할 것.</summary>
+    public async Task<NeisStatus> DetectStatusAsync(CancellationToken ct = default)
+    {
+        if (_page is null) return new NeisStatus(NeisScreenKind.Disconnected);
+
+        string url;
+        try
+        {
+            if (_page.IsClosed) { _page = null; _scroller = null; _combo = null; return new NeisStatus(NeisScreenKind.Disconnected); }
+            url = _page.Url;
+            _ = await _page.TitleAsync();   // 페이지가 응답하는지 확인
+        }
+        catch
+        {
+            _page = null; _scroller = null; _combo = null;
+            return new NeisStatus(NeisScreenKind.Disconnected);
+        }
+
+        if (!url.Contains("neis.go.kr"))
+            return new NeisStatus(NeisScreenKind.NotNeisTab, url);
+
+        // 교과별 평가 화면인지 — 과목 콤보나 성적 그리드가 보이면 입력 준비 완료로 본다
+        try
+        {
+            var (combo, subject) = await FindSubjectComboAsync();
+            if (combo is not null) return new NeisStatus(NeisScreenKind.EvaluationReady, url, subject);
+            if (await FindGridAsync(_page) is not null) return new NeisStatus(NeisScreenKind.EvaluationReady, url);
+        }
+        catch { /* 판별 중 오류는 아래 폴백으로 */ }
+
+        // 로그인 화면 추정 — 비밀번호 입력칸이 보이면 로그아웃 상태 (실측 마커로 교체 예정)
+        try
+        {
+            var pw = _page.Locator("input[type='password']");
+            if (await pw.CountAsync() > 0 && await pw.First.IsVisibleAsync())
+                return new NeisStatus(NeisScreenKind.LoggedOut, url);
+        }
+        catch { /* 무시 */ }
+
+        return new NeisStatus(NeisScreenKind.OtherNeisPage, url);
+    }
+
+    /// <summary>교과별 평가 화면으로 앱이 직접 이동 (F9 M8). 나이스 메뉴 경로:
+    /// 학급담임 → 학생평가 → 교과평가 → 교과별평가 를 차례로 클릭한다. 실제 화면이 떴을 때만 true.
+    /// progress 로 각 단계 성공/실패를 로그에 남겨 어디서 막히는지 보이게 한다.</summary>
+    public async Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
+    {
+        if (_page is null) return false;
+        if ((await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) { progress?.Report(new("이미 교과별 평가 화면")); return true; }
+
+        // 각 단계: 접미사(0/2/3단계)를 붙인 '구체 라벨'을 먼저 — 하단 탭·제목의 같은 글자와 안 헷갈리게.
+        // 실측(dom_inspect): "학급담임 0단계 메뉴항목" / "학생평가 2단계 메뉴항목" / "교과평가 3단계" / 탭 "교과별 평가"
+        var path = new[]
+        {
+            (name: "학급담임", labels: new[] { "학급담임 0단계", "학급담임" }),
+            (name: "학생평가", labels: new[] { "학생평가 2단계", "학생평가" }),
+            (name: "교과평가", labels: new[] { "교과평가 3단계", "교과평가" }),
+            (name: "교과별 평가", labels: new[] { "교과별 평가", "교과별평가" }),
+        };
+
+        try
+        {
+            foreach (var (name, labels) in path)
+            {
+                var hit = await ClickMenuLabelAsync(labels, ct);
+                if (hit is null)
+                {
+                    progress?.Report(new($"메뉴 이동 실패 — '{name}' 단계를 화면에서 찾지 못했습니다"));
+                    return false;
+                }
+                progress?.Report(new($"메뉴 이동: '{name}' 클릭 ({hit})"));
+                await Task.Delay(800, ct);           // 하위 메뉴/화면 렌더 대기
+            }
+
+            // 최종 화면 확인 (조회 로딩 여유)
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (DateTime.UtcNow < deadline)
+            {
+                ct.ThrowIfCancellationRequested();
+                if ((await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) return true;
+                await Task.Delay(600, ct);
+            }
+            progress?.Report(new("메뉴는 눌렀으나 교과별 평가 화면이 확인되지 않았습니다"));
+        }
+        catch (Exception ex) { progress?.Report(new($"메뉴 이동 오류: {ex.Message}")); }
+        return false;
+    }
+
+    /// <summary>메뉴/탭 항목을 라벨로 클릭. 텍스트엔 "0단계 메뉴항목" 등 접미사가 붙으므로 '포함' 매칭한다.
+    /// 실제 상호작용 요소(a·menuitem·tab)를 우선하고, 화면에 보이게 스크롤한 뒤 클릭.
+    /// 렌더 지연 대비 몇 초 폴링. 클릭 성공하면 '무엇을(태그)' 눌렀는지 문자열 반환, 실패면 null.</summary>
+    private async Task<string?> ClickMenuLabelAsync(string[] labels, CancellationToken ct)
+    {
+        // 상호작용 요소 우선(a/menuitem/tab/link) → 없으면 wrapper(li) 폴백
+        var selectors = new[] { "a, [role='menuitem'], [role='tab'], [role='link']", "li" };
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(6);
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            foreach (var sel in selectors)
+            foreach (var label in labels)
+            {
+                var loc = _page!.Locator(sel).Filter(new LocatorFilterOptions { HasText = label });
+                int n = await loc.CountAsync();
+                for (int i = 0; i < n; i++)
+                {
+                    var el = loc.Nth(i);
+                    try
+                    {
+                        if (!await el.IsVisibleAsync()) continue;
+                        try { await el.ScrollIntoViewIfNeededAsync(); } catch { }
+                        await el.ClickAsync(new LocatorClickOptions { Timeout = 2000 });
+                        return $"{label}/{sel.Split(',')[0]}";
+                    }
+                    catch { /* 다음 후보 */ }
+                }
+            }
+            await Task.Delay(400, ct);   // 하위 메뉴/화면 렌더 대기 후 재시도
+        }
+        return null;
+    }
+
     public async Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default)
     {
         var (_, subject) = await FindSubjectComboAsync();
@@ -111,11 +234,12 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         return idx >= 0 ? (combos.Nth(idx), value) : (null, null);
     }
 
-    /// <summary>조회조건 콤보를 라벨 키("학년"/"반")로 찾는다 (전담 반·학년 전환용, F9 M6).</summary>
-    private async Task<(ILocator? Combo, string? Value)> FindQueryComboAsync(string key)
+    /// <summary>조회조건 콤보를 라벨 키("학년"/"반")로 찾는다 (전담 반·학년 전환용, F9 M6).
+    /// prefer: 같은 라벨이 여럿일 때(예: 학년도 vs 학년) 값으로 진짜 대상을 고른다.</summary>
+    private async Task<(ILocator? Combo, string? Value)> FindQueryComboAsync(string key, Func<string, bool>? prefer = null)
     {
         var (combos, labels) = await ReadComboLabelsAsync();
-        var (idx, value) = Core.SubjectComboClassifier.FindQueryCombo(labels, key);
+        var (idx, value) = Core.SubjectComboClassifier.FindQueryCombo(labels, key, prefer);
         return idx >= 0 ? (combos.Nth(idx), value) : (null, null);
     }
 
@@ -222,7 +346,12 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     private async Task<(bool Ok, string Why)> PickQueryComboAsync(
         string key, int number, IProgress<ProgressInfo>? progress, CancellationToken ct)
     {
-        var (combo, current) = await FindQueryComboAsync(key);
+        // "학년" 라벨은 화면에 둘(학년도·학년) — 값이 학년(1~6)인 콤보를 고른다 (실측 버그 대응)
+        Func<string, bool>? prefer = key == "학년"
+            ? v => int.TryParse(DigitsOf(v), out var g) && g is >= 1 and <= 6
+            : null;
+
+        var (combo, current) = await FindQueryComboAsync(key, prefer);
         if (combo is null)
             return (false, $"{key} 콤보를 화면에서 찾지 못했습니다 (교과별 평가 화면인지 확인)");
 
@@ -236,12 +365,32 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             return (false, $"{key} 콤보에 '{number}' 옵션이 없습니다 (있는 옵션: {string.Join(" / ", options)})");
 
         // 팝업이 닫힌 뒤 콤보 재탐색(재렌더 대비) 후 선택
-        (combo, _) = await FindQueryComboAsync(key);
+        (combo, _) = await FindQueryComboAsync(key, prefer);
         if (combo is null) return (false, $"{key} 콤보 재탐색 실패");
         var pick = await _combo!.OpenAndPickAsync(combo, target);
         if (!pick.Ok) return (false, $"{key} 선택 실패: {pick.Reason}");
         progress?.Report(new($"{key} → {target} 선택됨"));
         return (true, "");
+    }
+
+    /// <summary>[조회] 버튼을 눌러 명단·그리드를 불러온다 (전담: 이동 후 콤보가 기본값과 같아
+    /// 조회가 생략됐을 때 명시적으로 부른다). 그리드가 뜨면 성공.</summary>
+    public async Task<(bool Ok, string Why)> QueryAsync(CancellationToken ct = default)
+    {
+        var page = RequirePage();
+        var query = await FindButtonAsync(NeisSelectors.QueryButtonName);
+        if (query is null) return (false, "[조회] 버튼을 찾지 못했습니다");
+        await query.ClickAsync();
+
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Delay(500, ct);
+            try { if (await FindGridAsync(page) is not null) { await Task.Delay(600, ct); return (true, ""); } }
+            catch { /* 갱신 중 일시 오류 무시 */ }
+        }
+        return (false, "조회 후 그리드를 확인하지 못했습니다");
     }
 
     public async Task<(bool Ok, string Why)> SaveScreenAsync(CancellationToken ct = default)

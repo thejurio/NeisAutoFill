@@ -12,6 +12,11 @@
                             CornerRadius="0" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
+    <!-- 진단 단축키: Ctrl+Shift+V (윈도우 전역 단축키와 겹치지 않음) -->
+    <Window.InputBindings>
+        <KeyBinding Modifiers="Control+Shift" Key="V" Command="{Binding InspectCommand}"/>
+    </Window.InputBindings>
+
     <Border BorderBrush="#CBD5E1" BorderThickness="1" Background="White">
         <Grid>
             <Grid.RowDefinitions>
@@ -56,10 +61,9 @@
                     <DockPanel Margin="14,10">
                         <!-- 오른쪽: 나이스 접속·연결 상태 + 설정 -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <!-- 화면 진단 버튼 — 셀렉터 실측 때만 임시로 주석 해제해 사용 (InspectCommand 는 유지됨)
+                            <!-- 화면 진단 버튼 — 클릭 가능한 메뉴·요소를 덤프해 셀렉터 확정에 사용 -->
                             <Button Style="{StaticResource GhostButton}" Content="🔎 진단" Command="{Binding InspectCommand}" Margin="0,0,6,0"
-                                    ToolTip="현재 나이스 화면 구조를 읽기 전용으로 덤프합니다 (%AppData%\NeisAutoFill\dom_inspect_*.txt)"/>
-                            -->
+                                    ToolTip="현재 나이스 화면의 클릭 가능한 메뉴·요소를 읽기 전용으로 덤프합니다.&#10;단축키: Ctrl+Shift+V  ·  저장 위치: %AppData%\NeisAutoFill\dom_inspect_*.txt"/>
                             <Button Style="{StaticResource PrimaryButton}" Content="🌐 NEIS 접속" Command="{Binding LaunchEdgeCommand}" Margin="0,0,4,0"
                                     Visibility="{Binding IsConnected, Converter={StaticResource TrueToCollapsed}}"
                                     ToolTip="나이스 전용 브라우저를 엽니다. 로그인 후 [교과별 평가]를 조회하면 자동으로 연결됩니다."/>
@@ -76,15 +80,13 @@
                         </StackPanel>
                         <!-- 왼쪽 (U6): 작업 흐름 그룹 │ 파일 그룹 -->
                         <StackPanel Orientation="Horizontal">
-                            <!-- 전담: 학년·반 선택 후 [이동] (선택만으론 안 바뀜 — 원치 않는 전환 방지) -->
+                            <!-- 전담: 과목 선택 후 [이동] → 그 과목을 가르치는 반들이 탭으로 (반=탭) -->
                             <Border Background="{StaticResource NeisSoft}" CornerRadius="7" Padding="8,3" Margin="0,0,8,0"
                                     Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="학년" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,5,0"/>
-                                    <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding GradeChoices}" SelectedItem="{Binding PickGrade}" MinWidth="52" Margin="0,0,8,0"/>
-                                    <TextBlock Text="반" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,5,0"/>
-                                    <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding ClassChoices}" SelectedItem="{Binding PickClass}" MinWidth="52" Margin="0,0,6,0"/>
-                                    <Button Style="{StaticResource PrimaryButton}" Content="이동" Command="{Binding GoUnitCommand}" Padding="12,3"/>
+                                    <TextBlock Text="과목" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource Neis}" FontWeight="SemiBold" Margin="0,0,5,0"/>
+                                    <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding SubjectChoices}" SelectedItem="{Binding PickSubject}" MinWidth="96" Margin="0,0,6,0"/>
+                                    <Button Style="{StaticResource PrimaryButton}" Content="이동" Command="{Binding GoSubjectCommand}" Padding="12,3"/>
                                 </StackPanel>
                             </Border>
                             <Button Style="{StaticResource GhostButton}" Content="📁 자료 준비" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"
@@ -133,7 +135,7 @@
                     </TabControl.ItemContainerStyle>
                     <TabControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type vm:SubjectViewModel}">
-                            <TextBlock Text="{Binding SubjectName}"/>
+                            <TextBlock Text="{Binding TabLabel}"/>
                         </DataTemplate>
                     </TabControl.ItemTemplate>
                     <TabControl.ContentTemplate>

@@ -75,6 +75,29 @@ public sealed class DomInspector(IPage page)
     });
   });
 
+  // 4) 클릭 가능한 요소(메뉴·링크·탭·트리) — 화면 이동 셀렉터 확정용. 짧은 텍스트만(=메뉴 라벨).
+  report.clickables = [];
+  const seenClick = new Set();
+  const clickSel = 'a, button, [role=""button""], [role=""menuitem""], [role=""treeitem""], ' +
+    '[role=""tab""], [role=""link""], [onclick], li, ' +
+    '[class*=""menu""], [class*=""Menu""], [class*=""nav""], [class*=""tab""], [class*=""tree""], [class*=""lnb""], [class*=""gnb""]';
+  document.querySelectorAll(clickSel).forEach(el => {
+    if (!vis(el)) return;
+    const txt = (el.textContent || '').trim().replace(/\s+/g, ' ');
+    if (!txt || txt.length > 30) return;               // 컨테이너(긴 텍스트) 제외 → 메뉴 라벨만
+    const role = el.getAttribute('role') || '';
+    const key = txt + '|' + el.tagName + '|' + role;
+    if (seenClick.has(key)) return; seenClick.add(key);
+    report.clickables.push({
+      text: txt,
+      tag: el.tagName.toLowerCase(),
+      role: role,
+      id: (el.id || '').toString().substring(0, 40),
+      cls: (el.className || '').toString().substring(0, 45),
+    });
+  });
+  report.clickables = report.clickables.slice(0, 600);
+
   return report;
 }";
 
@@ -212,6 +235,19 @@ async () => {
         sb.AppendLine("═══ NEIS 화면 구조 진단 ═══");
         sb.AppendLine($"URL: {json.GetProperty("url").GetString()}");
         sb.AppendLine($"제목: {json.GetProperty("title").GetString()}");
+
+        // 화면 이동 셀렉터 확정용 — 클릭 가능한 요소(메뉴·링크·탭) 먼저 보여준다
+        if (json.TryGetProperty("clickables", out var clicks))
+        {
+            sb.AppendLine($"\n── 클릭 가능한 요소 (메뉴·링크·탭) {clicks.GetArrayLength()}개 ──");
+            foreach (var c in clicks.EnumerateArray())
+            {
+                var role = c.GetProperty("role").GetString();
+                var roleStr = string.IsNullOrEmpty(role) ? "" : $" role={role}";
+                sb.AppendLine($"  「{c.GetProperty("text").GetString()}」 <{c.GetProperty("tag").GetString()}>{roleStr} " +
+                              $"id='{c.GetProperty("id").GetString()}' cls='{c.GetProperty("cls").GetString()}'");
+            }
+        }
 
         sb.AppendLine($"\n── 보이는 그리드 {json.GetProperty("grids").GetArrayLength()}개 ──");
         foreach (var g in json.GetProperty("grids").EnumerateArray())

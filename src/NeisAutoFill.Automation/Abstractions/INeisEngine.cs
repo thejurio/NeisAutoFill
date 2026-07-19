@@ -6,6 +6,19 @@ namespace NeisAutoFill.Automation.Abstractions;
 /// <summary>실시간 진행 상황 한 건 (로그 라인 + 선택적 진행 카운트).</summary>
 public sealed record ProgressInfo(string Message, int? Current = null, int? Total = null);
 
+/// <summary>브라우저·나이스가 지금 어떤 상황인지 (연결 여부만이 아니라 화면 종류까지).</summary>
+public enum NeisScreenKind
+{
+    Disconnected,       // 전용 브라우저가 붙어 있지 않음
+    NotNeisTab,         // 붙었지만 현재 탭이 나이스가 아님
+    LoggedOut,          // 나이스 로그인 화면 (로그인 안 됨)
+    OtherNeisPage,      // 로그인됐고 나이스지만 교과별 평가 화면이 아님
+    EvaluationReady     // 교과별 평가 화면 — 입력 가능 (과목 콤보/그리드 확인됨)
+}
+
+/// <summary>현재 나이스 상황 판별 결과. Url·화면 과목은 알 수 있으면 채운다.</summary>
+public sealed record NeisStatus(NeisScreenKind Kind, string? Url = null, string? ScreenSubject = null);
+
 /// <summary>화면 파악 결과 — UI 가 매칭을 검토·결정할 재료.</summary>
 public sealed record MatchContext(
     string? ScreenSubject,
@@ -37,6 +50,13 @@ public interface INeisEngine
     /// <summary>연결 생존 확인 — 죽었으면 내부 상태를 비우고 false 반환.</summary>
     Task<bool> IsAliveAsync();
 
+    /// <summary>지금 나이스가 어떤 상황인지 판별 (연결·로그인·화면 종류). 상태 표시·맞춤 안내용.</summary>
+    Task<NeisStatus> DetectStatusAsync(CancellationToken ct = default);
+
+    /// <summary>교과별 평가 화면으로 앱이 직접 이동 시도 (메뉴: 학급담임→학생평가→교과평가→교과별평가).
+    /// 실제로 교과별 평가 화면이 떴을 때만 true. progress 로 단계별 진행/실패를 로그에 남긴다.</summary>
+    Task<bool> TryGoToEvaluationAsync(IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);
+
     /// <summary>현재 화면의 교과(과목)명 (§3.2). 없으면 null.</summary>
     Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default);
 
@@ -50,6 +70,9 @@ public interface INeisEngine
     /// 이미 해당 학년·반이면 조회를 생략(안전). progress 로 찾은 콤보·선택 과정을 보고한다.</summary>
     Task<(bool Ok, string Why)> SelectClassAsync(
         int grade, string @class, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);
+
+    /// <summary>[조회] 버튼을 눌러 명단·그리드를 불러온다 (전담: 이동 후 조회가 생략됐을 때 강제).</summary>
+    Task<(bool Ok, string Why)> QueryAsync(CancellationToken ct = default);
 
     /// <summary>현재 화면의 [저장] 버튼을 눌러 저장한다 (전과목 자동 업로드 전용 — A안).
     /// 저장 확인/완료 대화상자가 뜨면 긍정 버튼을 눌러 마무리.</summary>

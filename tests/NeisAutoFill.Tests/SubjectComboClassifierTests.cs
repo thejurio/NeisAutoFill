@@ -123,4 +123,20 @@ public class SubjectComboClassifierTests
         Assert.Equal(-1, idx);
         Assert.Null(value);
     }
+
+    [Fact]
+    public void FindQueryCombo_학년_라벨이_둘이면_prefer로_진짜학년()
+    {
+        // 실측 버그: 교과별 평가 화면에 "학년" 라벨이 둘 — 학년도(2026)와 진짜 학년(5)
+        var labels = new string?[] { "학년, 2026", "학기, 1", "학년, 5", "반, 1", "교과, 국어" };
+
+        // prefer 없으면 첫 번째(=학년도 2026)를 잡는 문제
+        Assert.Equal("2026", FindQueryCombo(labels, "학년").Value);
+
+        // 값이 1~6 인 걸 선호하면 진짜 학년(5)을 잡는다
+        var (idx, value) = FindQueryCombo(labels, "학년",
+            v => int.TryParse(v, out var g) && g is >= 1 and <= 6);
+        Assert.Equal(2, idx);
+        Assert.Equal("5", value);
+    }
 }
