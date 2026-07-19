@@ -32,7 +32,20 @@ public sealed class GradeGridController(MainViewModel main)
     {
         if (_active is null) return;
         _active.Focus();
-        _active.SelectAllCells();
+
+        // '전체 선택' = 등급(영역) 셀만 — 번호·이름·특기사항은 일괄 입력 대상이 아니므로 제외
+        if (_active.DataContext is not SubjectViewModel vm) { _active.SelectAllCells(); return; }
+        var areaCols = _active.Columns
+            .Where(c => vm.Areas.Contains(c.Header?.ToString() ?? "")).ToList();
+        if (areaCols.Count == 0) { _active.SelectAllCells(); return; }   // 영역이 없으면 기존 동작
+
+        _active.SelectedCells.Clear();
+        foreach (var item in _active.Items)
+        {
+            if (item is not DataRowView) continue;
+            foreach (var col in areaCols)
+                _active.SelectedCells.Add(new DataGridCellInfo(item, col));
+        }
     }
 
     // ── 키보드 ─────────────────────────────
@@ -41,6 +54,14 @@ public sealed class GradeGridController(MainViewModel main)
     {
         // 셀 편집기(콤보·텍스트박스) 안에서 입력 중이면 개입하지 않는다
         if (e.OriginalSource is TextBox or ComboBox) return;
+
+        // ` (백쿼트) = 전체 선택 — 숫자키 일괄 입력과 조합해 키보드만으로 완결
+        if (e.Key == Key.Oem3 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            SelectAll();
+            e.Handled = true;
+            return;
+        }
 
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control)
         {
