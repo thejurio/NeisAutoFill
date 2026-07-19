@@ -85,12 +85,16 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         if (!url.Contains("neis.go.kr"))
             return new NeisStatus(NeisScreenKind.NotNeisTab, url);
 
-        // 교과별 평가 화면인지 — 과목 콤보나 성적 그리드가 보이면 입력 준비 완료로 본다
+        // 화면 제목(app-tit)으로 판별 — 실측: 교과평가/학기말종합의견/교과학습발달상황 이 그대로 들어온다.
+        // 교과별 평가(성적 등급) 화면일 때만 입력 준비. 서술문 화면들은 아래 OtherNeisPage 로 떨어진다.
         try
         {
-            var (combo, subject) = await FindSubjectComboAsync();
-            if (combo is not null) return new NeisStatus(NeisScreenKind.EvaluationReady, url, subject);
-            if (await FindGridAsync(_page) is not null) return new NeisStatus(NeisScreenKind.EvaluationReady, url);
+            var title = await ReadScreenTitleAsync();
+            if (title.Contains("교과평가") && await FindGridAsync(_page) is not null)
+            {
+                var (_, subject) = await FindSubjectComboAsync();   // 화면 과목은 있으면 표시
+                return new NeisStatus(NeisScreenKind.EvaluationReady, url, subject);
+            }
         }
         catch { /* 판별 중 오류는 아래 폴백으로 */ }
 
@@ -117,21 +121,20 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     public async Task<bool> NavigateToAsync(NeisTarget target, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default)
     {
         if (_page is null) return false;
-        // 이미 그 화면이면 생략 (교과평가만 상태 판별이 확실 — 서술문 화면은 아래 이동으로 재확인)
-        if (target == NeisTarget.Evaluation &&
-            (await DetectStatusAsync(ct)).Kind == NeisScreenKind.EvaluationReady) return true;
-
-        // 마지막 단계 라벨(접미사 포함 우선 — 하단 탭·제목의 같은 글자와 안 헷갈리게)과 이동 후 탭
-        var (thirdName, thirdLabels, tabLabels, screenName) = target switch
+        // 마지막 단계 라벨(접미사 포함 우선)·이동 후 탭·화면 제목(app-tit 실측값)
+        var (thirdName, thirdLabels, tabLabels, screenName, title) = target switch
         {
             NeisTarget.Evaluation =>
-                ("교과평가", new[] { "교과평가 3단계", "교과평가" }, new[] { "교과별 평가", "교과별평가" }, "교과별 평가"),
+                ("교과평가", new[] { "교과평가 3단계", "교과평가" }, new[] { "교과별 평가", "교과별평가" }, "교과별 평가", "교과평가"),
             NeisTarget.TermOpinion =>
-                ("학기말종합의견", new[] { "학기말종합의견 3단계", "학기말종합의견" }, System.Array.Empty<string>(), "학기말 종합의견"),
+                ("학기말종합의견", new[] { "학기말종합의견 3단계", "학기말종합의견" }, System.Array.Empty<string>(), "학기말종합의견", "학기말종합의견"),
             NeisTarget.SubjectDevelopment =>
-                ("교과학습발달상황", new[] { "교과학습발달상황 3단계", "교과학습발달상황" }, System.Array.Empty<string>(), "교과학습발달상황"),
-            _ => ("교과평가", new[] { "교과평가" }, System.Array.Empty<string>(), "교과별 평가"),
+                ("교과학습발달상황", new[] { "교과학습발달상황 3단계", "교과학습발달상황" }, System.Array.Empty<string>(), "교과학습발달상황", "교과학습발달상황"),
+            _ => ("교과평가", new[] { "교과평가" }, System.Array.Empty<string>(), "교과평가", "교과평가"),
         };
+
+        // 이미 그 화면이면 생략 — 제목(app-tit)으로 판별 (세 화면 모두 확실)
+        if ((await ReadScreenTitleAsync()).Contains(title) && await FindGridAsync(_page) is not null) return true;
 
         var steps = new List<(string name, string[] labels)>
         {
@@ -154,14 +157,16 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
                 await Task.Delay(800, ct);           // 하위 메뉴/화면 렌더 대기
             }
 
-            // 도착 확인 — 그리드가 뜨면 그 화면에 온 것 (조회 로딩 여유)
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            // 도착 확인 — 화면 제목이 목표와 일치하고 그리드가 뜨면 도착 (조회 로딩 여유)
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(12);
             while (DateTime.UtcNow < deadline)
             {
                 ct.ThrowIfCancellationRequested();
-                if (await FindGridAsync(_page) is not null) { await Task.Delay(500, ct); return true; }
+                if ((await ReadScreenTitleAsync()).Contains(title) && await FindGridAsync(_page) is not null)
+                { await Task.Delay(500, ct); return true; }
                 await Task.Delay(600, ct);
             }
+            progress?.Report(new($"{screenName} 화면 확인이 안 돼요 (제목이 바뀌지 않음)"));
         }
         catch { /* 실패는 false — 호출부가 안내 */ }
         return false;
@@ -199,6 +204,26 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             await Task.Delay(400, ct);   // 하위 메뉴/화면 렌더 대기 후 재시도
         }
         return null;
+    }
+
+    /// <summary>현재 화면 제목(app-tit 요소 텍스트). 실측: "교과평가"/"학기말종합의견"/"교과학습발달상황".
+    /// 없으면 빈 문자열. 화면 종류 판별·도착 확인의 가장 확실한 신호 (F9 M10).</summary>
+    private async Task<string> ReadScreenTitleAsync()
+    {
+        if (_page is null) return "";
+        try
+        {
+            var tit = _page.Locator("div.app-tit");
+            int n = await tit.CountAsync();
+            for (int i = 0; i < n; i++)
+            {
+                if (!await tit.Nth(i).IsVisibleAsync()) continue;
+                var t = (await tit.Nth(i).InnerTextAsync() ?? "").Trim();
+                if (t.Length > 0) return t;
+            }
+        }
+        catch { /* 없으면 빈 문자열 */ }
+        return "";
     }
 
     public async Task<string?> GetCurrentSubjectAsync(CancellationToken ct = default)
