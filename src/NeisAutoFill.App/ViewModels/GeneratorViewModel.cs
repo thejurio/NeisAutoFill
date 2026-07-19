@@ -889,12 +889,29 @@ public sealed class GeneratorViewModel : ObservableObject
     /// <summary>생성 완료된 서술문을 나이스 화면에 입력 (Phase 8). 저장은 수동.</summary>
     private async Task UploadAsync(bool dryRun)
     {
-        if (SelectedSubject is null) return;
+        var outcome = await UploadCoreAsync(dryRun);
+        if (outcome is null || dryRun) return;
+
+        // 결과 대시보드 — 배치와 동일한 창. 재시도는 같은 창을 새 결과로 갱신(창 중첩 없음).
+        BatchResultWindow.ShowResult(new[] { outcome }, "명",
+            retry: async _ =>
+            {
+                var again = await UploadCoreAsync(dryRun: false);
+                return new[] { again ?? outcome };
+            },
+            owner: Application.Current.MainWindow);
+    }
+
+    /// <summary>서술문 단건 입력 본체 — 대시보드 없이 실행하고 결과(Outcome)만 반환.
+    /// null = 진행 전 중단(이미 안내함). 취소는 Cancelled 상태로 반환.</summary>
+    private async Task<Automation.BatchUploadRunner.SubjectOutcome?> UploadCoreAsync(bool dryRun)
+    {
+        if (SelectedSubject is null) return null;
         if (!_engine.Connected)
         {
             MessageBox.Show("나이스에 아직 연결되지 않았습니다. 메인 화면에서 [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.",
                 "연결 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            return null;
         }
 
         var items = Students.Where(s => s.HasValidResult).ToList();
@@ -902,7 +919,7 @@ public sealed class GeneratorViewModel : ObservableObject
         {
             MessageBox.Show("입력할 서술문이 없습니다. 먼저 생성해 주세요.", "안내",
                 MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            return null;
         }
 
         // 전담이면 현재 선택된 (학년,반,과목) — 세특 이동·조회에 사용
@@ -931,19 +948,19 @@ public sealed class GeneratorViewModel : ObservableObject
             {
                 _mainLog($"{SelectedSubject} 서술문 화면을 준비하고 있어요…");
                 if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress, ct))
-                { MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                { MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
 
                 if (ctx is { } tc)   // 전담: 학년·반·교과 값 기반 선택 + 조회
                 {
                     var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress, ct);
-                    if (!okAxis) { MessageBox.Show($"학년·반·교과를 맞추지 못했어요.\n{whyAxis}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                    if (!okAxis) { MessageBox.Show($"학년·반·교과를 맞추지 못했어요.\n{whyAxis}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
                     var (okQ, whyQ) = await _engine.QueryAsync(ct);
-                    if (!okQ) { MessageBox.Show($"명단을 불러오지 못했어요.\n{whyQ}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                    if (!okQ) { MessageBox.Show($"명단을 불러오지 못했어요.\n{whyQ}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
                 }
                 else                 // 담임: 자기 반 고정 → 교과만 전환(SelectSubject 가 조회까지)
                 {
                     var (okSubj, whySubj) = await _engine.SelectSubjectAsync(SelectedSubject!, ct);
-                    if (!okSubj) { MessageBox.Show($"'{SelectedSubject}' 과목으로 바꾸지 못했어요.\n{whySubj}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+                    if (!okSubj) { MessageBox.Show($"'{SelectedSubject}' 과목으로 바꾸지 못했어요.\n{whySubj}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
                 }
             }
 
@@ -967,7 +984,7 @@ public sealed class GeneratorViewModel : ObservableObject
             _mainLog(summary);
             if (!dryRun) _mainLog("※ 저장하지 않았습니다. 나이스에서 값 확인 후 [저장]을 눌러주세요.");
 
-            // 결과 대시보드 — 전과목/전체반 입력과 동일한 창으로 통일 (재시도 = 같은 단건 다시 실행)
+            // 결과를 Outcome 으로 반환 — 대시보드 표시는 래퍼(UploadAsync)가 담당
             var label = ctx is { } lc ? $"{lc.Grade}-{lc.Class} {lc.Subject}" : SelectedSubject!;
             var status = report.Failed.Count > 0 ? Automation.BatchUploadRunner.SubjectStatus.Failed
                        : report.Done.Count == 0 ? Automation.BatchUploadRunner.SubjectStatus.Skipped
@@ -980,17 +997,22 @@ public sealed class GeneratorViewModel : ObservableObject
                 _ => $"{report.Done.Count}명 입력 (저장은 나이스에서 직접)" +
                      (report.Skipped.Count > 0 ? $" · 건너뜀 {report.Skipped.Count}명" : ""),
             };
-            var outcome = new Automation.BatchUploadRunner.SubjectOutcome(
+            return new Automation.BatchUploadRunner.SubjectOutcome(
                 label, status, report.Done.Count, report.Skipped.Count, report.Failed, msg);
-            BatchResultWindow.ShowResult(new[] { outcome }, "명",
-                retry: async _ => { await UploadAsync(dryRun: false); return new[] { outcome }; },
-                owner: Application.Current.MainWindow);
         }
-        catch (OperationCanceledException) { _mainLog("⛔ 서술문 입력 중지됨"); }
+        catch (OperationCanceledException)
+        {
+            _mainLog("⛔ 서술문 입력 중지됨");
+            var label = ctx is { } lc ? $"{lc.Grade}-{lc.Class} {lc.Subject}" : SelectedSubject!;
+            return new Automation.BatchUploadRunner.SubjectOutcome(
+                label, Automation.BatchUploadRunner.SubjectStatus.Cancelled, 0, 0,
+                Array.Empty<SkipItem>(), "사용자 중지 — 저장 안 함");
+        }
         catch (Exception ex)
         {
             _mainLog($"서술문 입력 오류: {ex.Message}");
             MessageBox.Show(ex.Message, "서술문 입력 오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            return null;
         }
         finally { IsUploading = false; }
     }

@@ -64,17 +64,17 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     }
 
     /// <summary>지금 나이스 상황 판별 (F9 M8) — 연결·로그인·화면 종류.
-    /// ★ 로그인/화면 판별 마커는 실측 미확정 — 첫 실기기에서 로그로 각 상태가 맞는지 확인할 것.</summary>
+    /// 실측 확정(2026-07-19): 로그인=문서제목 "로그인", 화면종류=app-tit 텍스트.</summary>
     public async Task<NeisStatus> DetectStatusAsync(CancellationToken ct = default)
     {
         if (_page is null) return new NeisStatus(NeisScreenKind.Disconnected);
 
-        string url;
+        string url, docTitle;
         try
         {
             if (_page.IsClosed) { _page = null; _scroller = null; _combo = null; return new NeisStatus(NeisScreenKind.Disconnected); }
             url = _page.Url;
-            _ = await _page.TitleAsync();   // 페이지가 응답하는지 확인
+            docTitle = await _page.TitleAsync();   // 페이지가 응답하는지 확인 겸 제목 확보
         }
         catch
         {
@@ -84,6 +84,12 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
         if (!url.Contains("neis.go.kr"))
             return new NeisStatus(NeisScreenKind.NotNeisTab, url);
+
+        // 로그인 안 된 상태 — 실측 두 화면 (메인은 "4세대 나이스 시스템"):
+        //   · 로그인 화면: 제목 "로그인" (인증서 방식이라 비밀번호칸 없음)
+        //   · 로그아웃 직후: 제목 "로그아웃", URL executeNeisLogout.do
+        if (docTitle.Contains("로그인") || docTitle.Contains("로그아웃") || url.Contains("Logout"))
+            return new NeisStatus(NeisScreenKind.LoggedOut, url);
 
         // 화면 제목(app-tit)으로 판별 — 실측: 교과평가/학기말종합의견/교과학습발달상황 이 그대로 들어온다.
         // 교과별 평가(성적 등급) 화면이면 입력 준비. 그리드는 조회를 눌러야 뜨므로 판별에 요구하지 않는다
@@ -98,15 +104,6 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             }
         }
         catch { /* 판별 중 오류는 아래 폴백으로 */ }
-
-        // 로그인 화면 추정 — 비밀번호 입력칸이 보이면 로그아웃 상태 (실측 마커로 교체 예정)
-        try
-        {
-            var pw = _page.Locator("input[type='password']");
-            if (await pw.CountAsync() > 0 && await pw.First.IsVisibleAsync())
-                return new NeisStatus(NeisScreenKind.LoggedOut, url);
-        }
-        catch { /* 무시 */ }
 
         return new NeisStatus(NeisScreenKind.OtherNeisPage, url);
     }

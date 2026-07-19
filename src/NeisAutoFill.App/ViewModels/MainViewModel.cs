@@ -125,7 +125,9 @@ public sealed class MainViewModel : ObservableObject
                     try
                     {
                         await _engine.AttachAsync(ct).ConfigureAwait(false);
-                        Ui(() => { SetConnected(true); Log("브라우저 자동 연결됨."); });
+                        // 연결 직후에도 바로 상태 판별 — 로그인 전인데 '연결됨'으로 잠깐 뜨는 문제 방지
+                        var first = await _engine.DetectStatusAsync(ct).ConfigureAwait(false);
+                        Ui(() => { ApplyStatus(first); Log("브라우저 자동 연결됨."); });
                     }
                     catch (Exception ex)
                     {
@@ -996,10 +998,28 @@ public sealed class MainViewModel : ObservableObject
     public async Task RunSubjectAsync(SubjectSheet sheet, bool dryRun,
         NeisAutoFill.Core.ClassRef? subjectModeClass = null)
     {
+        var outcome = await RunSubjectCoreAsync(sheet, dryRun, subjectModeClass);
+        if (outcome is null || dryRun) return;
+
+        // 결과 대시보드 — 배치와 동일한 창. 재시도는 같은 창을 새 결과로 갱신(창 중첩 없음).
+        BatchResultWindow.ShowResult(new[] { outcome }, "명",
+            retry: async _ =>
+            {
+                var again = await RunSubjectCoreAsync(sheet, dryRun: false, subjectModeClass);
+                return new[] { again ?? outcome };
+            },
+            owner: Application.Current.MainWindow);
+    }
+
+    /// <summary>단건 입력 본체 — 대시보드 없이 실행하고 결과(Outcome)만 돌려준다.
+    /// null = 진행 전 중단(미연결·이동 실패 등, 이미 안내함). 취소는 Cancelled 상태로 반환.</summary>
+    private async Task<Automation.BatchUploadRunner.SubjectOutcome?> RunSubjectCoreAsync(
+        SubjectSheet sheet, bool dryRun, NeisAutoFill.Core.ClassRef? subjectModeClass)
+    {
         if (!_engine.Connected)
         {
             ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속]으로 브라우저를 열고 로그인·조회하면 자동으로 연결됩니다.");
-            return;
+            return null;
         }
 
         // 시작 확인창 없음 — 단건 입력은 저장을 안 하고(나이스 [저장]은 사용자가 직접),
@@ -1013,7 +1033,7 @@ public sealed class MainViewModel : ObservableObject
                         or Automation.Abstractions.NeisScreenKind.LoggedOut)
         {
             ShowError(StatusMessage(status.Kind));
-            return;
+            return null;
         }
         var navProg = new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message));
         // OtherNeisPage 이면 교과별 평가로 앱이 직접 이동 (실패 시에만 안내)
@@ -1023,7 +1043,7 @@ public sealed class MainViewModel : ObservableObject
             if (!moved)
             {
                 ShowError("교과별 평가 화면으로 이동하지 못했어요. 나이스에서 [교과별 평가]를 열어 주세요.");
-                return;
+                return null;
             }
         }
 
@@ -1033,11 +1053,11 @@ public sealed class MainViewModel : ObservableObject
         {
             Log($"{cls.Grade}학년 {cls.Class}반 {sheet.SubjectName} 화면을 준비하고 있어요…");
             var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, null);
-            if (!okClass) { ShowError($"{cls.Grade}학년 {cls.Class}반으로 이동하지 못했어요.\n{whyClass}"); return; }
+            if (!okClass) { ShowError($"{cls.Grade}학년 {cls.Class}반으로 이동하지 못했어요.\n{whyClass}"); return null; }
             var (okSubj, whySubj) = await _engine.SelectSubjectAsync(sheet.SubjectName);
-            if (!okSubj) { ShowError($"'{sheet.SubjectName}' 과목으로 바꾸지 못했어요.\n{whySubj}"); return; }
+            if (!okSubj) { ShowError($"'{sheet.SubjectName}' 과목으로 바꾸지 못했어요.\n{whySubj}"); return null; }
             var (okQ, whyQ) = await _engine.QueryAsync();   // 콤보가 그대로여도 명단이 뜨도록 조회
-            if (!okQ) { ShowError($"명단을 불러오지 못했어요.\n{whyQ}"); return; }
+            if (!okQ) { ShowError($"명단을 불러오지 못했어요.\n{whyQ}"); return null; }
         }
 
         _cts = new CancellationTokenSource();
@@ -1061,36 +1081,34 @@ public sealed class MainViewModel : ObservableObject
             if (!dryRun)
                 Log("아직 저장 전이에요. 나이스에서 값 확인 후 [저장]을 눌러 주세요.");
 
-            // 결과 대시보드 — 전과목 입력과 동일한 창으로 통일 (재시도 = 같은 단건 다시 실행)
-            if (!dryRun)
+            // 결과를 Outcome 으로 반환 — 대시보드 표시는 래퍼(RunSubjectAsync)가 담당
+            var label = subjectModeClass is { } lc ? $"{lc.Grade}-{lc.Class} {sheet.SubjectName}" : sheet.SubjectName;
+            var runStatus = report.Failed.Count > 0 ? Automation.BatchUploadRunner.SubjectStatus.Failed
+                          : doneN == 0 ? Automation.BatchUploadRunner.SubjectStatus.Skipped
+                          : Automation.BatchUploadRunner.SubjectStatus.Success;
+            var msg = runStatus switch
             {
-                var label = subjectModeClass is { } lc ? $"{lc.Grade}-{lc.Class} {sheet.SubjectName}" : sheet.SubjectName;
-                var runStatus = report.Failed.Count > 0 ? Automation.BatchUploadRunner.SubjectStatus.Failed
-                              : doneN == 0 ? Automation.BatchUploadRunner.SubjectStatus.Skipped
-                              : Automation.BatchUploadRunner.SubjectStatus.Success;
-                var msg = runStatus switch
-                {
-                    Automation.BatchUploadRunner.SubjectStatus.Failed =>
-                        $"입력 실패 {failN}명 — 저장하지 않았습니다",
-                    Automation.BatchUploadRunner.SubjectStatus.Skipped => "입력할 값 없음",
-                    _ => $"{doneN}명 입력 (저장은 나이스에서 직접)" + (skipN > 0 ? $" · 건너뜀 {skipN}명" : ""),
-                };
-                var outcome = new Automation.BatchUploadRunner.SubjectOutcome(
-                    label, runStatus, doneN, skipN, report.Failed, msg);
-                BatchResultWindow.ShowResult(new[] { outcome }, "명",
-                    retry: async _ =>
-                    {
-                        await RunSubjectAsync(sheet, dryRun: false, subjectModeClass);
-                        return new[] { outcome };   // 재실행 결과는 그 실행의 대시보드가 보여준다
-                    },
-                    owner: Application.Current.MainWindow);
-            }
+                Automation.BatchUploadRunner.SubjectStatus.Failed =>
+                    $"입력 실패 {failN}명 — 저장하지 않았습니다",
+                Automation.BatchUploadRunner.SubjectStatus.Skipped => "입력할 값 없음",
+                _ => $"{doneN}명 입력 (저장은 나이스에서 직접)" + (skipN > 0 ? $" · 건너뜀 {skipN}명" : ""),
+            };
+            return new Automation.BatchUploadRunner.SubjectOutcome(
+                label, runStatus, doneN, skipN, report.Failed, msg);
         }
-        catch (OperationCanceledException) { Log("⛔ 사용자 중지"); }
+        catch (OperationCanceledException)
+        {
+            Log("⛔ 사용자 중지");
+            var label = subjectModeClass is { } lc ? $"{lc.Grade}-{lc.Class} {sheet.SubjectName}" : sheet.SubjectName;
+            return new Automation.BatchUploadRunner.SubjectOutcome(
+                label, Automation.BatchUploadRunner.SubjectStatus.Cancelled, 0, 0,
+                Array.Empty<SkipItem>(), "사용자 중지 — 저장 안 함");
+        }
         catch (Exception ex)
         {
             Log($"오류: {ex.Message}");
             ShowError($"입력 중 오류가 발생했습니다.\n\n{ex.Message}");   // 로그 + 팝업 둘 다
+            return null;
         }
     }
 
