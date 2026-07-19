@@ -615,7 +615,6 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         CancellationToken ct = default)
     {
         var page = RequirePage();
-        void Log(string m) => progress.Report(new ProgressInfo(m));
 
         // 화면 과목 확인 — 콜백이 없으면 예전처럼 즉시 차단, 있으면 UI 가 결정
         var subject = await GetCurrentSubjectAsync(ct);
@@ -623,158 +622,11 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             throw new InvalidOperationException(
                 $"화면 교과 '{subject}' ≠ 대상 '{sheet.SubjectName}'. 나이스에서 '{sheet.SubjectName}'를 조회하세요.");
 
+        // 조회된 그리드에 쓰는 일은 GradeWriter 전담 (NarrativeWriter 와 대칭, R11)
         var grid = await FindGridAsync(page)
             ?? throw new InvalidOperationException("평가 그리드를 찾지 못했습니다. [조회]를 눌렀는지 확인하세요.");
-        int expected = int.Parse(await grid.GetAttributeAsync("aria-rowcount") ?? "1") - 1;
-
-        Log($"엑셀 영역: {string.Join(", ", sheet.Areas.Select(a => $"'{a}'"))}");
-        Log($"그리드 {expected}행 / 행 위치 파악 중...");
-        var rowMap = await new RowMapBuilder(page, _scroller!).BuildAsync(grid, expected, Log, ct);
-        var missing = Enumerable.Range(0, expected).Where(i => !rowMap.ContainsKey(i)).ToList();
-        Log($"행 파악 {rowMap.Count}/{expected}" + (missing.Count > 0 ? $" (누락: {string.Join(",", missing)})" : ""));
-
-        // 매칭 결정 — UI 콜백이 검토 (문제 없으면 창 없이 즉시, 있으면 미리보기 창)
-        MatchDecision? decision;
-        if (resolveMatch is not null)
-        {
-            decision = await resolveMatch(new MatchContext(subject, sheet.SubjectName, rowMap, missing));
-            if (decision is null)
-            {
-                Log("사용자가 입력을 취소했습니다.");
-                return new RunReport(new List<GradeTask>(),
-                    new List<SkipItem> { new("", "", "", "사용자 취소") },
-                    new List<SkipItem>(), missing);
-            }
-        }
-        else
-        {
-            decision = new MatchDecision(StudentMatcher.MatchMode.ByName);
-        }
-
-        var excelAreas = decision.Mode == StudentMatcher.MatchMode.ByOrder
-            ? decision.OrderedExcelAreas ?? sheet.Areas
-            : sheet.Areas;
-        var (todo, skipped, actualMode, fatal) = StudentMatcher.Build(
-            rowMap, sheet.Students, scale, excelAreas, decision.Mode,
-            decision.AreaMap, decision.NameMap);
-        if (fatal is not null)
-            throw new InvalidOperationException(fatal);
-        Log($"매칭 방식: {(actualMode == StudentMatcher.MatchMode.ByOrder ? "순서 기반" : "이름 기반")} / 입력 대상 {todo.Count}건");
-
-        var done = new List<GradeTask>();
-        var failed = new List<SkipItem>();
-        int total = todo.Count;
-
-        for (int i = 0; i < total; i++)
-        {
-            ct.ThrowIfCancellationRequested();
-            var t = todo[i];
-            if (dryRun)
-            {
-                done.Add(t);
-                Log($"[계획 {i + 1}/{total}] {t.No}번 {t.Name} {t.Area} → {t.TargetGrade}");
-            }
-            else
-            {
-                var (ok, why) = await SetGradeAsync(grid, t, scale, ct);
-                if (ok)
-                {
-                    done.Add(t);
-                    Log($"[{i + 1}/{total}] ✓ {t.No}번 {t.Name} {t.Area} → {t.TargetGrade}");
-                }
-                else
-                {
-                    failed.Add(new SkipItem(t.No, t.Name, t.Area, why));
-                    Log($"[{i + 1}/{total}] ✗ {t.No}번 {t.Name} {t.Area}: {why}");
-                }
-            }
-            progress.Report(new ProgressInfo("", i + 1, total));
-        }
-
-        return new RunReport(done, skipped, failed, missing);
-    }
-
-    /// <summary>단계 설정 신뢰성 루프 (§4.3). 멱등성 + 재검증 + 1회 재시도.</summary>
-    private async Task<(bool ok, string why)> SetGradeAsync(
-        ILocator grid, GradeTask task, GradeScale scale, CancellationToken ct)
-    {
-        // 척도 라벨 = 나이스 드롭다운 텍스트 (항상 동일하게 운용)
-        var neisText = task.TargetGrade;
-        string why = "";
-
-        for (int attempt = 1; attempt <= 2; attempt++)
-        {
-            var combo = await EnsureRowVisibleAsync(grid, task.RowIndex, ct);
-            if (combo is null) return (false, "행을 화면에 못 띄움");
-
-            try
-            {
-                var cur = await ComboBoxDriver.ReadValueAsync(combo);
-                if (cur == neisText) return (true, "이미 설정됨");   // 멱등성
-
-                var pick = await _combo!.OpenAndPickAsync(combo, neisText);
-                if (pick.Ok)
-                {
-                    // ★ 재검증: 콤보를 fresh 로 다시 읽어 목표값 확인
-                    var combo2 = await GetFreshComboAsync(grid, task.RowIndex);
-                    var val = combo2 is null ? "" : await ComboBoxDriver.ReadValueAsync(combo2);
-                    if (val == neisText) return (true, "");
-                    why = $"검증 불일치('{val}')";
-                }
-                else why = pick.Reason;
-            }
-            catch (Exception ex)
-            {
-                why = ex.GetType().Name;
-                EngineDiag.Swallow(ex, $"등급 설정({task.Area}→{task.TargetGrade})");   // 상세는 diag.txt 로
-            }
-
-            if (attempt == 1) await Task.Delay(Timings.RetryDelay, ct);
-        }
-        return (false, why);
-    }
-
-    private async Task<ILocator?> GetFreshComboAsync(ILocator grid, int idx)
-    {
-        var loc = grid.Locator(
-            $"div.cl-grid-row[data-rowindex='{idx}'] div[role='gridcell'][data-cellindex='6'] [role='combobox']");
-        if (await loc.CountAsync() == 0) return null;
-        var first = loc.First;
-        return await first.IsVisibleAsync() ? first : null;
-    }
-
-    private async Task<ILocator?> EnsureRowVisibleAsync(ILocator grid, int idx, CancellationToken ct)
-    {
-        var combo = await GetFreshComboAsync(grid, idx);
-        if (combo is null)
-        {
-            var vs = await _scroller!.GetVScrollAsync(grid);
-            if (vs is { } v)
-            {
-                // 예상 위치로 스크롤
-                var expectedAttr = await grid.GetAttributeAsync("aria-rowcount") ?? "1";
-                int expected = Math.Max(int.Parse(expectedAttr) - 1, 1);
-                double approx = v.scrollHeight * idx / expected - v.clientHeight / 2;
-                await _scroller.ScrollProxyAsync(v.bar, Math.Max(approx, 0));
-                await Task.Delay(Timings.AfterScroll, ct);
-                combo = await GetFreshComboAsync(grid, idx);
-            }
-        }
-        if (combo is null)   // 끝행 대비 (§8): CLX 공식 reveal API 로 행 직접 가시화
-        {
-            var expectedAttr2 = await grid.GetAttributeAsync("aria-rowcount") ?? "1";
-            int expected2 = Math.Max(int.Parse(expectedAttr2) - 1, 1);
-            await ClxGridApi.RevealAsync(_page!, expected2, idx);
-            await Task.Delay(Timings.AfterScroll, ct);
-            combo = await GetFreshComboAsync(grid, idx);
-        }
-        if (combo is not null)
-        {
-            await combo.ScrollIntoViewIfNeededAsync();
-            await Task.Delay(Timings.AfterScrollIntoView, ct);
-            combo = await GetFreshComboAsync(grid, idx);
-        }
-        return combo;
+        return await new GradeWriter(page, _scroller!, _combo!).RunAsync(
+            grid, sheet, scale, subject, dryRun, progress, resolveMatch, ct);
     }
 
     private static async Task<ILocator?> FindGridAsync(IPage page)
