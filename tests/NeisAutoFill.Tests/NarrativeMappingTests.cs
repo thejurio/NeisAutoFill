@@ -63,6 +63,9 @@ public class NarrativeMappingTests
 
         Assert.Single(r.Todo);   // 이영희만
         Assert.DoesNotContain(r.Todo, t => t.Entry.Name == "김철수");
+        Assert.Contains(r.Skipped, s => s.Name == "김철수");   // '입력 안 함'도 건너뜀으로 집계돼야 카운트가 맞다
+        // ★ 이중 집계 금지: 제외된 김철수가 '화면에서 못 찾음'으로 또 세지면 안 된다 (건너뜀 23>학생 17 버그)
+        Assert.Single(r.Skipped.Where(s => s.Name == "김철수"));
     }
 
     [Fact]

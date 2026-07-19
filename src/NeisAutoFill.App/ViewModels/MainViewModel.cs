@@ -1002,18 +1002,8 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        // 확인은 맨 앞에서 한 번만 — 이후 이동·조회·입력은 전부 자동 (되묻지 않음)
-        if (!dryRun)
-        {
-            var prompt = subjectModeClass is { } sc
-                ? $"'{sc.Grade}-{sc.Class} {sheet.SubjectName}' {sheet.Students.Count}명의 평가를 나이스에 입력합니다.\n" +
-                  "교과별 평가 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?"
-                : $"'{sheet.SubjectName}' {sheet.Students.Count}명의 평가를 나이스 화면에 입력합니다.\n" +
-                  "(저장은 하지 않으며, 확인 후 나이스에서 직접 [저장]을 누르세요)\n\n" +
-                  $"나이스 화면이 '{sheet.SubjectName}' 조회 상태인가요?";
-            var ok = MessageBox.Show(prompt, "확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (ok != MessageBoxResult.Yes) return;
-        }
+        // 시작 확인창 없음 — 단건 입력은 저장을 안 하고(나이스 [저장]은 사용자가 직접),
+        // 문제가 있으면 매칭창이, 끝나면 결과 대시보드가 뜨므로 사전 확인은 군더더기다.
 
         // 사전 점검 — 앱이 못 푸는 상황(로그인 안 됨·브라우저/탭)만 안내하고 멈춘다.
         // 교과별 평가 화면이 아닌 건 앱이 스스로 이동해야 할 일이라 메시지를 띄우지 않는다 (F9 M8).
@@ -1057,9 +1047,13 @@ public sealed class MainViewModel : ObservableObject
             var report = await _engine.RunSubjectAsync(
                 sheet, _scales.Active, dryRun, _progress, BuildResolveMatch(sheet), _cts.Token);
             var act = dryRun ? "확인" : "입력";
-            var tail = (report.Skipped.Count + report.Failed.Count) > 0
-                ? $" (건너뜀 {report.Skipped.Count}·안 됨 {report.Failed.Count})" : "";
-            Log($"✔ {sheet.SubjectName} {act} 완료 — {report.Done.Count}명{tail}");
+            // 요약은 학생(명) 단위 — 성적은 내부적으로 (학생×영역) 건으로 돌지만 사용자에겐 명수가 직관적.
+            // 세부 목록(어느 영역인지)은 아래 줄들로 그대로 보여준다.
+            int doneN = report.Done.Select(d => (d.No, d.Name)).Distinct().Count();
+            int skipN = report.Skipped.Select(s => (s.No, s.Name)).Distinct().Count();
+            int failN = report.Failed.Select(f => (f.No, f.Name)).Distinct().Count();
+            var tail = (skipN + failN) > 0 ? $" (건너뜀 {skipN}명·안 됨 {failN}명)" : "";
+            Log($"✔ {sheet.SubjectName} {act} 완료 — {doneN}명{tail}");
             foreach (var s in report.Skipped) Log($"  · {s.No}번 {s.Name} '{s.Area}' 건너뜀 ({s.Reason})");
             foreach (var f in report.Failed) Log($"  · {f.No}번 {f.Name} '{f.Area}' 안 됨 ({f.Reason})");
             if (report.Missing.Count > 0)
@@ -1067,23 +1061,29 @@ public sealed class MainViewModel : ObservableObject
             if (!dryRun)
                 Log("아직 저장 전이에요. 나이스에서 값 확인 후 [저장]을 눌러 주세요.");
 
-            // 건너뜀·실패·누락이 있으면 팝업으로도 알림 (로그를 못 볼 수 있으므로)
-            int problems = report.Skipped.Count + report.Failed.Count + report.Missing.Count;
-            if (problems > 0)
+            // 결과 대시보드 — 전과목 입력과 동일한 창으로 통일 (재시도 = 같은 단건 다시 실행)
+            if (!dryRun)
             {
-                var lines = new System.Text.StringBuilder();
-                lines.AppendLine($"[{sheet.SubjectName}] {(dryRun ? "검증" : "입력")} 결과");
-                lines.AppendLine($"성공 {report.Done.Count} / 건너뜀 {report.Skipped.Count} / 실패 {report.Failed.Count}");
-                lines.AppendLine();
-                foreach (var f in report.Failed) lines.AppendLine($"✗ 실패 {f.No}번 {f.Name} '{f.Area}' — {f.Reason}");
-                foreach (var s in report.Skipped) lines.AppendLine($"· 건너뜀 {s.No}번 {s.Name} '{s.Area}' — {s.Reason}");
-                if (report.Missing.Count > 0) lines.AppendLine($"⚠ 화면에서 못 읽은 행: {string.Join(",", report.Missing)}");
-                lines.AppendLine();
-                lines.Append("자세한 내용은 아래 로그를 확인하세요.");
-                MessageBox.Show(lines.ToString(),
-                    report.Failed.Count > 0 ? "일부 실패" : "일부 건너뜀",
-                    MessageBoxButton.OK,
-                    report.Failed.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+                var label = subjectModeClass is { } lc ? $"{lc.Grade}-{lc.Class} {sheet.SubjectName}" : sheet.SubjectName;
+                var runStatus = report.Failed.Count > 0 ? Automation.BatchUploadRunner.SubjectStatus.Failed
+                              : doneN == 0 ? Automation.BatchUploadRunner.SubjectStatus.Skipped
+                              : Automation.BatchUploadRunner.SubjectStatus.Success;
+                var msg = runStatus switch
+                {
+                    Automation.BatchUploadRunner.SubjectStatus.Failed =>
+                        $"입력 실패 {failN}명 — 저장하지 않았습니다",
+                    Automation.BatchUploadRunner.SubjectStatus.Skipped => "입력할 값 없음",
+                    _ => $"{doneN}명 입력 (저장은 나이스에서 직접)" + (skipN > 0 ? $" · 건너뜀 {skipN}명" : ""),
+                };
+                var outcome = new Automation.BatchUploadRunner.SubjectOutcome(
+                    label, runStatus, doneN, skipN, report.Failed, msg);
+                BatchResultWindow.ShowResult(new[] { outcome }, "명",
+                    retry: async _ =>
+                    {
+                        await RunSubjectAsync(sheet, dryRun: false, subjectModeClass);
+                        return new[] { outcome };   // 재실행 결과는 그 실행의 대시보드가 보여준다
+                    },
+                    owner: Application.Current.MainWindow);
             }
         }
         catch (OperationCanceledException) { Log("⛔ 사용자 중지"); }
@@ -1094,14 +1094,18 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>화면 파악 후 매칭 검토 콜백 — 문제 없으면 창 없이 진행, 있으면 미리보기 창에서 사용자 결정.</summary>
-    private Func<MatchContext, Task<MatchDecision?>> BuildResolveMatch(SubjectSheet sheet) => ctx =>
+    // 전과목 배치에서 받은 학생 이름 매핑(화면이름→엑셀이름). 같은 반이면 전 과목 동일하므로 1회만 받고 재사용.
+    private IReadOnlyDictionary<string, string>? _batchNameMap;
+
+    /// <summary>화면 파악 후 매칭 검토 콜백 — 문제 없으면 창 없이 진행, 있으면 미리보기 창에서 사용자 결정.
+    /// batch=true 면 이름 매핑을 캐시(_batchNameMap)에 담아 다음 과목부터 재사용(창 반복 방지, F9).</summary>
+    private Func<MatchContext, Task<MatchDecision?>> BuildResolveMatch(SubjectSheet sheet, bool batch = false) => ctx =>
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
             var issues = Core.Matching.MatchAnalyzer.Analyze(
                 ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, sheet.Students, sheet.Areas);
             if (issues.Clean)
-                return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName);
+                return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName, NameMap: batch ? _batchNameMap : null);
 
             // 과목명만 다르고 학생·영역은 정상 → 복잡한 매핑 창 대신 "그래도 진행?" 만 묻는다
             if (issues.SubjectOnlyMismatch)
@@ -1110,13 +1114,56 @@ public sealed class MainViewModel : ObservableObject
                     $"화면 과목은 '{issues.ScreenSubject}'인데 입력 대상은 '{sheet.SubjectName}'입니다.\n" +
                     "학생·영역은 화면과 일치합니다. 이 화면에 그대로 입력할까요?",
                     "과목 확인", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
-                return ok ? new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName) : (MatchDecision?)null;
+                return ok ? new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName, NameMap: batch ? _batchNameMap : null) : (MatchDecision?)null;
             }
 
-            var vm = new MatchPreviewViewModel(issues, sheet);
-            var win = new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow };
-            return win.ShowDialog() == true ? vm.BuildDecision() : null;
+            // 배치: 이름 불일치뿐(영역·중복·행수 정상)이고 캐시가 그 학생들을 다 덮으면 창 없이 재사용
+            if (batch && _batchNameMap is { } cached &&
+                issues.UnmatchedAreas.Count == 0 && !issues.DuplicateAreas && !issues.AreaCountMismatch &&
+                issues.UnmatchedStudents.All(s => cached.ContainsKey(s.Name)))
+            {
+                return new MatchDecision(Core.Matching.StudentMatcher.MatchMode.ByName, NameMap: cached);
+            }
+
+            // 창이 뜨더라도(영역 이슈 등) 앞 과목에서 지정한 이름 매핑을 초기값으로 채운다.
+            // 학생 이름창 → (필요시) 영역창 을 별도로 순차 표시.
+            var vm = new MatchPreviewViewModel(issues, sheet, batch ? _batchNameMap : null);
+            if (!ShowMatchSteps(vm)) return null;
+            var decision = vm.BuildDecision();
+            if (batch && decision?.NameMap is { } nm)   // 이번에 받은 이름 매핑을 캐시에 병합 → 다음 과목 재사용
+            {
+                var merged = new Dictionary<string, string>(_batchNameMap ?? new Dictionary<string, string>());
+                foreach (var kv in nm) merged[kv.Key] = kv.Value;
+                _batchNameMap = merged;
+            }
+            return decision;
         }).Task;
+
+    /// <summary>매칭 확인을 단계별 창으로 — ① 과목 다르면 확인 메시지, ② 학생 이름창, ③ 영역창. 취소하면 false.</summary>
+    internal static bool ShowMatchSteps(MatchPreviewViewModel vm)
+    {
+        // 과목 불일치는 눈에 띄게 별도 메시지창으로 먼저 확인 (매핑창 안 체크박스는 놓치기 쉬움)
+        if (vm.HasSubjectWarning && !vm.SubjectAccepted)
+        {
+            var ok = MessageBox.Show(
+                vm.SubjectWarning + "\n\n이 화면에 그대로 입력할까요?",
+                "과목 확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (ok != MessageBoxResult.Yes) return false;
+            vm.SubjectAccepted = true;
+        }
+
+        if (vm.ShowStudentSection)
+        {
+            vm.CurrentStep = MatchPreviewViewModel.Step.Student;
+            if (new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow }.ShowDialog() != true) return false;
+        }
+        if (vm.HasAreaIssues)
+        {
+            vm.CurrentStep = MatchPreviewViewModel.Step.Area;
+            if (new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow }.ShowDialog() != true) return false;
+        }
+        return true;
+    }
 
     // ── 전과목 자동 입력 (Phase 5.5, A안: 과목별 검증 통과 시 자동 저장) ──
 
@@ -1143,6 +1190,12 @@ public sealed class MainViewModel : ObservableObject
         if (!allSheets.Any(s => s.Students.Any(st => st.Grades.Count > 0)))
         { ShowError("입력할 성적이 없습니다. 성적표에 등급을 먼저 입력해 주세요."); return; }
 
+        // 교과별 평가 화면으로 먼저 이동해야 화면 과목 목록을 읽어 매칭할 수 있다.
+        // (딴 화면이면 과목 콤보 조회가 안 되므로 매핑이 빈다)
+        var navProg = new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message));
+        if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.Evaluation, navProg))
+        { ShowError("교과별 평가 화면으로 이동하지 못했어요. 나이스에서 직접 열어 주세요."); return; }
+
         // 과목 체크리스트 — 입력할 과목을 고르고, 자동 저장 동의도 이 창에서
         var picks = allSheets.Select(s =>
         {
@@ -1167,6 +1220,7 @@ public sealed class MainViewModel : ObservableObject
         if (sheets.Count == 0) return;
 
         _cts = new CancellationTokenSource();
+        _batchNameMap = null;   // 이번 배치의 이름 매핑 캐시 초기화 (첫 과목에서 받고 이후 재사용)
         var bySubject = sheets.ToDictionary(s => s.SubjectName);
         var targets = BuildTargets(chosen);   // 내 과목 → 화면 과목 매핑 반영
 
@@ -1176,7 +1230,7 @@ public sealed class MainViewModel : ObservableObject
             ProgressValue = 0;
             var sheet = bySubject[subjectName];
             var report = await _engine.RunSubjectAsync(
-                sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
+                sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet, batch: true), _cts.Token);
             return new Automation.BatchUploadRunner.SubjectResult(
                 report.Done.Count, report.Failed, report.Skipped.Count,
                 report.Skipped.Any(s => s.Reason == "사용자 취소"));
@@ -1271,17 +1325,17 @@ public sealed class MainViewModel : ObservableObject
         };
 
         var outcomes = await Automation.BatchUploadRunner.RunAsync(
-            targets, _engine, runClass, Log, unit: "반", _cts.Token);
+            targets, _engine, runClass, Log, unit: "건", _cts.Token);
 
         Log($"'{_currentSubject}' 여러 반 입력 결과:");
         foreach (var s in Automation.BatchUploadRunner.Summarize(outcomes)) Log("  " + s);
 
-        BatchResultWindow.ShowResult(outcomes, "반",
+        BatchResultWindow.ShowResult(outcomes, "건",
             retry: async subs =>
             {
                 _cts = new CancellationTokenSource();
                 var rt = subs.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
-                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, Log, "반", _cts.Token);
+                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, Log, "건", _cts.Token);
             },
             owner: Application.Current.MainWindow);
     }

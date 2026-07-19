@@ -104,6 +104,8 @@ public sealed class GeneratorViewModel : ObservableObject
         CancelGenerationCommand = new RelayCommand(() => _queue.CancelAll());
         UploadCommand = new AsyncRelayCommand(() => UploadAsync(dryRun: false));
         UploadAllCommand = new AsyncRelayCommand(UploadAllAsync);
+        // 나이스 입력 중지 — 진행 중인 입력을 멈춘다 (전체반/전과목 배치도 그 자리에서 중단)
+        CancelUploadCommand = new RelayCommand(() => _uploadCts?.Cancel());
         SaveCommand = new RelayCommand(() =>
         {
             if (_mirror.SaveNow())
@@ -420,7 +422,13 @@ public sealed class GeneratorViewModel : ObservableObject
     public ICommand CancelGenerationCommand { get; }
     public ICommand UploadCommand { get; }
     public ICommand UploadAllCommand { get; }
+    public ICommand CancelUploadCommand { get; }
     public ICommand SaveCommand { get; }
+
+    // 나이스 서술문 입력 중지용 (성적 입력의 ■ 중지와 동일 역할)
+    private CancellationTokenSource? _uploadCts;
+    private bool _isUploading;
+    public bool IsUploading { get => _isUploading; private set => SetProperty(ref _isUploading, value); }
 
     /// <summary>과목별 (번호,이름,서술문) — 화면 캐시 우선, 없으면 저장소. 서술문 있는 과목만.</summary>
     private Dictionary<string, List<NarrativeEntry>> CollectNarratives()
@@ -504,20 +512,25 @@ public sealed class GeneratorViewModel : ObservableObject
             if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
         });
 
+        _batchNameMap = null;   // 이름 매핑 캐시 초기화 — 첫 과목에서 받고 이후 재사용
+        _uploadCts = new CancellationTokenSource();
+        var ct = _uploadCts.Token;
+        IsUploading = true;
         // runSubject 를 델리게이트로 빼 재시도 때 그대로 재사용
         Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runSubject = async subject =>
         {
             var subjectEntries = bySubject[subject];
             var report = await _engine.RunNarrativesAsync(
                 subject, subjectEntries, dryRun: false, _settings.Options.MaxNarrativeBytes,
-                progress, CancellationToken.None, BuildNarrativeResolveMatch(subjectEntries));
+                progress, ct, BuildNarrativeResolveMatch(subjectEntries, batch: true));
             return new Automation.BatchUploadRunner.SubjectResult(
                 report.Done.Count, report.Failed, report.Skipped.Count,
                 report.Skipped.Any(s => s.Reason == "사용자 취소"));
         };
 
-        var outcomes = await Automation.BatchUploadRunner.RunAsync(
-            targets, _engine, runSubject, _mainLog, unit: "명", CancellationToken.None);
+        List<Automation.BatchUploadRunner.SubjectOutcome> outcomes;
+        try { outcomes = await Automation.BatchUploadRunner.RunAsync(targets, _engine, runSubject, _mainLog, unit: "명", ct); }
+        finally { IsUploading = false; }
 
         _mainLog("전과목 서술문 입력 결과: " +
             string.Join(" / ", Automation.BatchUploadRunner.Summarize(outcomes)));
@@ -589,24 +602,27 @@ public sealed class GeneratorViewModel : ObservableObject
             if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
         });
 
+        _uploadCts = new CancellationTokenSource();
+        var ct = _uploadCts.Token;
+        IsUploading = true;
         Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runClass = async classKey =>
         {
             var pc = perClass.First(x => $"{x.Grade}-{x.Class}" == classKey);
             _mainLog($"{pc.Grade}-{pc.Class} {subject} 세특 화면을 준비하고 있어요…");
             // 세특 서술문은 나이스에서 '학기말종합의견' 화면에 입력한다 (교과학습발달상황 아님)
-            if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress))
+            if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress, ct))
                 return Fail($"{classKey} 학기말종합의견 화면 이동 실패");
-            var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(pc.Grade, pc.Class, subject, progress);
+            var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(pc.Grade, pc.Class, subject, progress, ct);
             if (!okAxis) return Fail($"{classKey} 학년·반·교과 선택 실패: {whyAxis}");
-            var (okQ, whyQ) = await _engine.QueryAsync();
+            var (okQ, whyQ) = await _engine.QueryAsync(ct);
             if (!okQ) return Fail($"{classKey} 조회 실패: {whyQ}");
 
             var report = await _engine.RunNarrativesAsync(
                 subject, pc.Entries, dryRun: false, _settings.Options.MaxNarrativeBytes,
-                progress, CancellationToken.None, BuildNarrativeResolveMatch(pc.Entries));
+                progress, ct, BuildNarrativeResolveMatch(pc.Entries));
             if (report.Failed.Count == 0)
             {
-                var (okSave, whySave) = await _engine.SaveScreenAsync();
+                var (okSave, whySave) = await _engine.SaveScreenAsync(ct);
                 if (!okSave) _mainLog($"  ⚠ {classKey} 나이스 저장 건너뜀: {whySave}");
             }
             return new Automation.BatchUploadRunner.SubjectResult(
@@ -614,16 +630,17 @@ public sealed class GeneratorViewModel : ObservableObject
                 report.Skipped.Any(s => s.Reason == "사용자 취소"));
         };
 
-        var outcomes = await Automation.BatchUploadRunner.RunAsync(
-            targets, _engine, runClass, _mainLog, unit: "반", CancellationToken.None);
+        List<Automation.BatchUploadRunner.SubjectOutcome> outcomes;
+        try { outcomes = await Automation.BatchUploadRunner.RunAsync(targets, _engine, runClass, _mainLog, unit: "명", ct); }
+        finally { IsUploading = false; }
         _mainLog($"'{subject}' 여러 반 세특 입력 결과: " +
             string.Join(" / ", Automation.BatchUploadRunner.Summarize(outcomes)));
 
-        BatchResultWindow.ShowResult(outcomes, "반",
+        BatchResultWindow.ShowResult(outcomes, "명",
             retry: async subs =>
             {
                 var rt = subs.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
-                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, _mainLog, "반", CancellationToken.None);
+                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, _mainLog, "명", CancellationToken.None);
             },
             owner: Application.Current.MainWindow);
     }
@@ -816,13 +833,13 @@ public sealed class GeneratorViewModel : ObservableObject
     /// 이름이 달라 자동 매칭 안 되는 학생을 사용자가 연결한다. Clean 이면 창 없이 진행.
     /// </summary>
     private Func<Automation.Abstractions.MatchContext, Task<Automation.Abstractions.MatchDecision?>>
-        BuildNarrativeResolveMatch(IReadOnlyList<NarrativeEntry> entries) => ctx =>
+        BuildNarrativeResolveMatch(IReadOnlyList<NarrativeEntry> entries, bool batch = false) => ctx =>
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
             var issues = MatchAnalyzer.AnalyzeNarratives(
                 ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, entries.Select(e => e.Name).ToList());
             if (issues.Clean)
-                return new Automation.Abstractions.MatchDecision(StudentMatcher.MatchMode.ByName);
+                return new Automation.Abstractions.MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: batch ? _batchNameMap : null);
 
             // 과목만 다르면 간단 확인 (등급과 동일 UX)
             if (issues.SubjectOnlyMismatch)
@@ -831,17 +848,31 @@ public sealed class GeneratorViewModel : ObservableObject
                     $"화면 과목은 '{issues.ScreenSubject}'인데 입력 대상은 '{ctx.TargetSubject}'입니다.\n" +
                     "학생은 화면과 일치합니다. 이 화면에 그대로 입력할까요?",
                     "과목 확인", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
-                return ok ? new Automation.Abstractions.MatchDecision(StudentMatcher.MatchMode.ByName)
+                return ok ? new Automation.Abstractions.MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: batch ? _batchNameMap : null)
                           : (Automation.Abstractions.MatchDecision?)null;
             }
+
+            // 배치: 이름 불일치뿐이고 캐시가 그 학생들을 다 덮으면 창 없이 재사용 (같은 반 = 같은 명단)
+            if (batch && _batchNameMap is { } cached && issues.UnmatchedStudents.All(s => cached.ContainsKey(s.Name)))
+                return new Automation.Abstractions.MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: cached);
 
             // 학생 이름 불일치 → 확인 창 재사용 (합성 sheet 로 학생 옵션 제공; 영역은 없음)
             var sheet = new SubjectSheet(ctx.TargetSubject, System.Array.Empty<string>(),
                 entries.Select(e => new Student(e.No, e.Name, new Dictionary<string, string>())).ToList());
-            var vm = new MatchPreviewViewModel(issues, sheet);
-            var win = new MatchPreviewWindow(vm) { Owner = Application.Current.MainWindow };
-            return win.ShowDialog() == true ? vm.BuildDecision() : null;
+            var vm = new MatchPreviewViewModel(issues, sheet, batch ? _batchNameMap : null);
+            if (!MainViewModel.ShowMatchSteps(vm)) return null;   // 학생 이름창(서술문은 영역 없음)
+            var decision = vm.BuildDecision();
+            if (batch && decision?.NameMap is { } nm)
+            {
+                var merged = new Dictionary<string, string>(_batchNameMap ?? new Dictionary<string, string>());
+                foreach (var kv in nm) merged[kv.Key] = kv.Value;
+                _batchNameMap = merged;
+            }
+            return decision;
         }).Task;
+
+    // 전과목/전체반 배치에서 받은 학생 이름 매핑 — 같은 반이면 동일하므로 1회만 받고 재사용
+    private IReadOnlyDictionary<string, string>? _batchNameMap;
 
     /// <summary>유사(복붙 의심) 학생을 표현을 달리해 다시 생성 — 그 학생만 재생성.</summary>
     internal void RegenerateDistinct(StudentGenItem item)
@@ -883,16 +914,7 @@ public sealed class GeneratorViewModel : ObservableObject
             && _genClassMap.TryGetValue(_genClass, out var gc)
                 ? (gc.Grade, gc.Class, _genSubject)
                 : null;
-        if (!dryRun)
-        {
-            var prompt = ctx is { } c
-                ? $"'{c.Grade}-{c.Class} {c.Subject}' 세특 {items.Count}명을 나이스에 입력합니다.\n" +
-                  "학기말종합의견 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?"
-                : $"'{SelectedSubject}' {items.Count}명의 서술문을 나이스에 입력합니다.\n" +
-                  "학기말종합의견 화면으로 이동·조회한 뒤 자동 입력합니다. (저장은 안 하며, 확인 후 나이스에서 직접 [저장])\n\n계속할까요?";
-            var ok = MessageBox.Show(prompt, "확인", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (ok != MessageBoxResult.Yes) return;
-        }
+        // 시작 확인창 없음 — 단건 입력은 저장을 안 하고, 문제 시 매칭창·완료 시 대시보드가 뜬다.
 
         var entries = items.Select(s => new NarrativeEntry(s.No, s.Name, s.Result.Trim())).ToList();
         foreach (var s in items) s.UploadState = "";
@@ -902,32 +924,35 @@ public sealed class GeneratorViewModel : ObservableObject
             if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
         });
 
+        _uploadCts = new CancellationTokenSource();
+        var ct = _uploadCts.Token;
+        IsUploading = true;
         try
         {
             // 서술문은 나이스 '학기말종합의견' 화면에 입력 → 이동 후 과목(전담은 학년·반도) 맞추고 조회
             if (!dryRun)
             {
                 _mainLog($"{SelectedSubject} 서술문 화면을 준비하고 있어요…");
-                if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress))
+                if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress, ct))
                 { MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 
                 if (ctx is { } tc)   // 전담: 학년·반·교과 값 기반 선택 + 조회
                 {
-                    var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress);
+                    var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress, ct);
                     if (!okAxis) { MessageBox.Show($"학년·반·교과를 맞추지 못했어요.\n{whyAxis}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
-                    var (okQ, whyQ) = await _engine.QueryAsync();
+                    var (okQ, whyQ) = await _engine.QueryAsync(ct);
                     if (!okQ) { MessageBox.Show($"명단을 불러오지 못했어요.\n{whyQ}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
                 }
                 else                 // 담임: 자기 반 고정 → 교과만 전환(SelectSubject 가 조회까지)
                 {
-                    var (okSubj, whySubj) = await _engine.SelectSubjectAsync(SelectedSubject!);
+                    var (okSubj, whySubj) = await _engine.SelectSubjectAsync(SelectedSubject!, ct);
                     if (!okSubj) { MessageBox.Show($"'{SelectedSubject}' 과목으로 바꾸지 못했어요.\n{whySubj}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
                 }
             }
 
             var report = await _engine.RunNarrativesAsync(
                 SelectedSubject, entries, dryRun,
-                _settings.Options.MaxNarrativeBytes, progress, CancellationToken.None,
+                _settings.Options.MaxNarrativeBytes, progress, ct,
                 BuildNarrativeResolveMatch(entries));
 
             foreach (var s in items)
@@ -944,13 +969,33 @@ public sealed class GeneratorViewModel : ObservableObject
                           $"성공 {report.Done.Count} / 건너뜀 {report.Skipped.Count} / 실패 {report.Failed.Count}";
             _mainLog(summary);
             if (!dryRun) _mainLog("※ 저장하지 않았습니다. 나이스에서 값 확인 후 [저장]을 눌러주세요.");
-            MessageBox.Show(summary, "완료", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            // 결과 대시보드 — 전과목/전체반 입력과 동일한 창으로 통일 (재시도 = 같은 단건 다시 실행)
+            var label = ctx is { } lc ? $"{lc.Grade}-{lc.Class} {lc.Subject}" : SelectedSubject!;
+            var status = report.Failed.Count > 0 ? Automation.BatchUploadRunner.SubjectStatus.Failed
+                       : report.Done.Count == 0 ? Automation.BatchUploadRunner.SubjectStatus.Skipped
+                       : Automation.BatchUploadRunner.SubjectStatus.Success;
+            var msg = status switch
+            {
+                Automation.BatchUploadRunner.SubjectStatus.Failed =>
+                    $"입력 실패 {report.Failed.Count}명 — 저장하지 않았습니다",
+                Automation.BatchUploadRunner.SubjectStatus.Skipped => "입력할 서술문 없음",
+                _ => $"{report.Done.Count}명 입력 (저장은 나이스에서 직접)" +
+                     (report.Skipped.Count > 0 ? $" · 건너뜀 {report.Skipped.Count}명" : ""),
+            };
+            var outcome = new Automation.BatchUploadRunner.SubjectOutcome(
+                label, status, report.Done.Count, report.Skipped.Count, report.Failed, msg);
+            BatchResultWindow.ShowResult(new[] { outcome }, "명",
+                retry: async _ => { await UploadAsync(dryRun: false); return new[] { outcome }; },
+                owner: Application.Current.MainWindow);
         }
+        catch (OperationCanceledException) { _mainLog("⛔ 서술문 입력 중지됨"); }
         catch (Exception ex)
         {
             _mainLog($"서술문 입력 오류: {ex.Message}");
             MessageBox.Show(ex.Message, "서술문 입력 오류", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+        finally { IsUploading = false; }
     }
 
 }

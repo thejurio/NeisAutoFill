@@ -26,8 +26,10 @@ public sealed class ComboBoxDriver(IPage page)
         if (!await WaitPopupAsync(options))
             return new PickResult(false, "팝업 안 열림");
 
-        // 팝업을 위로 되감고, 보이는 옵션에서 찾기 → 없으면 아래로 스크롤하며 반복
+        // 팝업을 위로 되감고, 보이는 옵션에서 찾기 → 없으면 아래로 스크롤하며 반복.
+        // ★ 리셋 직후 가상 렌더가 위쪽 옵션을 다시 그릴 시간을 준다 (안 주면 위 옵션을 놓치고 아래로만 감).
         await ResetPopupScrollAsync();
+        await Task.Delay(Timings.PopupPollStep);
         for (int step = 0; step < 40; step++)
         {
             int count = await options.CountAsync();
@@ -66,6 +68,7 @@ public sealed class ComboBoxDriver(IPage page)
         var order = new List<string>();
         var seen = new HashSet<string>();
         await ResetPopupScrollAsync();
+        await Task.Delay(Timings.PopupPollStep);   // 리셋 후 위쪽 옵션 재렌더 대기 (안 주면 위 옵션 누락)
         for (int step = 0; step < 40; step++)
         {
             foreach (var t in await ReadOpenOptionsAsync())

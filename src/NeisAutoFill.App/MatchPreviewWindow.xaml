@@ -14,7 +14,7 @@
             <Border DockPanel.Dock="Top" Height="40" Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
                 <DockPanel LastChildFill="False">
                     <Image Source="app.ico" Width="18" Height="18" Margin="12,0,8,0" DockPanel.Dock="Left" VerticalAlignment="Center"/>
-                    <TextBlock DockPanel.Dock="Left" Text="입력 전 확인 — 화면과 자료가 완전히 일치하지 않습니다" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding StepTitle}" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
                     <Button DockPanel.Dock="Right" Style="{StaticResource CloseButton}" Content="&#xE8BB;" Click="Cancel_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
                 </DockPanel>
             </Border>
@@ -29,19 +29,10 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="16,12">
 
-                    <!-- 과목 불일치 -->
-                    <Border Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="7" Padding="12,10" Margin="0,0,0,12"
-                            Visibility="{Binding HasSubjectWarning, Converter={StaticResource BoolToVis}}">
-                        <StackPanel>
-                            <TextBlock FontWeight="Bold" FontSize="12.5" Foreground="#92400E" Text="⚠ 과목이 다릅니다"/>
-                            <TextBlock Text="{Binding SubjectWarning}" FontSize="12" Foreground="#92400E" TextWrapping="Wrap" Margin="0,4,0,6"/>
-                            <CheckBox IsChecked="{Binding SubjectAccepted}" FontSize="12" Foreground="#92400E"
-                                      Content="화면 과목이 달라도 이대로 입력하는 것에 동의합니다"/>
-                        </StackPanel>
-                    </Border>
+                    <!-- 과목 불일치 확인은 매핑창 진입 전 별도 메시지창에서 (ShowMatchSteps) — 체크박스 배너는 놓치기 쉬워 제거 -->
 
                     <!-- 학생 확인 -->
-                    <StackPanel Visibility="{Binding HasStudentIssues, Converter={StaticResource BoolToVis}}" Margin="0,0,0,14">
+                    <StackPanel Visibility="{Binding StudentSectionVisible, Converter={StaticResource BoolToVis}}" Margin="0,0,0,14">
                         <TextBlock Text="👤 내 성적표에 없는 학생이 화면에 있어요" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
                         <TextBlock Text="이 학생 자리에 누구의 성적을 넣을지 골라 주세요. 넣지 않으려면 '입력 안 함'을 고르면 그 학생은 건너뜁니다."
                                    FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,3,0,8" TextWrapping="Wrap"/>
@@ -59,7 +50,14 @@
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="0" Text="{Binding Display}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="자리에" FontSize="11.5" Foreground="{StaticResource Sub}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                <ComboBox Grid.Column="2" Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"/>
+                                                <ComboBox Grid.Column="2" Style="{StaticResource Combo}" ItemsSource="{Binding Options}"
+                                                          SelectedValuePath="Name" SelectedValue="{Binding Selected}" DisplayMemberPath="Name">
+                                                    <ComboBox.ItemContainerStyle>
+                                                        <Style TargetType="ComboBoxItem">
+                                                            <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
+                                                        </Style>
+                                                    </ComboBox.ItemContainerStyle>
+                                                </ComboBox>
                                                 <TextBlock Grid.Column="3" Text="의 성적 입력" FontSize="11.5" Foreground="{StaticResource Sub}" VerticalAlignment="Center" Margin="8,0,0,0"/>
                                             </Grid>
                                             <TextBlock Text="{Binding SuggestionNote}" FontSize="11" Foreground="{StaticResource Neis}" Margin="0,4,0,0" HorizontalAlignment="Right"
@@ -72,7 +70,7 @@
                     </StackPanel>
 
                     <!-- 영역 확인 — 화면 순서대로 넣을 영역 고르기 -->
-                    <StackPanel Visibility="{Binding HasAreaIssues, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Visibility="{Binding AreaSectionVisible, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="📋 평가 영역이 화면과 달라요" FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
                         <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,3,0,8" TextWrapping="Wrap"
                                    Text="아래는 나이스 화면에 보이는 영역을 위에서부터 순서대로 늘어놓은 것입니다.&#10;각 줄마다 내 성적표의 어떤 영역 성적을 넣을지 골라 주세요. 이름이 같은 영역은 이미 골라져 있습니다.&#10;넣지 않을 줄은 '입력 안 함'을 고르면 건드리지 않고 건너뜁니다."/>
@@ -90,7 +88,14 @@
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="0" Text="{Binding Display}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="줄에는" FontSize="11.5" Foreground="{StaticResource Sub}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                                <ComboBox Grid.Column="2" Style="{StaticResource Combo}" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"/>
+                                                <ComboBox Grid.Column="2" Style="{StaticResource Combo}" ItemsSource="{Binding Options}"
+                                                          SelectedValuePath="Name" SelectedValue="{Binding Selected}" DisplayMemberPath="Name">
+                                                    <ComboBox.ItemContainerStyle>
+                                                        <Style TargetType="ComboBoxItem">
+                                                            <Setter Property="IsEnabled" Value="{Binding IsEnabled}"/>
+                                                        </Style>
+                                                    </ComboBox.ItemContainerStyle>
+                                                </ComboBox>
                                                 <TextBlock Grid.Column="3" Text="의 성적 입력" FontSize="11.5" Foreground="{StaticResource Sub}" VerticalAlignment="Center" Margin="8,0,0,0"/>
                                             </Grid>
                                             <TextBlock Text="{Binding SuggestionNote}" FontSize="11" Foreground="{StaticResource Neis}" Margin="0,4,0,0" HorizontalAlignment="Right"

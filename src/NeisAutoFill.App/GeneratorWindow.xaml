@@ -85,6 +85,9 @@
                                 </Button.ContextMenu>
                             </Button>
                         </StackPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="■" Padding="9,5" Command="{Binding CancelUploadCommand}" Margin="6,0,0,0"
+                                Visibility="{Binding IsUploading, Converter={StaticResource BoolToVis}}"
+                                ToolTip="진행 중인 나이스 서술문 입력을 중지합니다 (전체반/전과목 배치도 그 자리에서 중단)"/>
                         <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="{Binding UploadAllLabel}" Command="{Binding UploadAllCommand}"
                                 ToolTip="여러 대상의 서술문을 순서대로 나이스에 입력합니다. 각 대상 검증 통과 시 자동 [저장] 후 다음으로 넘어갑니다."/>
                         <Button DockPanel.Dock="Right" Style="{StaticResource AccentGhostButton}" Content="{Binding UploadOneLabel}" Command="{Binding UploadCommand}" Margin="0,0,6,0"/>

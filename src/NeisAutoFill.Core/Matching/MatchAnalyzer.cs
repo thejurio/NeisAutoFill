@@ -17,7 +17,8 @@ public static class MatchAnalyzer
         IReadOnlyList<string> UnmatchedAreas,                       // 엑셀에 없는 화면 영역명
         bool DuplicateAreas,                                        // 화면 한 학생에 같은 영역명 중복
         bool AreaCountMismatch,                                     // 학생별 화면 행 수 ≠ 엑셀 영역 수
-        int RowsPerStudent)                                         // 화면 학생별 행 수 (대표값)
+        int RowsPerStudent,                                         // 화면 학생별 행 수 (대표값)
+        IReadOnlyList<string> UnmatchedExcelStudents)              // 엑셀엔 있는데 화면에 없음 = 매핑 후보(남은 이름)
     {
         public bool Clean =>
             !SubjectMismatch && UnmatchedStudents.Count == 0 &&
@@ -64,11 +65,17 @@ public static class MatchAnalyzer
         int rowsPerStudent = rowsByStudent.Values.Select(v => v.Count).DefaultIfEmpty(0).Max();
         bool countMismatch = rowsByStudent.Values.Any(v => v.Count != excelAreas.Count);
 
+        // 화면에 없는 엑셀 학생 = 자동 매칭 안 된 '남은 이름' → 매핑 후보로만 제공(자동 매칭된 이름은 뺀다)
+        var screenNames = rowMap.Values.Where(v => v.Name is not null)
+            .Select(v => NameNormalizer.Normalize(v.Name!)).ToHashSet();
+        var unmatchedExcel = students.Where(s => !screenNames.Contains(NameNormalizer.Normalize(s.Name)))
+            .Select(s => s.Name).ToList();
+
         return new Issues(
             screenSubject,
             screenSubject is not null && screenSubject != targetSubject,
             unmatchedStudents, screenAreas, unmatchedAreas,
-            duplicateAreas, countMismatch, rowsPerStudent);
+            duplicateAreas, countMismatch, rowsPerStudent, unmatchedExcel);
     }
 
     /// <summary>
@@ -94,11 +101,17 @@ public static class MatchAnalyzer
                 unmatched.Add((no ?? "", name));
         }
 
+        // 화면에 없는 내 학생 = 남은 매핑 후보
+        var screenNames = rowMap.Values.Where(v => v.Name is not null)
+            .Select(v => NameNormalizer.Normalize(v.Name!)).ToHashSet();
+        var unmatchedExcel = entryNames.Where(n => !screenNames.Contains(NameNormalizer.Normalize(n))).ToList();
+
         return new Issues(
             screenSubject,
             screenSubject is not null && screenSubject != targetSubject,
             unmatched,
             Array.Empty<string>(), Array.Empty<string>(),   // 영역 없음
-            DuplicateAreas: false, AreaCountMismatch: false, RowsPerStudent: 0);
+            DuplicateAreas: false, AreaCountMismatch: false, RowsPerStudent: 0,
+            UnmatchedExcelStudents: unmatchedExcel);
     }
 }

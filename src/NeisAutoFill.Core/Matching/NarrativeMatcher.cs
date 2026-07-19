@@ -45,7 +45,13 @@ public static class NarrativeMatcher
             // 사용자 매핑 우선 — 화면 성명이 매핑에 있으면 그 결정을 따른다
             if (nameMap is not null && nameMap.TryGetValue(name, out var mapped))
             {
-                if (string.IsNullOrEmpty(mapped)) continue;   // 명시적 '입력 안 함'
+                if (string.IsNullOrEmpty(mapped))   // 명시적 '입력 안 함' → 건너뜀으로 집계 (1회만)
+                {
+                    skipped.Add(new SkipItem(no ?? "", name, "", "사용자가 '입력 안 함'으로 지정"));
+                    // 같은 이름의 내 서술문도 '처리됨' 표시 — 아래 '화면에서 못 찾음'으로 이중 집계되지 않게
+                    if (byName.TryGetValue(NameNormalizer.Normalize(name), out var ex)) used.Add(ex);
+                    continue;
+                }
                 entry = byName.TryGetValue(NameNormalizer.Normalize(mapped), out var em) ? em : null;
             }
             else
