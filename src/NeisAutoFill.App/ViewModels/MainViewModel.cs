@@ -900,17 +900,13 @@ public sealed class MainViewModel : ObservableObject
             return null;
         }
 
-        // 전담: 그 반·과목으로 나이스를 맞추고, 이동 직후엔 명단이 없으니 반드시 [조회] 한다.
+        // 전담: 그 반·과목으로 나이스를 맞추고 [조회] — 배치와 같은 준비 헬퍼 (R10)
         // (콤보 찾기·선택 같은 중계는 화면에 안 보이게 — 진행은 아래 한 줄로만 알린다)
         if (subjectModeClass is { } cls)
         {
             Log($"{cls.Grade}학년 {cls.Class}반 {sheet.SubjectName} 화면을 준비하고 있어요…");
-            var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, null);
-            if (!okClass) { ShowError($"{cls.Grade}학년 {cls.Class}반으로 이동하지 못했어요.\n{whyClass}"); return null; }
-            var (okSubj, whySubj) = await _engine.SelectSubjectAsync(sheet.SubjectName);
-            if (!okSubj) { ShowError($"'{sheet.SubjectName}' 과목으로 바꾸지 못했어요.\n{whySubj}"); return null; }
-            var (okQ, whyQ) = await _engine.QueryAsync();   // 콤보가 그대로여도 명단이 뜨도록 조회
-            if (!okQ) { ShowError($"명단을 불러오지 못했어요.\n{whyQ}"); return null; }
+            if (await PrepareClassScreenAsync(cls, sheet.SubjectName, CancellationToken.None) is { } why)
+            { ShowError(why); return null; }
         }
 
         _cts = new CancellationTokenSource();
@@ -971,11 +967,7 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task RunAllSubjectsAsync()
     {
-        if (!_engine.Connected)
-        {
-            ShowError("나이스에 아직 연결되지 않았습니다. [① NEIS 접속] 후 로그인·조회하면 자동으로 연결됩니다.");
-            return;
-        }
+        if (_session.ConnectCheck() is { } notConnected) { ShowError(notConnected); return; }
 
         // 전담: 탭=반이므로 "이 과목을 여러 반에 순회 입력" (담임은 아래 기존 경로 = 한 반에 과목 순회)
         if (IsSubjectMode) { await RunAllClassesAsync(); return; }
@@ -984,11 +976,10 @@ public sealed class MainViewModel : ObservableObject
         if (!allSheets.Any(s => s.Students.Any(st => st.Grades.Count > 0)))
         { ShowError("입력할 성적이 없습니다. 성적표에 등급을 먼저 입력해 주세요."); return; }
 
-        // 교과별 평가 화면으로 먼저 이동해야 화면 과목 목록을 읽어 매칭할 수 있다.
-        // (딴 화면이면 과목 콤보 조회가 안 되므로 매핑이 빈다)
+        // 교과별 평가 화면으로 먼저 이동해야 화면 과목 목록을 읽어 매칭할 수 있다 (게이트가 이동까지, R9)
         var navProg = new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message));
-        if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.Evaluation, navProg))
-        { ShowError("교과별 평가 화면으로 이동하지 못했어요. 나이스에서 직접 열어 주세요."); return; }
+        if (await _session.EnsureReadyAsync(Automation.Abstractions.NeisTarget.Evaluation, navProg) is { } blocked)
+        { ShowError(blocked); return; }
 
         // 과목 체크리스트 — 입력할 과목을 고르고, 자동 저장 동의도 이 창에서
         var picks = allSheets.Select(s =>
@@ -996,58 +987,31 @@ public sealed class MainViewModel : ObservableObject
             int n = s.Students.Sum(st => st.Grades.Count(g => !string.IsNullOrWhiteSpace(g.Value)));
             return new SubjectPick(s.SubjectName, n, n > 0 ? $"등급 {n}건 입력 예정" : "입력할 등급 없음");
         }).ToList();
-        // 화면 과목 목록을 읽어 매핑 자동 제안 (이름이 다르면 사용자가 창에서 고른다)
-        await PopulateScreenMappingAsync(picks);
 
-        var win = new BatchGenerateWindow(picks,
-            title: "전과목 나이스 입력",
-            description: "나이스에 입력할 과목을 선택하세요. 교과별 평가 화면으로 자동 이동해 과목마다 조회·입력·저장합니다.",
-            startLabel: "🚀 입력 시작",
-            warning: "각 과목 입력 후 값 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 과목으로 넘어갑니다. " +
-                     "검증에 실패한 과목은 저장하지 않고 그 자리에서 중단합니다.")
-        { Owner = Application.Current.MainWindow };
-        if (win.ShowDialog() != true) return;
-
-        var chosen = picks.Where(p => p.IsChecked).ToList();
-        var chosenNames = chosen.Select(p => p.Name).ToHashSet();
-        var sheets = allSheets.Where(s => chosenNames.Contains(s.SubjectName)).ToList();
-        if (sheets.Count == 0) return;
-
-        _cts = new CancellationTokenSource();
-        MatchSession.Reset();   // 이번 배치의 이름 매핑 캐시 초기화 (첫 과목에서 받고 이후 재사용)
-        var bySubject = sheets.ToDictionary(s => s.SubjectName);
-        var targets = BuildTargets(chosen);   // 내 과목 → 화면 과목 매핑 반영
-
-        // runSubject 를 델리게이트로 빼 재시도 때 그대로 재사용한다 (엔진 경로 동일)
-        Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runSubject = async subjectName =>
+        var bySubject = allSheets.ToDictionary(s => s.SubjectName);
+        await new Helpers.BatchUploadFlow
         {
-            ProgressValue = 0;
-            var sheet = bySubject[subjectName];
-            var report = await _engine.RunSubjectAsync(
-                sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet, batch: true), _cts.Token);
-            return new Automation.BatchUploadRunner.SubjectResult(
-                report.Done.Count, report.Failed, report.Skipped.Count,
-                report.Skipped.Any(s => s.Reason == "사용자 취소"));
-        };
-
-        var outcomes = await Automation.BatchUploadRunner.RunAsync(
-            targets, _engine, runSubject, Log, unit: "건", _cts.Token);
-
-        Log(new string('=', 50));
-        Log("전과목 자동 입력 결과:");
-        foreach (var s in Automation.BatchUploadRunner.Summarize(outcomes)) Log("  " + s);
-
-        // 재시도: 실패·미도달 과목만 같은 경로로 (표시명 → 매핑된 화면명 복원)
-        var screenByDisplay = targets.ToDictionary(t => t.Display, t => t.Screen);
-        BatchResultWindow.ShowResult(outcomes, "건",
-            retry: async subs =>
+            Title = "전과목 나이스 입력",
+            Description = "나이스에 입력할 과목을 선택하세요. 교과별 평가 화면으로 자동 이동해 과목마다 조회·입력·저장합니다.",
+            TargetNoun = "과목",
+            Unit = "건",
+            SummaryTitle = "전과목 자동 입력 결과",
+            Engine = _engine,
+            Log = Log,
+            NewCts = () => (_cts = new CancellationTokenSource()).Token,
+            MapScreenSubjects = true,   // 화면 과목 목록을 읽어 매핑 자동 제안 (이름이 다르면 사용자가 창에서 고른다)
+            OnStart = () => MatchSession.Reset(),   // 이름 매핑 캐시 초기화 (첫 과목에서 받고 이후 재사용)
+            RunTarget = async subjectName =>
             {
-                _cts = new CancellationTokenSource();
-                var rt = subs.Select(d => new Automation.BatchUploadRunner.SubjectTarget(
-                    d, screenByDisplay.TryGetValue(d, out var sc) ? sc : d)).ToList();
-                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runSubject, Log, "건", _cts.Token);
+                ProgressValue = 0;
+                var sheet = bySubject[subjectName];
+                var report = await _engine.RunSubjectAsync(
+                    sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet, batch: true), _cts!.Token);
+                return new Automation.BatchUploadRunner.SubjectResult(
+                    report.Done.Count, report.Failed, report.Skipped.Count,
+                    report.Skipped.Any(s => s.Reason == "사용자 취소"));
             },
-            owner: Application.Current.MainWindow);
+        }.RunAsync(picks);
     }
 
     /// <summary>전담 배치: 지금 보는 과목을, 고른 여러 반에 순회 입력 (F9 M9).
@@ -1072,93 +1036,58 @@ public sealed class MainViewModel : ObservableObject
         if (!picks.Any(p => p.EligibleCount > 0))
         { ShowError("입력할 성적이 없습니다. 반 탭에서 등급을 먼저 입력해 주세요."); return; }
 
-        var win = new BatchGenerateWindow(picks,
-            title: $"'{_currentSubject}' 여러 반 입력",
-            description: $"'{_currentSubject}' 성적을 입력할 반을 선택하세요. 각 반으로 이동·조회한 뒤 자동 입력합니다.",
-            startLabel: "🚀 입력 시작",
-            warning: "각 반 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 반으로 넘어갑니다. " +
-                     "검증에 실패한 반은 저장하지 않고 그 자리에서 중단합니다.")
-        { Owner = Application.Current.MainWindow };
-        if (win.ShowDialog() != true) return;
-
-        var chosen = picks.Where(p => p.IsChecked).Select(p => p.Name).ToList();
-        if (chosen.Count == 0) return;
-
-        _cts = new CancellationTokenSource();
-        var targets = chosen.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
-
-        // 한 반 입력: 그 반으로 이동·조회 후 입력, 통과하면 그 반 파일에 저장 (전과목 배치와 같은 러너 재사용)
-        Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runClass = async classKey =>
+        await new Helpers.BatchUploadFlow
         {
-            ProgressValue = 0;
-            var vm = tabsByClass[classKey];
-            var cls = vm.OwnerClass!.Value;
-            var sheet = vm.Snapshot();
-
-            // 교과별 평가 화면이 아니면 먼저 이동 (다른 화면에서 눌러도 동작)
-            if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.Evaluation,
-                    new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message)), _cts.Token))
-                return Fail(sheet, "교과별 평가 화면 이동 실패");
-            var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, null, _cts.Token);
-            if (!okClass) return Fail(sheet, $"{cls.Key} 이동 실패: {whyClass}");
-            var (okSubj, whySubj) = await _engine.SelectSubjectAsync(_currentSubject!, _cts.Token);
-            if (!okSubj) return Fail(sheet, $"과목 전환 실패: {whySubj}");
-            var (okQ, whyQ) = await _engine.QueryAsync(_cts.Token);
-            if (!okQ) return Fail(sheet, $"조회 실패: {whyQ}");
-
-            var report = await _engine.RunSubjectAsync(
-                sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
-
-            // 나이스 [저장]은 러너가 검증 통과 시 일관되게 누른다 (여기서 또 누르면 이중 저장 → 실패)
-            if (report.Failed.Count == 0) SaveSubjectTabsIfDirty();   // 로컬 파일 저장만
-            return new Automation.BatchUploadRunner.SubjectResult(
-                report.Done.Count, report.Failed, report.Skipped.Count,
-                report.Skipped.Any(s => s.Reason == "사용자 취소"));
-        };
-
-        // switchSubjects:false — 대상이 반("3-1")이라 러너의 과목 전환을 끈다 (이동은 runClass 가 함)
-        var outcomes = await Automation.BatchUploadRunner.RunAsync(
-            targets, _engine, runClass, Log, unit: "건", _cts.Token, switchSubjects: false);
-
-        Log($"'{_currentSubject}' 여러 반 입력 결과:");
-        foreach (var s in Automation.BatchUploadRunner.Summarize(outcomes)) Log("  " + s);
-
-        BatchResultWindow.ShowResult(outcomes, "건",
-            retry: async subs =>
+            Title = $"'{_currentSubject}' 여러 반 입력",
+            Description = $"'{_currentSubject}' 성적을 입력할 반을 선택하세요. 각 반으로 이동·조회한 뒤 자동 입력합니다.",
+            TargetNoun = "반",
+            Unit = "건",
+            SummaryTitle = $"'{_currentSubject}' 여러 반 입력 결과",
+            Engine = _engine,
+            Log = Log,
+            NewCts = () => (_cts = new CancellationTokenSource()).Token,
+            SwitchSubjects = false,   // 대상이 반("3-1")이라 러너의 과목 전환을 끈다 (이동·전환은 아래에서)
+            // 한 반 입력: 그 반으로 이동·조회 후 입력, 통과하면 그 반 파일에 저장
+            RunTarget = async classKey =>
             {
-                _cts = new CancellationTokenSource();
-                var rt = subs.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
-                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, Log, "건", _cts.Token, switchSubjects: false);
+                ProgressValue = 0;
+                var vm = tabsByClass[classKey];
+                var sheet = vm.Snapshot();
+
+                if (await PrepareClassScreenAsync(vm.OwnerClass!.Value, _currentSubject!, _cts!.Token) is { } why)
+                    return Fail(why);
+
+                var report = await _engine.RunSubjectAsync(
+                    sheet, _scales.Active, dryRun: false, _progress, BuildResolveMatch(sheet), _cts.Token);
+
+                // 나이스 [저장]은 러너가 검증 통과 시 일관되게 누른다 (여기서 또 누르면 이중 저장 → 실패)
+                if (report.Failed.Count == 0) SaveSubjectTabsIfDirty();   // 로컬 파일 저장만
+                return new Automation.BatchUploadRunner.SubjectResult(
+                    report.Done.Count, report.Failed, report.Skipped.Count,
+                    report.Skipped.Any(s => s.Reason == "사용자 취소"));
             },
-            owner: Application.Current.MainWindow);
+        }.RunAsync(picks);
     }
 
-    private static Automation.BatchUploadRunner.SubjectResult Fail(SubjectSheet sheet, string reason) =>
-        new(0, new[] { new SkipItem("", "", "", reason) }, 0, false);
-
-    /// <summary>선택된 과목들로 (내 과목 → 화면 과목) 대상 목록을 만든다. 매핑이 없거나 '미선택'이면 같은 이름으로 폴백.</summary>
-    private static List<Automation.BatchUploadRunner.SubjectTarget> BuildTargets(IEnumerable<SubjectPick> chosen) =>
-        chosen.Select(p =>
-        {
-            var screen = p.HasScreenOptions && p.ScreenSubject != SubjectPick.NoScreenMatch
-                ? p.ScreenSubject : p.Name;
-            return new Automation.BatchUploadRunner.SubjectTarget(p.Name, screen);
-        }).ToList();
-
-    /// <summary>화면 과목 콤보 목록을 읽어 각 pick 에 자동 매핑을 채운다. 못 읽으면(오프라인 등) 매핑 UI 없이 같은 이름 사용.</summary>
-    private async Task PopulateScreenMappingAsync(IReadOnlyList<SubjectPick> picks)
+    /// <summary>전담 성적 화면 준비 — 교과별 평가로 이동(이미 있으면 생략) → 반 → 과목 → [조회].
+    /// 이동 직후엔 명단이 없으니 반드시 조회한다. 실패하면 사유 문구, 성공이면 null (단건·배치 공용, R10).</summary>
+    private async Task<string?> PrepareClassScreenAsync(
+        NeisAutoFill.Core.ClassRef cls, string subject, CancellationToken ct)
     {
-        try
-        {
-            // ★ 이전 작업에서 취소된 _cts.Token 을 쓰면 콤보 읽기가 즉시 취소돼 매핑이 안 뜬다 → None 으로 읽는다(서술문과 동일)
-            var screen = await _engine.ReadSubjectOptionsAsync();
-            if (screen.Count == 0) return;   // 콤보를 못 읽음 → 기존처럼 같은 이름으로 진행
-            var suggestions = Core.SubjectMapper.Suggest(picks.Select(p => p.Name).ToList(), screen);
-            for (int i = 0; i < picks.Count; i++)
-                picks[i].SetScreenMapping(screen, suggestions[i].Screen, suggestions[i].Auto);
-        }
-        catch (Exception ex) { Diag.Swallow(ex, "전과목(등급) 화면 과목 매핑"); }   // 같은 이름으로 진행
+        if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.Evaluation,
+                new Progress<Automation.Abstractions.ProgressInfo>(p => Log(p.Message)), ct))
+            return "교과별 평가 화면으로 이동하지 못했어요.";
+        var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, null, ct);
+        if (!okClass) return $"{cls.Grade}학년 {cls.Class}반으로 이동하지 못했어요 — {whyClass}";
+        var (okSubj, whySubj) = await _engine.SelectSubjectAsync(subject, ct);
+        if (!okSubj) return $"'{subject}' 과목으로 바꾸지 못했어요 — {whySubj}";
+        var (okQ, whyQ) = await _engine.QueryAsync(ct);   // 콤보가 그대로여도 명단이 뜨도록 조회
+        if (!okQ) return $"명단을 불러오지 못했어요 — {whyQ}";
+        return null;
     }
+
+    private static Automation.BatchUploadRunner.SubjectResult Fail(string reason) =>
+        new(0, new[] { new SkipItem("", "", "", reason) }, 0, false);
 
     // ── 화면 진단 (Phase 5.5 셀렉터 실측용 — docs/보관_진단_검증도구.md) ──
 

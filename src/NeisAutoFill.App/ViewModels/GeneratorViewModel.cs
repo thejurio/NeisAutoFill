@@ -489,62 +489,36 @@ public sealed class GeneratorViewModel : ObservableObject
         var picks = allBySubject
             .Select(kv => new SubjectPick(kv.Key, kv.Value.Count, $"서술문 {kv.Value.Count}명 입력 예정"))
             .ToList();
-        // 화면 과목 목록을 읽어 매핑 자동 제안 (이름이 다르면 사용자가 창에서 고른다)
-        await PopulateScreenMappingAsync(picks);
-
-        var win = new BatchGenerateWindow(picks,
-            title: "전과목 서술문 입력",
-            description: "나이스에 입력할 과목을 선택하세요. 학기말종합의견 화면으로 자동 이동해 과목마다 조회·입력·저장합니다.",
-            startLabel: "🚀 입력 시작",
-            warning: "각 과목 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 과목으로 넘어갑니다. " +
-                     "검증에 실패한 과목은 저장하지 않고 그 자리에서 중단합니다.")
-        { Owner = Application.Current.MainWindow };
-        if (win.ShowDialog() != true) return;
-
-        var chosen = picks.Where(p => p.IsChecked).ToList();
-        var chosenNames = chosen.Select(p => p.Name).ToHashSet();
-        var bySubject = allBySubject.Where(kv => chosenNames.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
-        if (bySubject.Count == 0) return;
-        var targets = BuildTargets(chosen);
 
         var progress = new Progress<Automation.Abstractions.ProgressInfo>(p =>
         {
             if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
         });
 
-        MatchSession.Reset();   // 이름 매핑 캐시 초기화 — 첫 과목에서 받고 이후 재사용
-        _uploadCts = new CancellationTokenSource();
-        var ct = _uploadCts.Token;
-        IsUploading = true;
-        // runSubject 를 델리게이트로 빼 재시도 때 그대로 재사용
-        Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runSubject = async subject =>
+        await new Helpers.BatchUploadFlow
         {
-            var subjectEntries = bySubject[subject];
-            var report = await _engine.RunNarrativesAsync(
-                subject, subjectEntries, dryRun: false, _settings.Options.MaxNarrativeBytes,
-                progress, ct, BuildNarrativeResolveMatch(subjectEntries, batch: true));
-            return new Automation.BatchUploadRunner.SubjectResult(
-                report.Done.Count, report.Failed, report.Skipped.Count,
-                report.Skipped.Any(s => s.Reason == "사용자 취소"));
-        };
-
-        List<Automation.BatchUploadRunner.SubjectOutcome> outcomes;
-        try { outcomes = await Automation.BatchUploadRunner.RunAsync(targets, _engine, runSubject, _mainLog, unit: "명", ct); }
-        finally { IsUploading = false; }
-
-        _mainLog("전과목 서술문 입력 결과: " +
-            string.Join(" / ", Automation.BatchUploadRunner.Summarize(outcomes)));
-
-        var screenByDisplay = targets.ToDictionary(t => t.Display, t => t.Screen);
-        BatchResultWindow.ShowResult(outcomes, "명",
-            retry: async subs =>
+            Title = "전과목 서술문 입력",
+            Description = "나이스에 입력할 과목을 선택하세요. 학기말종합의견 화면으로 자동 이동해 과목마다 조회·입력·저장합니다.",
+            TargetNoun = "과목",
+            Unit = "명",
+            SummaryTitle = "전과목 서술문 입력 결과",
+            Engine = _engine,
+            Log = _mainLog,
+            NewCts = () => (_uploadCts = new CancellationTokenSource()).Token,
+            Running = v => IsUploading = v,
+            MapScreenSubjects = true,   // 화면 과목 목록을 읽어 매핑 자동 제안 (이름이 다르면 사용자가 창에서 고른다)
+            OnStart = () => MatchSession.Reset(),   // 이름 매핑 캐시 초기화 — 첫 과목에서 받고 이후 재사용
+            RunTarget = async subject =>
             {
-                var rt = subs.Select(d => new Automation.BatchUploadRunner.SubjectTarget(
-                    d, screenByDisplay.TryGetValue(d, out var sc) ? sc : d)).ToList();
-                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runSubject, _mainLog, "명", CancellationToken.None);
+                var subjectEntries = allBySubject[subject];
+                var report = await _engine.RunNarrativesAsync(
+                    subject, subjectEntries, dryRun: false, _settings.Options.MaxNarrativeBytes,
+                    progress, _uploadCts!.Token, BuildNarrativeResolveMatch(subjectEntries, batch: true));
+                return new Automation.BatchUploadRunner.SubjectResult(
+                    report.Done.Count, report.Failed, report.Skipped.Count,
+                    report.Skipped.Any(s => s.Reason == "사용자 취소"));
             },
-            owner: Application.Current.MainWindow);
+        }.RunAsync(picks);
     }
 
     /// <summary>전담: 지금 교과의 세특을 고른 여러 반에 순회 입력 (F9 M11 — 성적 전체 반 입력과 대칭).
@@ -583,90 +557,68 @@ public sealed class GeneratorViewModel : ObservableObject
             return pick;
         }).ToList();
 
-        var win = new BatchGenerateWindow(picks,
-            title: $"'{subject}' 여러 반 세특 입력",
-            description: $"'{subject}' 세특을 입력할 반을 선택하세요. 각 반으로 이동·조회한 뒤 자동 입력합니다.",
-            startLabel: "🚀 입력 시작",
-            warning: "각 반 입력 후 검증을 통과하면 나이스 [저장]을 자동으로 누르고 다음 반으로 넘어갑니다. " +
-                     "검증에 실패한 반은 저장하지 않고 그 자리에서 중단합니다.")
-        { Owner = Application.Current.MainWindow };
-        if (win.ShowDialog() != true) return;
-
-        var chosen = picks.Where(p => p.IsChecked).Select(p => p.Name).ToHashSet();
-        var targets = perClass.Where(pc => chosen.Contains($"{pc.Grade}-{pc.Class}"))
-            .Select(pc => new Automation.BatchUploadRunner.SubjectTarget($"{pc.Grade}-{pc.Class}", $"{pc.Grade}-{pc.Class}"))
-            .ToList();
-        if (targets.Count == 0) return;
-
         var progress = new Progress<Automation.Abstractions.ProgressInfo>(p =>
         {
             if (!string.IsNullOrEmpty(p.Message)) _mainLog(p.Message);
         });
 
-        _uploadCts = new CancellationTokenSource();
-        var ct = _uploadCts.Token;
-        IsUploading = true;
-        Func<string, Task<Automation.BatchUploadRunner.SubjectResult>> runClass = async classKey =>
+        await new Helpers.BatchUploadFlow
         {
-            var pc = perClass.First(x => $"{x.Grade}-{x.Class}" == classKey);
-            _mainLog($"{pc.Grade}-{pc.Class} {subject} 세특 화면을 준비하고 있어요…");
-            // 세특 서술문은 나이스에서 '학기말종합의견' 화면에 입력한다 (교과학습발달상황 아님)
-            if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress, ct))
-                return Fail($"{classKey} 학기말종합의견 화면 이동 실패");
-            var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(pc.Grade, pc.Class, subject, progress, ct);
-            if (!okAxis) return Fail($"{classKey} 학년·반·교과 선택 실패: {whyAxis}");
-            var (okQ, whyQ) = await _engine.QueryAsync(ct);
-            if (!okQ) return Fail($"{classKey} 조회 실패: {whyQ}");
-
-            var report = await _engine.RunNarrativesAsync(
-                subject, pc.Entries, dryRun: false, _settings.Options.MaxNarrativeBytes,
-                progress, ct, BuildNarrativeResolveMatch(pc.Entries));
-            // 나이스 [저장]은 러너가 검증 통과 시 일관되게 누른다 (여기서 또 누르면 이중 저장 → 실패)
-            return new Automation.BatchUploadRunner.SubjectResult(
-                report.Done.Count, report.Failed, report.Skipped.Count,
-                report.Skipped.Any(s => s.Reason == "사용자 취소"));
-        };
-
-        List<Automation.BatchUploadRunner.SubjectOutcome> outcomes;
-        // switchSubjects:false — 대상이 반("3-1")이라 러너의 과목 전환을 끈다 (이동은 runClass 가 함)
-        try { outcomes = await Automation.BatchUploadRunner.RunAsync(targets, _engine, runClass, _mainLog, unit: "명", ct, switchSubjects: false); }
-        finally { IsUploading = false; }
-        _mainLog($"'{subject}' 여러 반 세특 입력 결과: " +
-            string.Join(" / ", Automation.BatchUploadRunner.Summarize(outcomes)));
-
-        BatchResultWindow.ShowResult(outcomes, "명",
-            retry: async subs =>
+            Title = $"'{subject}' 여러 반 세특 입력",
+            Description = $"'{subject}' 세특을 입력할 반을 선택하세요. 각 반으로 이동·조회한 뒤 자동 입력합니다.",
+            TargetNoun = "반",
+            Unit = "명",
+            SummaryTitle = $"'{subject}' 여러 반 세특 입력 결과",
+            Engine = _engine,
+            Log = _mainLog,
+            NewCts = () => (_uploadCts = new CancellationTokenSource()).Token,
+            Running = v => IsUploading = v,
+            SwitchSubjects = false,   // 대상이 반("3-1")이라 러너의 과목 전환을 끈다 (이동·전환은 아래에서)
+            RunTarget = async classKey =>
             {
-                var rt = subs.Select(k => new Automation.BatchUploadRunner.SubjectTarget(k, k)).ToList();
-                return await Automation.BatchUploadRunner.RunAsync(rt, _engine, runClass, _mainLog, "명", CancellationToken.None, switchSubjects: false);
+                var ct = _uploadCts!.Token;
+                var pc = perClass.First(x => $"{x.Grade}-{x.Class}" == classKey);
+                _mainLog($"{pc.Grade}-{pc.Class} {subject} 세특 화면을 준비하고 있어요…");
+                if (await PrepareNarrativeScreenAsync((pc.Grade, pc.Class, subject), subject, progress, ct) is { } why)
+                    return Fail($"{classKey} {why}");
+
+                var report = await _engine.RunNarrativesAsync(
+                    subject, pc.Entries, dryRun: false, _settings.Options.MaxNarrativeBytes,
+                    progress, ct, BuildNarrativeResolveMatch(pc.Entries));
+                // 나이스 [저장]은 러너가 검증 통과 시 일관되게 누른다 (여기서 또 누르면 이중 저장 → 실패)
+                return new Automation.BatchUploadRunner.SubjectResult(
+                    report.Done.Count, report.Failed, report.Skipped.Count,
+                    report.Skipped.Any(s => s.Reason == "사용자 취소"));
             },
-            owner: Application.Current.MainWindow);
+        }.RunAsync(picks);
     }
 
     private static Automation.BatchUploadRunner.SubjectResult Fail(string reason) =>
         new(0, new[] { new SkipItem("", "", "", reason) }, 0, false);
 
-    /// <summary>선택된 과목들로 (내 과목 → 화면 과목) 대상 목록. 매핑 없거나 '미선택'이면 같은 이름.</summary>
-    private static List<Automation.BatchUploadRunner.SubjectTarget> BuildTargets(IEnumerable<SubjectPick> chosen) =>
-        chosen.Select(p =>
-        {
-            var screen = p.HasScreenOptions && p.ScreenSubject != SubjectPick.NoScreenMatch
-                ? p.ScreenSubject : p.Name;
-            return new Automation.BatchUploadRunner.SubjectTarget(p.Name, screen);
-        }).ToList();
-
-    /// <summary>화면 과목 목록을 읽어 각 pick 에 자동 매핑을 채운다. 못 읽으면 매핑 UI 없이 같은 이름.</summary>
-    private async Task PopulateScreenMappingAsync(IReadOnlyList<SubjectPick> picks)
+    /// <summary>서술문 화면 준비 — 학기말종합의견으로 이동(이미 있으면 생략) 후,
+    /// 전담(ctx 있음)은 학년·반·교과 선택+[조회], 담임은 과목만 전환(조회 포함).
+    /// 실패하면 사유 문구, 성공이면 null (단건·배치 공용, R10).
+    /// 세특 서술문은 나이스 '학기말종합의견' 화면에 입력한다 (교과학습발달상황 아님).</summary>
+    private async Task<string?> PrepareNarrativeScreenAsync(
+        (int Grade, string Class, string Subject)? ctx, string subject,
+        IProgress<Automation.Abstractions.ProgressInfo> progress, CancellationToken ct)
     {
-        try
+        if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress, ct))
+            return "학기말종합의견 화면으로 이동하지 못했어요.";
+        if (ctx is { } tc)   // 전담: 학년·반·교과 값 기반 선택 + 조회
         {
-            var screen = await _engine.ReadSubjectOptionsAsync();
-            if (screen.Count == 0) return;
-            var suggestions = Core.SubjectMapper.Suggest(picks.Select(p => p.Name).ToList(), screen);
-            for (int i = 0; i < picks.Count; i++)
-                picks[i].SetScreenMapping(screen, suggestions[i].Screen, suggestions[i].Auto);
+            var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress, ct);
+            if (!okAxis) return $"학년·반·교과를 맞추지 못했어요 — {whyAxis}";
+            var (okQ, whyQ) = await _engine.QueryAsync(ct);
+            if (!okQ) return $"명단을 불러오지 못했어요 — {whyQ}";
         }
-        catch (Exception ex) { Diag.Swallow(ex, "전과목(서술문) 화면 과목 매핑"); }   // 같은 이름으로 진행
+        else                 // 담임: 자기 반 고정 → 교과만 전환 (SelectSubject 가 조회까지)
+        {
+            var (okSubj, whySubj) = await _engine.SelectSubjectAsync(subject, ct);
+            if (!okSubj) return $"'{subject}' 과목으로 바꾸지 못했어요 — {whySubj}";
+        }
+        return null;
     }
     public ICommand ExportCommand { get; }
     public ICommand ImportCommand { get; }
@@ -897,25 +849,12 @@ public sealed class GeneratorViewModel : ObservableObject
         IsUploading = true;
         try
         {
-            // 서술문은 나이스 '학기말종합의견' 화면에 입력 → 이동 후 과목(전담은 학년·반도) 맞추고 조회
+            // 서술문 화면 준비 — 배치와 같은 헬퍼 (R10). dryRun 은 화면을 건드리지 않는다.
             if (!dryRun)
             {
                 _mainLog($"{SelectedSubject} 서술문 화면을 준비하고 있어요…");
-                if (!await _engine.NavigateToAsync(Automation.Abstractions.NeisTarget.TermOpinion, progress, ct))
-                { MessageBox.Show("학기말종합의견 화면으로 이동하지 못했어요.", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
-
-                if (ctx is { } tc)   // 전담: 학년·반·교과 값 기반 선택 + 조회
-                {
-                    var (okAxis, whyAxis) = await _engine.SelectNarrativeAxisAsync(tc.Grade, tc.Class, tc.Subject, progress, ct);
-                    if (!okAxis) { MessageBox.Show($"학년·반·교과를 맞추지 못했어요.\n{whyAxis}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
-                    var (okQ, whyQ) = await _engine.QueryAsync(ct);
-                    if (!okQ) { MessageBox.Show($"명단을 불러오지 못했어요.\n{whyQ}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
-                }
-                else                 // 담임: 자기 반 고정 → 교과만 전환(SelectSubject 가 조회까지)
-                {
-                    var (okSubj, whySubj) = await _engine.SelectSubjectAsync(SelectedSubject!, ct);
-                    if (!okSubj) { MessageBox.Show($"'{SelectedSubject}' 과목으로 바꾸지 못했어요.\n{whySubj}", "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
-                }
+                if (await PrepareNarrativeScreenAsync(ctx, SelectedSubject!, progress, ct) is { } why)
+                { MessageBox.Show(why, "안내", MessageBoxButton.OK, MessageBoxImage.Warning); return null; }
             }
 
             var report = await _engine.RunNarrativesAsync(
