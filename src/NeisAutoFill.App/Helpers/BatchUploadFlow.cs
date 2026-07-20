@@ -32,6 +32,9 @@ internal sealed class BatchUploadFlow
     public bool MapScreenSubjects { get; init; }
     /// <summary>입력 시작 직전 훅 (배치 이름 매핑 캐시 초기화 등).</summary>
     public Action? OnStart { get; init; }
+    /// <summary>매칭 확인 창구 — 지정하면 선택 창의 (내 과목 → 화면 과목) 매핑을 넘겨,
+    /// 사용자가 이미 확정한 과목은 입력 단계에서 "그대로 진행?"을 다시 묻지 않는다.</summary>
+    public MatchSession? Session { get; init; }
     /// <summary>실행 중 표시 토글 (생성기 IsUploading — 재시도 때도 켜진다).</summary>
     public Action<bool>? Running { get; init; }
 
@@ -53,7 +56,8 @@ internal sealed class BatchUploadFlow
         if (chosen.Count == 0) return;
         var targets = BuildTargets(chosen);
 
-        OnStart?.Invoke();
+        OnStart?.Invoke();   // Reset 후에 매핑을 넘겨야 지워지지 않는다
+        Session?.AcceptSubjects(targets.ToDictionary(t => t.Display, t => t.Screen));
         var outcomes = await RunOnceAsync(targets);
 
         Log(SummaryTitle + ":");

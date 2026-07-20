@@ -18,11 +18,22 @@ internal sealed class MatchSession
 {
     private readonly Action<string> _log;
     private IReadOnlyDictionary<string, string>? _nameMap;   // 화면이름→엑셀이름 ("" = 입력 안 함)
+    private IReadOnlyDictionary<string, string>? _acceptedSubjects;   // 프로그램 과목 → 사용자가 매핑한 화면 과목
 
     public MatchSession(Action<string> log) => _log = log;
 
     /// <summary>배치 시작 시 호출 — 이름 매핑 캐시를 비운다 (첫 대상에서 새로 받음).</summary>
-    public void Reset() => _nameMap = null;
+    public void Reset() { _nameMap = null; _acceptedSubjects = null; }
+
+    /// <summary>배치 선택 창에서 사용자가 이미 확정한 (프로그램 과목 → 화면 과목) 매핑.
+    /// 화면 과목이 매핑값 그대로면 과목 확인을 다시 묻지 않는다 — 같은 질문 이중 팝업 방지.</summary>
+    public void AcceptSubjects(IReadOnlyDictionary<string, string> displayToScreen) =>
+        _acceptedSubjects = displayToScreen;
+
+    private bool SubjectPreAccepted(MatchContext ctx) =>
+        _acceptedSubjects is not null &&
+        _acceptedSubjects.TryGetValue(ctx.TargetSubject, out var screen) &&
+        screen == ctx.ScreenSubject;
 
     /// <summary>등급 입력용 매칭 콜백. batch=true 면 이름 매핑을 캐시하고 재사용한다.</summary>
     public Func<MatchContext, Task<MatchDecision?>> ForGrades(SubjectSheet sheet, bool batch = false) => ctx =>
@@ -30,12 +41,13 @@ internal sealed class MatchSession
         {
             var issues = MatchAnalyzer.Analyze(
                 ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, sheet.Students, sheet.Areas);
+            bool subjectOk = SubjectPreAccepted(ctx);   // 선택 창에서 이미 매핑한 과목이면 안 묻는다
             if (issues.Clean)
                 return new MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: batch ? _nameMap : null);
 
             // 과목명만 다르고 학생·영역은 정상 → 매핑 창 대신 "그래도 진행?" 만 묻는다
             if (issues.SubjectOnlyMismatch)
-                return ConfirmSubjectOnly(issues.ScreenSubject, sheet.SubjectName)
+                return subjectOk || ConfirmSubjectOnly(issues.ScreenSubject, sheet.SubjectName)
                     ? new MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: batch ? _nameMap : null)
                     : null;
 
@@ -44,6 +56,7 @@ internal sealed class MatchSession
                 return new MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: _nameMap);
 
             var vm = new MatchPreviewViewModel(issues, sheet, batch ? _nameMap : null);
+            if (subjectOk) vm.SubjectAccepted = true;
             if (!ShowSteps(vm)) return null;
             var decision = vm.BuildDecision();
             if (batch) MergeCache(decision?.NameMap);
@@ -57,11 +70,12 @@ internal sealed class MatchSession
         {
             var issues = MatchAnalyzer.AnalyzeNarratives(
                 ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, entries.Select(e => e.Name).ToList());
+            bool subjectOk = SubjectPreAccepted(ctx);   // 선택 창에서 이미 매핑한 과목이면 안 묻는다
             if (issues.Clean)
                 return new MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: batch ? _nameMap : null);
 
             if (issues.SubjectOnlyMismatch)
-                return ConfirmSubjectOnly(issues.ScreenSubject, ctx.TargetSubject)
+                return subjectOk || ConfirmSubjectOnly(issues.ScreenSubject, ctx.TargetSubject)
                     ? new MatchDecision(StudentMatcher.MatchMode.ByName, NameMap: batch ? _nameMap : null)
                     : (MatchDecision?)null;
 
@@ -72,6 +86,7 @@ internal sealed class MatchSession
             var sheet = new SubjectSheet(ctx.TargetSubject, Array.Empty<string>(),
                 entries.Select(e => new Student(e.No, e.Name, new Dictionary<string, string>())).ToList());
             var vm = new MatchPreviewViewModel(issues, sheet, batch ? _nameMap : null);
+            if (subjectOk) vm.SubjectAccepted = true;
             if (!ShowSteps(vm)) return null;
             var decision = vm.BuildDecision();
             if (batch) MergeCache(decision?.NameMap);
