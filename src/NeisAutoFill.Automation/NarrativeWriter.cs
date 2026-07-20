@@ -168,7 +168,7 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
 
             try
             {
-                var current = NormalizeWs(await ReadEditorTextAsync(editor));
+                var current = NormalizeWs(await ReadRowTextAsync(grid, rowIndex));
                 if (current == target) return (true, "이미 입력됨");   // 멱등성
 
                 await editor.ClickAsync();                 // 네이티브 클릭으로 편집 모드 진입 (§3.7 원칙)
@@ -181,9 +181,16 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
                 await page.Keyboard.PressAsync("Tab");     // 포커스 이탈로 값 확정
                 await Task.Delay(Timings.AfterOptionClick, ct);
 
-                // ★ 재검증: 표시 컨트롤을 fresh 로 다시 읽어 확인
-                var verify = await GetFreshEditorAsync(grid, rowIndex);
-                var val = verify is null ? "" : NormalizeWs(await ReadEditorTextAsync(verify));
+                // ★ 재검증: 표시 컨트롤을 fresh 로 다시 읽어 확인.
+                // 마지막 행은 Tab 확정 직후 재렌더로 표시 컨트롤이 비거나 행이 떨어질 수 있어(§8)
+                // 빈 값이면 행 재가시화(reveal 포함) 후 한 번 더 읽는다 — 실입력 성공을 0자로 오판 방지.
+                var val = NormalizeWs(await ReadRowTextAsync(grid, rowIndex));
+                if (val.Length == 0 && target.Length > 0)
+                {
+                    await EnsureEditorVisibleAsync(grid, rowIndex, ct);
+                    await Task.Delay(Timings.AfterScroll, ct);
+                    val = NormalizeWs(await ReadRowTextAsync(grid, rowIndex));
+                }
                 if (val == target) return (true, "");
                 why = $"검증 불일치 (입력 후 {val.Length}자)";
             }
@@ -196,10 +203,26 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
         return (false, why);
     }
 
-    /// <summary>표시 컨트롤의 현재 텍스트 (div → innerText / 네이티브 textarea → value).</summary>
+    /// <summary>표시 컨트롤의 현재 텍스트 (div → innerText / 네이티브 textarea → value).
+    /// 렌더 안 된 요소는 innerText 가 비므로 textContent 폴백.</summary>
     private static async Task<string> ReadEditorTextAsync(ILocator editor) =>
         await editor.EvaluateAsync<string>(
-            "el => el.tagName === 'TEXTAREA' ? el.value : (el.innerText || '')");
+            "el => el.tagName === 'TEXTAREA' ? el.value : (el.innerText || el.textContent || '')");
+
+    /// <summary>행 내 편집 컨트롤을 전부 훑어 비지 않은 첫 값을 채택.
+    /// Tab 확정 직후 편집기가 아직 열려 있으면 표시 div 는 비고 실값은 textarea 쪽에 있다(§8 마지막 행).</summary>
+    private async Task<string> ReadRowTextAsync(ILocator grid, int rowIndex)
+    {
+        var ed = grid.Locator(NarrativeSelectors.Row(rowIndex))
+                     .Locator(NarrativeSelectors.EditorInRow);
+        int n = await ed.CountAsync();
+        for (int i = 0; i < n; i++)
+        {
+            var t = await ReadEditorTextAsync(ed.Nth(i));
+            if (!string.IsNullOrWhiteSpace(t)) return t;
+        }
+        return "";
+    }
 
     /// <summary>편집 모드 진입 후 생성되는 실제 textarea 를 폴링으로 획득.</summary>
     private async Task<ILocator?> WaitForActiveEditorAsync(CancellationToken ct)
