@@ -999,6 +999,7 @@ public sealed class MainViewModel : ObservableObject
             NewCts = () => (_cts = new CancellationTokenSource()).Token,
             MapScreenSubjects = true,   // 화면 과목 목록을 읽어 매핑 자동 제안 (이름이 다르면 사용자가 창에서 고른다)
             OnStart = () => MatchSession.Reset(),   // 이름 매핑 캐시 초기화 (첫 과목에서 받고 이후 재사용)
+            Session = MatchSession,   // 선택 창에서 매핑한 과목은 입력 때 "그대로 진행?"을 다시 안 묻는다
             RunTarget = async subjectName =>
             {
                 ProgressValue = 0;
@@ -1078,7 +1079,14 @@ public sealed class MainViewModel : ObservableObject
         var (okClass, whyClass) = await _engine.SelectClassAsync(cls.Grade, cls.Class, null, ct);
         if (!okClass) return $"{cls.Grade}학년 {cls.Class}반으로 이동하지 못했어요 — {whyClass}";
         var (okSubj, whySubj) = await _engine.SelectSubjectAsync(subject, ct);
-        if (!okSubj) return $"'{subject}' 과목으로 바꾸지 못했어요 — {whySubj}";
+        if (!okSubj)
+        {
+            // 콤보에 프로그램 과목명이 없으면(이름만 다름) 중단하지 않는다 — 입력 직전
+            // 매칭 확인 창이 "화면 과목 ≠ 대상 과목, 그대로 입력?"을 묻고 사용자가 결정 (팝업 1회)
+            if (whySubj != Automation.Abstractions.INeisEngine.SubjectNotInList)
+                return $"'{subject}' 과목으로 바꾸지 못했어요 — {whySubj}";
+            Log($"⚠ 나이스 과목 목록에 '{subject}'이(가) 없어요 — 현재 화면 과목에 입력할지 확인 창에서 묻습니다.");
+        }
         var (okQ, whyQ) = await _engine.QueryAsync(ct);   // 콤보가 그대로여도 명단이 뜨도록 조회
         if (!okQ) return $"명단을 불러오지 못했어요 — {whyQ}";
         return null;

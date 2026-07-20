@@ -295,7 +295,10 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         if (combo is null) return (false, "화면에서 과목 콤보를 찾지 못했습니다 (교과별 평가/종합의견 화면인지 확인)");
 
         var pick = await _combo!.OpenAndPickAsync(combo, subjectName);
-        if (!pick.Ok) return (false, $"과목 선택 실패: {pick.Reason}");
+        if (!pick.Ok)
+            return (false, pick.Reason.StartsWith("옵션")
+                ? Abstractions.INeisEngine.SubjectNotInList   // 이름만 다른 경우 — 호출자가 사용자 확인으로 진행 가능
+                : $"과목 선택 실패: {pick.Reason}");
 
         var query = await FindButtonAsync(NeisSelectors.QueryButtonName);
         if (query is null) return (false, "[조회] 버튼을 찾지 못했습니다");

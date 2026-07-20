@@ -71,6 +71,10 @@ public interface INeisEngine
     /// <summary>화면 과목 콤보의 선택 가능한 과목 목록을 읽는다 (전과목 매핑용). 콤보를 못 찾으면 빈 목록.</summary>
     Task<IReadOnlyList<string>> ReadSubjectOptionsAsync(CancellationToken ct = default);
 
+    /// <summary>SelectSubjectAsync 의 Why — 콤보는 정상인데 목록에 그 과목명이 없는 경우.
+    /// 호출자는 이 경우 중단 대신 현재 화면 과목으로 진행 여부를 사용자에게 물을 수 있다.</summary>
+    const string SubjectNotInList = "화면 과목 목록에 없음";
+
     /// <summary>화면 상단 과목 콤보로 과목을 전환하고 [조회] 후 갱신을 기다린다 (Phase 5.5).</summary>
     Task<(bool Ok, string Why)> SelectSubjectAsync(string subjectName, CancellationToken ct = default);
 
