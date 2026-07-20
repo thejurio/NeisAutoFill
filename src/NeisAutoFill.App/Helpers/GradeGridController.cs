@@ -84,14 +84,17 @@ public sealed class GradeGridController(MainViewModel main)
             return;
         }
 
-        // 숫자 1~9 = 척도 단계 일괄 지정 (여러 셀 선택 후)
+        // 숫자 1~9 = 척도 단계 지정 (단일 셀 포함). 선택에 등급(영역) 셀이 없으면
+        // 개입하지 않는다 — 특기사항 셀에 숫자 타이핑으로 편집 시작하는 흐름 보존.
         int digit = e.Key switch
         {
             >= Key.D1 and <= Key.D9 => e.Key - Key.D1 + 1,
             >= Key.NumPad1 and <= Key.NumPad9 => e.Key - Key.NumPad1 + 1,
             _ => 0,
         };
-        if (digit > 0 && Keyboard.Modifiers == ModifierKeys.None && grid.SelectedCells.Count > 1)
+        if (digit > 0 && Keyboard.Modifiers == ModifierKeys.None &&
+            grid.DataContext is SubjectViewModel vd &&
+            grid.SelectedCells.Any(c => vd.Areas.Contains(c.Column?.Header?.ToString() ?? "")))
         {
             var labels = main.GradeLabels.Where(l => l != "").ToList();
             if (digit <= labels.Count)
