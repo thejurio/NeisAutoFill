@@ -116,6 +116,7 @@ public sealed class GeneratorViewModel : ObservableObject
                     MessageBoxButton.OK, MessageBoxImage.Information);
         });
         ExportCommand = new RelayCommand(ExportToExcel);
+        ExportMatrixCommand = new RelayCommand(ExportMatrixToExcel);
         ImportCommand = new RelayCommand(ImportFromExcel);
         DeleteSelectedCommand = new RelayCommand(DeleteSelected);
         DeleteSubjectCommand = new RelayCommand(DeleteSubject);
@@ -631,6 +632,7 @@ public sealed class GeneratorViewModel : ObservableObject
         return null;
     }
     public ICommand ExportCommand { get; }
+    public ICommand ExportMatrixCommand { get; }
     public ICommand ImportCommand { get; }
     public ICommand DeleteSelectedCommand { get; }
     public ICommand DeleteSubjectCommand { get; }
@@ -677,6 +679,68 @@ public sealed class GeneratorViewModel : ObservableObject
         {
             Excel.NarrativeWorkbookWriter.Write(dlg.FileName, data);
             _mainLog($"서술문 엑셀 저장: {dlg.FileName} ({string.Join(", ", data.Keys)})");
+            MessageBox.Show($"저장했습니다.\n{dlg.FileName}", "완료",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "저장 오류", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>전과목 서술문을 한 시트 매트릭스(학생 행 × 과목 열)로 저장 — ref/양식.xls 형식.</summary>
+    private void ExportMatrixToExcel()
+    {
+        // 과목(열) 순서는 생성기 순서 유지, 데이터 있는 과목만. 학생(행)은 전 과목 합집합.
+        var subjects = new List<string>();
+        var byStudent = new Dictionary<(string No, string Name), Dictionary<string, string>>();
+
+        foreach (var sheet in Sheets())
+        {
+            var cached = _itemsBySubject.TryGetValue(sheet.SubjectName, out var items)
+                ? items.ToDictionary(i => (i.No, i.Name))
+                : new Dictionary<(string, string), StudentGenItem>();
+            bool subjectHasData = false;
+            foreach (var st in sheet.Students)
+            {
+                var text = cached.TryGetValue((st.No, st.Name), out var item) && item.HasValidResult
+                    ? item.Result
+                    : _store.Get(sheet.SubjectName, st.No, st.Name);
+                if (string.IsNullOrWhiteSpace(text)) continue;
+                subjectHasData = true;
+                if (!byStudent.TryGetValue((st.No, st.Name), out var map))
+                    byStudent[(st.No, st.Name)] = map = new Dictionary<string, string>();
+                map[sheet.SubjectName] = text!.Trim();
+            }
+            if (subjectHasData) subjects.Add(sheet.SubjectName);
+        }
+
+        if (byStudent.Count == 0)
+        {
+            MessageBox.Show("저장할 서술문이 없습니다. 먼저 생성해 주세요.", "안내",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var students = byStudent
+            .OrderBy(kv => int.TryParse(kv.Key.No, out var n) ? n : int.MaxValue)
+            .ThenBy(kv => kv.Key.Name)
+            .Select(kv => (kv.Key.No, kv.Key.Name,
+                (IReadOnlyDictionary<string, string>)kv.Value))
+            .ToList();
+
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "Excel|*.xlsx",
+            FileName = $"교과학습발달상황_{DateTime.Now:yyyyMMdd}.xlsx",
+            Title = "전과목 한 장 저장",
+            InitialDirectory = AppPaths.EnsureWorkspace(),
+        };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            Excel.NarrativeMatrixWriter.Write(dlg.FileName, subjects, students);
+            _mainLog($"전과목 한 장 저장: {dlg.FileName} (과목 {subjects.Count} · 학생 {students.Count}명)");
             MessageBox.Show($"저장했습니다.\n{dlg.FileName}", "완료",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }

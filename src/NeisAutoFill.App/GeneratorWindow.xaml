@@ -72,6 +72,8 @@
                                     ToolTip="작업공간 서술문.xlsx 에 저장합니다 (문서\NeisAutoFill)"/>
                             <Button Style="{StaticResource GhostButton}" Content="📤 내보내기" Command="{Binding ExportCommand}" Margin="0,0,4,0"
                                     ToolTip="원하는 위치에 엑셀 파일로 내보냅니다 (과목별 시트)"/>
+                            <Button Style="{StaticResource GhostButton}" Content="📋 전과목 한장 저장" Command="{Binding ExportMatrixCommand}" Margin="0,0,4,0"
+                                    ToolTip="전과목 서술문을 한 시트에 매트릭스로 저장합니다 (학생 행 × 과목 열)"/>
                             <Button Style="{StaticResource GhostButton}" Content="📂 불러오기" Command="{Binding ImportCommand}" Margin="0,0,10,0"
                                     ToolTip="엑셀에서 수정한 서술문을 되가져옵니다 (과목별 시트: 번호|이름|서술문)"/>
                             <Border Width="1" Background="{StaticResource Line}" Margin="0,3,10,3"/>
