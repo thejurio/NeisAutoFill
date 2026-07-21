@@ -733,7 +733,7 @@ public sealed class GeneratorViewModel : ObservableObject
         {
             Filter = "Excel|*.xlsx",
             FileName = $"교과학습발달상황_{DateTime.Now:yyyyMMdd}.xlsx",
-            Title = "전과목 한 장 저장",
+            Title = "전과목 저장",
             InitialDirectory = AppPaths.EnsureWorkspace(),
         };
         if (dlg.ShowDialog() != true) return;
