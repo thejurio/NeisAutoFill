@@ -25,8 +25,17 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
         return c;
     }
 
-    public static Version CurrentVersion =>
-        Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
+    // 어셈블리 버전은 4자리(1.6.4.0)지만 저장·태그 비교는 3자리("1.6.4")를 쓴다.
+    // 3자리로 정규화하지 않으면 저장값 재파싱 시 Revision=-1 이 되어 1.6.4.0 > 1.6.4.-1 로
+    // 매 실행 '업데이트됨'으로 오판 → 패치창이 매번 뜬다. Major.Minor.Build 로 맞춘다.
+    public static Version CurrentVersion
+    {
+        get
+        {
+            var v = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
+            return new Version(v.Major, v.Minor, v.Build);
+        }
+    }
 
     /// <summary>업데이트 직후 1회 — 저장된 마지막 실행 버전보다 현재가 높으면
     /// 현재 버전 릴리스 노트(패치로그)를 보여주고 버전을 기록한다.</summary>
