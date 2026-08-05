@@ -124,5 +124,10 @@ Gemini API 키는 서버(GAS)가 시트에서 꺼내 호출하므로, 프로그�
 | `parsePlan` | 평가계획 상세 인식 (onlySubject 지정 시 그 과목만) |
 | (그 외) | 서술문 생성 |
 
-- 모델: 인식은 `gemini-3.1-flash-lite`(404면 `gemini-3.5-flash` 폴백), 생성은 `GEMINI_MODEL`.
+- 모델: **구글시트 `Config` 시트에서 읽는다** (2026-08-05~). 코드 수정·재배포 없이 셀만 고치면 바뀐다.
+  - 생성(서술문) = `gemini_model` (메인, 품질 우선) → `getGeminiModel()`
+  - 인식(평가계획) = `gemini_model_lite` (라이트, 경량) → `getParseModel()`, 404면 메인으로 폴백
+  - 시트를 못 읽으면 `GEMINI_MODEL_DEFAULT` / `PARSE_MODEL_DEFAULT` 로 정상 동작
+  - 조회 결과는 10분 캐시. 시트를 고친 뒤 바로 반영하려면 GAS 편집기에서 `clearConfigCache()` 실행
+  - 연동 규칙: `C:\dev\gemini_api\remote-config-guide.md`
 - 2단계 파싱(목록 → 과목별)은 대형 문서에서 출력이 잘리지 않게 과목당 응답을 작게 유지하려는 것.
