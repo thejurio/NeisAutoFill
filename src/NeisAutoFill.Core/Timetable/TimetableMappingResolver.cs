@@ -26,11 +26,11 @@ public sealed record MappingResolution(
     /// <summary>선택 이유 한 줄 — 미리보기·결과 대시보드에 그대로 쓴다.</summary>
     public string Describe() => Kind switch
     {
-        MappingResolutionKind.Resolved => $"{AppliedRule!.Scope.Describe()} 규칙",
-        MappingResolutionKind.Skip => $"{AppliedRule!.Scope.Describe()} — 입력 안 함",
+        MappingResolutionKind.Resolved => $"{AppliedRule!.Scope.Description} 규칙",
+        MappingResolutionKind.Skip => $"{AppliedRule!.Scope.Description} — 입력 안 함",
         MappingResolutionKind.Unresolved => "매핑 미해결",
         MappingResolutionKind.Conflict =>
-            $"같은 범위({ConflictingRules![0].Scope.Describe()})에 서로 다른 규칙 {ConflictingRules!.Count}개",
+            $"같은 범위({ConflictingRules![0].Scope.Description})에 서로 다른 규칙 {ConflictingRules!.Count}개",
         _ => "알 수 없음",
     };
 }
