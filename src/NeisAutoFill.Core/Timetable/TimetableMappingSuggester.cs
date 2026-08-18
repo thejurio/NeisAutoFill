@@ -66,11 +66,20 @@ public static class TimetableMappingSuggester
 {
     public static MappingSuggestion Suggest(TimetableToken token, TimetableCatalog catalog)
     {
-        // 창은 창체 항목만 후보로 — 일반 과목에 붙이면 안 된다(D-008)
-        if (token.IsCreativeUnresolved)
+        // 창체는 창체 항목만 후보로 — 일반 과목에 붙이면 안 된다(D-008)
+        if (token.IsCreative)
         {
             var creative = catalog.Assignable
                 .Where(o => o.Kind == TimetableOptionKind.CreativeActivity).ToList();
+
+            // 원본에 종류가 적혀 있으면(자·동·진) 그 종류만 후보로 좁힌다 — 교사는 여전히 사용자가 고른다
+            if (token.CreativeKind != CreativeActivityKind.Unresolved)
+            {
+                var narrowed = creative.Where(o => o.CreativeKind == token.CreativeKind).ToList();
+                if (narrowed.Count > 0)
+                    return new MappingSuggestion(token, narrowed, MatchConfidence.Standard);
+            }
+
             return new MappingSuggestion(token, creative,
                 creative.Count > 0 ? MatchConfidence.Similar : MatchConfidence.None);
         }

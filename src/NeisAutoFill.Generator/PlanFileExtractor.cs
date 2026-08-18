@@ -97,7 +97,11 @@ public static class PlanFileExtractor
             // 보안 승인 대화상자 억제 (한컴 기본 제공 모듈 — 미등록 환경이면 최초 1회 승인 창이 뜰 수 있음)
             try { hwp.RegisterModule("FilePathCheckDLL", "FilePathCheckerModule"); } catch { }
 
-            if (!(bool)hwp.Open(hwpPath, "HWP", "forceopen:true"))
+            // 포맷을 "HWP" 로 고정하면 .hwpx 를 열지 못한다 — 확장자에 맞춰 넘긴다(2026-08-19 확인)
+            var format = Path.GetExtension(hwpPath).Equals(".hwpx", StringComparison.OrdinalIgnoreCase)
+                ? "HWPX" : "HWP";
+
+            if (!(bool)hwp.Open(hwpPath, format, "forceopen:true"))
                 throw new InvalidOperationException("한글이 파일을 열지 못했습니다: " + Path.GetFileName(hwpPath));
 
             var pdfPath = Path.Combine(Path.GetTempPath(), $"neisautofill_{Guid.NewGuid():N}.pdf");

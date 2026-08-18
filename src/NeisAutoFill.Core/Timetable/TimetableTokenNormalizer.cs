@@ -11,7 +11,12 @@ public sealed record TimetableToken(
     string Raw,
     string Standard,
     bool IsCreativeUnresolved = false,
-    bool IsKnownAlias = false);
+    bool IsKnownAlias = false,
+    CreativeActivityKind CreativeKind = CreativeActivityKind.Unresolved)
+{
+    /// <summary>창체 계열인가 (종류가 정해졌든 아니든).</summary>
+    public bool IsCreative => IsCreativeUnresolved || CreativeKind != CreativeActivityKind.Unresolved;
+}
 
 /// <summary>
 /// 원본 과목 표기를 <b>표준 의미까지만</b> 확장한다 (기술설계 §7).
@@ -39,8 +44,27 @@ public static class TimetableTokenNormalizer
         ("영", "영어"), ("영어", "영어"),
     };
 
-    /// <summary>창의적 체험활동을 가리키는 표기들.</summary>
+    /// <summary>종류를 알 수 없는 창체 표기.</summary>
     private static readonly string[] CreativeTokens = { "창", "창체", "창의적 체험활동", "창의적체험활동" };
+
+    /// <summary>
+    /// 종류까지 적힌 창체 표기 (2026-08-19 실제 시간표에서 확인 — 자·동·진·봉이 모두 쓰인다).
+    /// <b>봉사활동은 나이스 메뉴에 없다</b>(자율·자치/동아리/진로 3종뿐) — 미분류로 두고 사용자가 정하게 한다.
+    /// </summary>
+    private static readonly (string Alias, string Standard, CreativeActivityKind Kind)[] CreativeAliases =
+    {
+        ("자", "자율·자치활동", CreativeActivityKind.Autonomy),
+        ("자율", "자율·자치활동", CreativeActivityKind.Autonomy),
+        ("자율·자치활동", "자율·자치활동", CreativeActivityKind.Autonomy),
+        ("동", "동아리활동", CreativeActivityKind.Club),
+        ("동아리", "동아리활동", CreativeActivityKind.Club),
+        ("동아리활동", "동아리활동", CreativeActivityKind.Club),
+        ("진", "진로활동", CreativeActivityKind.Career),
+        ("진로", "진로활동", CreativeActivityKind.Career),
+        ("진로활동", "진로활동", CreativeActivityKind.Career),
+        ("봉", "봉사활동", CreativeActivityKind.Unresolved),
+        ("봉사", "봉사활동", CreativeActivityKind.Unresolved),
+    };
 
     /// <summary>원본 표기 하나를 표준 의미로 확장한다. 빈 값이면 빈 토큰.</summary>
     public static TimetableToken Normalize(string? rawToken)
@@ -56,6 +80,12 @@ public static class TimetableTokenNormalizer
             if (norm == TimetableTextNormalizer.Normalize(token))
                 return new TimetableToken(raw, CreativeStandard,
                     IsCreativeUnresolved: true, IsKnownAlias: true);
+
+        foreach (var (alias, standard, kind) in CreativeAliases)
+            if (norm == TimetableTextNormalizer.Normalize(alias))
+                return new TimetableToken(raw, standard,
+                    IsCreativeUnresolved: kind == CreativeActivityKind.Unresolved,
+                    IsKnownAlias: true, CreativeKind: kind);
 
         foreach (var (alias, standard) in Aliases)
             if (norm == TimetableTextNormalizer.Normalize(alias))
