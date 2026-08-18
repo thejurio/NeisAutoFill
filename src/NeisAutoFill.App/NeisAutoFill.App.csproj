@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -19,31 +20,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <!-- 자동업데이트 버전 비교 기준 — 릴리스 때 올릴 것 (GitHub 릴리스 태그 v1.0.0 과 일치) -->
-    <Version>1.6.6</Version>
+    <Version>1.6.7</Version>
 
-    <!-- 배포 최소화: .NET 미설치 PC 대응(self-contained)은 publish 명령 옵션으로.
-         아래는 publish 시에만 적용: 단일 exe + 내부 압축 + 한국어 리소스만 -->
-    <PublishSingleFile>true</PublishSingleFile>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- 배포는 Velopack(설치형 Setup.exe + 포터블 zip). .NET 미설치 PC 대응은 publish 옵션(self-contained).
+         ⚠ 단일 exe(PublishSingleFile)는 쓰지 않는다 — ① 67MB exe 가 매 릴리스 통째로 바뀌어 델타 업데이트가
+         무의미해지고 ② Playwright 드라이버 node.exe 를 번들이 삼켜 나이스 연결이 깨진다(v1.3.1~1.6.5 버그). -->
     <SatelliteResourceLanguages>ko</SatelliteResourceLanguages>
     <DebugType Condition="'$(Configuration)'=='Release'">None</DebugType>
     <AssemblyTitle>NEIS 교과평가 자동입력기</AssemblyTitle>
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
   </PropertyGroup>
-
-  <!-- Playwright 드라이버(.playwright\node\win32_x64\node.exe)는 단일 exe 안에 넣지 않는다.
-       번들에 흡수되면 실행 시 [앱폴더]\.playwright\node\win32_x64\node.exe 를 찾지 못해
-       CDP attach 가 통째로 실패한다 = [NEIS 접속] 후 자동 연결이 영영 안 됨 (v1.3.1~1.6.5 릴리스 버그).
-       드라이버 파일은 exe 옆에 그대로 두고 zip 에 함께 담는다. -->
-  <Target Name="ExcludePlaywrightDriverFromBundle" BeforeTargets="_ComputeFilesToBundle">
-    <ItemGroup>
-      <ResolvedFileToPublish
-          Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('.playwright'))">
-        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
-      </ResolvedFileToPublish>
-    </ItemGroup>
-  </Target>
 
   <ItemGroup>
     <!-- 창·작업표시줄 아이콘용 (WPF Window Icon 바인딩) -->

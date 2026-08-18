@@ -2,6 +2,7 @@
 bin/
 obj/
 publish/
+Releases/          # Velopack 패키징 산출물 (로컬 릴리스)
 *.user
 
 # 로컬 전용 (공개 저장소 제외 — GAS 원본/배포주소/레거시 프로토타입)

@@ -1,18 +1,22 @@
-using System.Diagnostics;
-using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Reflection;
 using System.Text.Json;
 using System.Windows;
+using Velopack;
+using Velopack.Sources;
 
 namespace NeisAutoFill.App.Services;
 
 /// <summary>
-/// GitHub Releases 기반 자동업데이트.
-/// 시작 시 최신 릴리스 태그(v1.2.3)를 현재 버전과 비교 → 새 버전이면 사용자 확인 후
-/// zip 에셋을 내려받아 임시 폴더에 풀고, 앱 종료 후 파일을 교체·재시작하는 cmd 스크립트 실행.
+/// GitHub Releases 기반 자동업데이트 — 교체 엔진은 <b>Velopack</b>(v1.6.7~).
+/// 확인·다운로드·검증·교체·재시작을 Velopack 이 맡고, 이 클래스는 "물어보고 진행률을 보여주는" UI 역할만 한다.
+/// 델타 패키지를 지원해 바뀐 파일만 내려받는다(이전엔 매번 100MB 전체 zip).
+///
+/// 자작 업데이터(robocopy 스크립트)를 걷어낸 이유: 교체 실패를 조용히 삼키고 옛 버전으로 재시작해
+/// "업데이트 안내 → 받아도 그대로 → 또 안내" 무한 루프가 났다(~v1.6.6).
+///
 /// 설정(settings.json)의 UpdateRepo("owner/repo")가 비어 있으면 아무것도 하지 않는다.
+/// Velopack 으로 설치된 경우에만 동작 — 포터블·개발 실행에서는 조용히 건너뛴다.
 /// </summary>
 public sealed class UpdateService(GeneratorSettingsStore settings)
 {
@@ -97,7 +101,8 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
         settings.Save();
     }
 
-    /// <summary>백그라운드 확인 — 새 버전이 있으면 사용자에게 묻고 업데이트 진행.</summary>
+    /// <summary>백그라운드 확인 — 새 버전이 있으면 사용자에게 묻고 업데이트 진행.
+    /// 실제 다운로드·검증·교체·재시작은 Velopack 이 수행한다.</summary>
     public async Task CheckAndPromptAsync()
     {
         var repo = settings.Options.UpdateRepo?.Trim();
@@ -105,46 +110,35 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
 
         try
         {
-            var json = await Http.GetStringAsync(
-                $"https://api.github.com/repos/{repo}/releases/latest");
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
+            var mgr = new UpdateManager(new GithubSource($"https://github.com/{repo}", null, prerelease: false));
 
-            var tag = root.GetProperty("tag_name").GetString() ?? "";
-            if (!Version.TryParse(tag.TrimStart('v', 'V'), out var latest)) return;
-            if (latest <= CurrentVersion) return;
+            // Velopack 으로 설치된 경우에만 자동 업데이트 — 포터블 압축 해제본·개발 빌드는 대상 아님
+            if (!mgr.IsInstalled) return;
 
-            // 에셋: zip 본체 + sha256 체크섬(있으면 무결성 검증에 사용)
-            string? zipUrl = null, shaUrl = null;
-            foreach (var asset in root.GetProperty("assets").EnumerateArray())
-            {
-                var name = asset.GetProperty("name").GetString() ?? "";
-                var url = asset.GetProperty("browser_download_url").GetString();
-                if (name.EndsWith(".sha256", StringComparison.OrdinalIgnoreCase)) shaUrl = url;
-                else if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) zipUrl = url;
-            }
-            if (zipUrl is null) return;
+            var info = await mgr.CheckForUpdatesAsync();
+            if (info is null) return;   // 최신
 
+            var latest = info.TargetFullRelease.Version.ToString();
             var ok = await Application.Current.Dispatcher.InvokeAsync(() =>
-                UpdatePromptWindow.Ask(latest.ToString(3), CurrentVersion.ToString(3),
-                    Application.Current.MainWindow));
+                UpdatePromptWindow.Ask(latest, CurrentVersion.ToString(3), Application.Current.MainWindow));
             if (!ok) return;   // '나중에' — 다음 실행 때 다시 안내한다 (영구 건너뛰기 없음)
 
-            await DownloadAndRestartAsync(zipUrl, shaUrl, latest);
+            await DownloadAndRestartAsync(mgr, info, latest);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // 업데이트 확인 실패는 조용히 무시 — 앱 사용에 영향 없음
+            // 확인 단계 실패(오프라인 등)는 조용히 무시 — 앱 사용에 영향 없음
+            Diag.Swallow(ex, "업데이트 확인");
         }
     }
 
-    private async Task DownloadAndRestartAsync(string zipUrl, string? shaUrl, Version latest)
+    /// <summary>진행 창을 띄우고 Velopack 으로 내려받아 적용·재시작. 실패는 반드시 사용자에게 알린다.</summary>
+    private static async Task DownloadAndRestartAsync(UpdateManager mgr, UpdateInfo info, string latest)
     {
-        // 진행 창 — 사용자가 업데이트에 동의한 뒤이므로 화면에 명시적으로 보여준다
         UpdateWindow? win = null;
         await Application.Current.Dispatcher.InvokeAsync(() =>
         {
-            win = new UpdateWindow(latest.ToString(3));
+            win = new UpdateWindow(latest);
             win.Show();
         });
         void Report(string status, double? percent) =>
@@ -152,133 +146,26 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
 
         try
         {
-            var tempRoot = Path.Combine(Path.GetTempPath(), "NeisAutoFill_Update");
-            if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, recursive: true);
-            Directory.CreateDirectory(tempRoot);
-
-            var zipPath = Path.Combine(tempRoot, "update.zip");
-            var extractDir = Path.Combine(tempRoot, "files");
-
-            // 스트리밍 다운로드 — 진행률 % 표시
+            // 델타가 있으면 Velopack 이 알아서 델타만 받는다 (전체 재다운로드 아님)
             Report("다운로드 중... 0%", 0);
-            using (var response = await Http.GetAsync(zipUrl, HttpCompletionOption.ResponseHeadersRead))
-            {
-                response.EnsureSuccessStatusCode();
-                var total = response.Content.Headers.ContentLength;
-                await using var src = await response.Content.ReadAsStreamAsync();
-                await using var dst = File.Create(zipPath);
-                var buffer = new byte[81920];
-                long done = 0; int read; int lastPct = -1;
-                while ((read = await src.ReadAsync(buffer)) > 0)
-                {
-                    await dst.WriteAsync(buffer.AsMemory(0, read));
-                    done += read;
-                    if (total is { } t)
-                    {
-                        int pct = (int)(done * 100 / t);
-                        if (pct != lastPct)
-                        {
-                            lastPct = pct;
-                            Report($"다운로드 중... {pct}% ({done / 1048576.0:F1}/{t / 1048576.0:F1} MB)", pct);
-                        }
-                    }
-                    else Report($"다운로드 중... {done / 1048576.0:F1} MB", null);
-                }
-            }
+            await mgr.DownloadUpdatesAsync(info, p => Report($"다운로드 중... {p}%", p));
 
-            // 무결성 검증 — 체크섬이 있으면 다운로드 파일 해시와 대조 (손상·변조 방지)
-            if (shaUrl is not null)
-            {
-                Report("무결성 확인 중...", null);
-                var expected = await FetchExpectedHashAsync(shaUrl);
-                if (expected is not null)
-                {
-                    var actual = await Task.Run(() => Sha256Hex(zipPath));
-                    if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidOperationException(
-                            "다운로드한 파일의 무결성 검증에 실패했습니다(체크섬 불일치). " +
-                            "네트워크 문제일 수 있습니다. 잠시 후 다시 시도해 주세요.");
-                }
-            }
-
-            Report("압축 푸는 중...", null);
-            await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, extractDir));
-            await ApplyAndRestartAsync(tempRoot, extractDir, Report);
+            Report("적용 준비 중... 곧 재시작됩니다", null);
+            mgr.ApplyUpdatesAndRestart(info);   // 교체 후 앱 재시작 — 여기서 프로세스가 끝난다
         }
         catch (Exception ex)
         {
+            // 조용히 넘기지 않는다 — 옛 업데이터가 실패를 삼켜 무한 루프를 만들었다
+            Diag.Swallow(ex, "업데이트 적용");
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 win!.Close();
                 MessageBox.Show(
-                    $"업데이트에 실패했습니다: {ex.Message}\n프로그램은 현재 버전으로 계속 사용할 수 있습니다.",
+                    $"업데이트에 실패했습니다: {ex.Message}\n\n" +
+                    "프로그램은 현재 버전으로 계속 사용할 수 있습니다. " +
+                    "계속 실패하면 GitHub 릴리스에서 최신 설치 파일을 직접 받아 설치해 주세요.",
                     "업데이트 실패", MessageBoxButton.OK, MessageBoxImage.Warning);
             });
         }
     }
-
-    /// <summary>sha256 에셋을 받아 기대 해시(hex)만 뽑는다. 형식: "&lt;hash&gt;  파일명". 실패 시 null(검증 생략).</summary>
-    private static async Task<string?> FetchExpectedHashAsync(string shaUrl)
-    {
-        try
-        {
-            var text = (await Http.GetStringAsync(shaUrl)).Trim();
-            var first = text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault() ?? "";
-            return first.Length == 64 && first.All(Uri.IsHexDigit) ? first : null;
-        }
-        catch { return null; }   // 체크섬을 못 받으면 검증을 생략하고 진행 (기존 동작 유지)
-    }
-
-    private static string Sha256Hex(string path)
-    {
-        using var sha = System.Security.Cryptography.SHA256.Create();
-        using var fs = File.OpenRead(path);
-        return Convert.ToHexString(sha.ComputeHash(fs)).ToLowerInvariant();
-    }
-
-    private static async Task ApplyAndRestartAsync(string tempRoot, string extractDir, Action<string, double?> report)
-    {
-        report("적용 준비 중... 곧 재시작됩니다", null);
-
-        // zip 안에 단일 최상위 폴더가 있으면 그 내부를 소스로
-        var dirs = Directory.GetDirectories(extractDir);
-        var files = Directory.GetFiles(extractDir);
-        var srcDir = (dirs.Length == 1 && files.Length == 0) ? dirs[0] : extractDir;
-
-        // 안전장치: 소스가 비어 있으면 /MIR 가 설치 폴더를 통째로 지울 수 있다 → 실행 파일이 있는지 확인
-        if (!Directory.EnumerateFiles(srcDir, "*.exe", SearchOption.AllDirectories).Any())
-            throw new InvalidOperationException("업데이트 압축 내용이 올바르지 않습니다 (실행 파일 없음). 적용을 중단했습니다.");
-
-        var appDir = AppContext.BaseDirectory.TrimEnd('\\');
-        var exePath = Environment.ProcessPath ?? Path.Combine(appDir, "NeisAutoFill.App.exe");
-        var pid = Environment.ProcessId;
-
-        // 앱 종료 대기 → 파일 교체 → 재시작.
-        // PowerShell 스크립트로 작성 — 경로에 %,&,^ 등 특수문자가 있어도 안전(cmd 의 % 확장 문제 회피, P8).
-        // robocopy /MIR 로 미러링해 옛 버전에서 삭제된 파일도 정리(P7). 경로는 파일에 그대로 쓰되 '는 '' 로 이스케이프.
-        var script = Path.Combine(tempRoot, "apply_update.ps1");
-        await File.WriteAllTextAsync(script, $$"""
-            $ErrorActionPreference = 'SilentlyContinue'
-            $pid_ = {{pid}}
-            while (Get-Process -Id $pid_ -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }
-            $src = '{{PsLit(srcDir)}}'
-            $dst = '{{PsLit(appDir)}}'
-            # /MIR = 미러(대상에만 있는 옛 파일 삭제). 로그/재시도 최소화.
-            robocopy $src $dst /MIR /NFL /NDL /NJH /NJS /R:3 /W:1 | Out-Null
-            Start-Process -FilePath '{{PsLit(exePath)}}'
-            """, System.Text.Encoding.UTF8);
-
-        Process.Start(new ProcessStartInfo("powershell.exe",
-            $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{script}\"")
-        {
-            CreateNoWindow = true,
-            UseShellExecute = false,
-        });
-
-        await Application.Current.Dispatcher.InvokeAsync(() => Application.Current.Shutdown());
-    }
-
-    /// <summary>PowerShell 작은따옴표 리터럴 안에 넣기 위한 이스케이프 (' → '').</summary>
-    private static string PsLit(string s) => s.Replace("'", "''");
 }

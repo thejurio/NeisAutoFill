@@ -1,17 +1,14 @@
-name: Release
+name: Release (보관 — 사용 안 함)
 
-# 태그(vX.Y.Z) push 시 자동 릴리스 — 수동 절차의 실수(버전 불일치·시크릿 누락) 차단.
+# ⚠ v1.6.7 부터 릴리스는 Velopack 로컬 스크립트로 한다: `pwsh scripts/release.ps1`
+#   (설치형 Setup.exe + 포터블 zip + 델타 패키지를 함께 만들어 GitHub 에 올린다.)
+#   이 워크플로우가 같이 돌면 같은 태그에 옛 형식 zip 이 섞여 업데이터가 혼란스러워지므로 자동 실행을 껐다.
+#   되살리려면 아래 on: 을 push.tags 로 되돌리면 된다 — 단 Velopack 자산 생성이 없으므로 권장하지 않는다.
 #
-# 사전 준비(1회): 저장소 Settings → Secrets and variables → Actions 에
-#   GAS_SECRET = code.gs 의 V2_SECRET 과 동일한 값  을 추가한다.
-#
-# 릴리스 방법: csproj <Version> 을 올려 커밋·푸시한 뒤
-#   git tag vX.Y.Z && git push origin vX.Y.Z
-#   → 이 워크플로우가 검증·빌드·게시. (수동 `gh release create` 는 쓰지 않는다 — 태그가 이중 생성됨)
+# (참고) 옛 방식: csproj <Version> 을 올려 커밋·푸시한 뒤 git tag vX.Y.Z && git push origin vX.Y.Z
 
 on:
-  push:
-    tags: [ 'v*' ]
+  workflow_dispatch:   # 수동 실행만 (태그 push 로는 안 돎)
 
 permissions:
   contents: write   # 릴리스 생성 권한
