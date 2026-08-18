@@ -53,6 +53,9 @@ public interface INeisEngine
     /// <summary>디버그 모드 Edge 실행 (§6 ①). 사용자가 로그인·조회를 직접 수행.</summary>
     void LaunchEdge();
 
+    /// <summary>연간 시간표 화면 도구 (읽기 전용). 붙어 있지 않으면 null.</summary>
+    NeisAutoFill.Automation.TimetableTools? Timetable { get; }
+
     /// <summary>실행된 Edge 에 CDP attach + neis.go.kr 탭 선택.</summary>
     Task<bool> AttachAsync(CancellationToken ct = default);
 

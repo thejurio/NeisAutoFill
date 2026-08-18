@@ -17,6 +17,7 @@ public class BatchUploadRunnerTests
 
         public bool Connected => true;
         public void LaunchEdge() { }
+        public NeisAutoFill.Automation.TimetableTools? Timetable => null;   // 시간표는 이 테스트 대상이 아니다
         public Task<bool> AttachAsync(CancellationToken ct = default) => Task.FromResult(true);
         public Task<bool> IsAliveAsync() => Task.FromResult(true);
         public Task<NeisStatus> DetectStatusAsync(CancellationToken ct = default)

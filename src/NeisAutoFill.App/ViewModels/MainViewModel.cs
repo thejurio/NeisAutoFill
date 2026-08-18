@@ -40,9 +40,11 @@ public sealed class MainViewModel : ObservableObject
         WorkspaceService workspace,
         Automation.EngineOptions engineOptions,
         ProfileStore profiles,
-        NeisSessionController session)
+        NeisSessionController session,
+        TimetableSession timetable)
     {
         _session = session;
+        _timetable = timetable;
         _engine = engine;
         _scales = scales;
         _generatorSettings = generatorSettings;
@@ -80,6 +82,7 @@ public sealed class MainViewModel : ObservableObject
         OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
         RunAllSubjectsCommand = new AsyncRelayCommand(RunAllSubjectsAsync);
         InspectCommand = new AsyncRelayCommand(InspectAsync);
+        TimetableCheckCommand = new AsyncRelayCommand(CheckTimetableAsync);
         ExportGradesCommand = new RelayCommand(ExportGrades);
         HelpCommand = new AsyncRelayCommand(OpenHelpAsync);
 
@@ -107,6 +110,7 @@ public sealed class MainViewModel : ObservableObject
     }
 
     private readonly NeisSessionController _session;
+    private readonly TimetableSession _timetable;
 
     // ── 최근 파일 · 자동 로드 ──────────────────
 
@@ -1103,6 +1107,26 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>진단 버튼 표시 여부 — 기본 숨김. ❓를 Ctrl+Shift+클릭하면 토글 (개발·문의용).</summary>
     public bool ShowDiagButton { get => _showDiagButton; set => SetProperty(ref _showDiagButton, value); }
     public void ToggleDiagButton() => ShowDiagButton = !ShowDiagButton;
+
+    /// <summary>연간 시간표 연결 확인 (읽기 전용) — 입력 기능이 붙기 전 상태 점검용.</summary>
+    public ICommand TimetableCheckCommand { get; }
+
+    /// <summary>
+    /// 시간표 화면을 열어 읽을 수 있는지 확인한다. <b>입력·저장은 하지 않는다.</b>
+    /// 오늘이 든 주를 기준으로 보고, 그 주에서 메뉴가 안 열리면 이유를 알려 준다.
+    /// </summary>
+    private async Task CheckTimetableAsync()
+    {
+        if (!_engine.Connected) { ShowError("나이스 연결 후 사용하세요. [🌐 NEIS 접속]으로 브라우저를 여세요."); return; }
+        try
+        {
+            Log("시간표 화면을 확인하고 있어요…");
+            var result = await _timetable.PreflightAsync(DateOnly.FromDateTime(DateTime.Today), _progress);
+            Log(result.Message);
+            if (!result.Ok) ShowError(result.Message);
+        }
+        catch (Exception ex) { Log($"시간표 확인 오류: {ex.Message}"); }
+    }
 
     private async Task InspectAsync()
     {

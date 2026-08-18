@@ -62,6 +62,9 @@
                         <!-- 오른쪽: 나이스 접속·연결 상태 + 설정 -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <!-- 화면 진단 버튼 — 기본 숨김. ❓ 버튼을 Ctrl+Shift+클릭하면 나타남/사라짐 -->
+                            <Button Style="{StaticResource GhostButton}" Content="🗓 시간표 확인" Command="{Binding TimetableCheckCommand}" Margin="0,0,6,0"
+                                    Visibility="{Binding ShowDiagButton, Converter={StaticResource BoolToVis}}"
+                                    ToolTip="연간 시간표 화면을 읽을 수 있는지 확인합니다 (읽기 전용 — 입력·저장하지 않습니다).&#10;개발 중 기능입니다."/>
                             <Button Style="{StaticResource GhostButton}" Content="🔎 진단" Command="{Binding InspectCommand}" Margin="0,0,6,0"
                                     Visibility="{Binding ShowDiagButton, Converter={StaticResource BoolToVis}}"
                                     ToolTip="현재 나이스 화면의 클릭 가능한 메뉴·요소를 읽기 전용으로 덤프합니다.&#10;단축키: Ctrl+Shift+V  ·  저장 위치: %AppData%\NeisAutoFill\dom_inspect_*.txt"/>

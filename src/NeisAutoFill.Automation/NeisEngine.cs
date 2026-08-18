@@ -22,6 +22,24 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
     public void LaunchEdge() => new EdgeLauncher(options).Launch();
 
+    /// <summary>시간표 도구 — 페이지가 바뀌면 다시 만든다(캐시가 옛 페이지를 붙들지 않게).</summary>
+    public TimetableTools? Timetable
+    {
+        get
+        {
+            if (_page is null) { _timetable = null; _timetablePage = null; return null; }
+            if (!ReferenceEquals(_timetablePage, _page))
+            {
+                _timetablePage = _page;
+                _timetable = new TimetableTools(
+                    new TimetableReader(_page), new TimetableScopeReader(_page), new TimetableDiagnostics(_page));
+            }
+            return _timetable;
+        }
+    }
+    private TimetableTools? _timetable;
+    private Microsoft.Playwright.IPage? _timetablePage;
+
     public async Task<bool> AttachAsync(CancellationToken ct = default)
     {
         _pw ??= await Playwright.CreateAsync();

@@ -56,17 +56,30 @@ public sealed record NeisTimetableOption(
     /// 카탈로그 안에서 이 항목을 가리키는 안정 키.
     /// 화면 uuid 는 메뉴를 다시 열 때마다 바뀌므로 절대 쓰지 않는다(D-004).
     /// 종류·과목·교사·계정을 정규화해 만든다 — 메뉴 순서가 바뀌어도 같은 키가 나온다.
+    ///
+    /// <b>교사명·계정은 해시로 넣는다</b>(D-012) — 이 키는 매핑 프로필 파일과 진단 리포트에 그대로
+    /// 저장되므로 원문이 남으면 개인정보가 파일에 새어 나간다. 과목명은 개인정보가 아니라 그대로 둔다.
+    /// 카탈로그와 규칙이 같은 방식으로 키를 만들기 때문에 대조에는 문제가 없다.
     /// </summary>
     public string StableKey => Kind switch
     {
         TimetableOptionKind.Lesson =>
-            $"L|{Norm(Subject)}|{Norm(TeacherName)}|{Norm(TeacherAccount)}",
+            $"L|{Norm(Subject)}|{Person(TeacherName)}|{Person(TeacherAccount)}",
         TimetableOptionKind.CreativeActivity =>
-            $"C|{CreativeKind}|{Norm(Subject)}|{Norm(TeacherName)}|{Norm(TeacherAccount)}",
+            $"C|{CreativeKind}|{Norm(Subject)}|{Person(TeacherName)}|{Person(TeacherAccount)}",
         TimetableOptionKind.Command => $"X|{Norm(RawText)}",
         TimetableOptionKind.Cancel => "X|취소",
         _ => $"?|{Norm(RawText)}",
     };
 
     private static string Norm(string s) => TimetableTextNormalizer.Normalize(s);
+
+    /// <summary>사람을 가리키는 값은 짧은 해시로 — 같은 사람은 항상 같은 값이라 대조는 그대로 된다.</summary>
+    private static string Person(string s)
+    {
+        var norm = Norm(s);
+        if (norm.Length == 0) return "";
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(norm));
+        return Convert.ToHexString(bytes)[..8].ToLowerInvariant();
+    }
 }
