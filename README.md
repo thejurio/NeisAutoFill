@@ -64,6 +64,7 @@ dotnet run --project src/NeisAutoFill.App
 ### architecture — 설계·구조
 - [개발문서.md](docs/architecture/개발문서.md) — **최신 통합 개발 문서**(전체 구조·파일별 역할·연혁). 여기부터 보면 됨
 - [DESIGN_설계도.md](docs/architecture/DESIGN_설계도.md) — 초기 C# 아키텍처 설계(기술 선택 근거)
+- [연간시간표_기술설계.md](docs/architecture/연간시간표_기술설계.md) — **연간 시간표→나이스 자동입력 설계 기준**(문서 인식·복수 교사·창체·안전 입력)
 
 ### roadmap — 계획·진행 추적
 - [개선로드맵.md](docs/roadmap/개선로드맵.md) — **현행 진행 추적 문서**. 작업 시 상태를 여기서 갱신
@@ -72,11 +73,13 @@ dotnet run --project src/NeisAutoFill.App
 - [UX개선로드맵.md](docs/roadmap/UX개선로드맵.md) — v1.4.0 UI/UX 개편 계획
 - [리팩토링계획.md](docs/roadmap/리팩토링계획.md) — 구조 부채 정리 계획(R1~R5)
 - [ROADMAP_개발로드맵.md](docs/roadmap/ROADMAP_개발로드맵.md) — 최초 C# 이식 로드맵(Phase 0~)
+- [연간시간표_자동입력_로드맵.md](docs/roadmap/연간시간표_자동입력_로드맵.md) — **연간 시간표 기능 단계별 작업·완료 기준·진행 기록**
 
 ### maintenance — 운영·유지보수 규칙
 - [릴리스_배포.md](docs/maintenance/릴리스_배포.md) — **버전 올리기 → 빌드 → 게시 절차**, 자동업데이트 동작
 - [GAS_서버.md](docs/maintenance/GAS_서버.md) — code.gs 재배포, APIKeys/RequestLog 시트, 로깅·키 규칙
 - [원격_셀렉터.md](docs/maintenance/원격_셀렉터.md) — **나이스 개편 시 대응**(셀렉터 키·새 값 찾기·GAS 반영). AI에게 시킬 때 이 문서를 주면 됨
+- [연간시간표_실기기검증.md](docs/maintenance/연간시간표_실기기검증.md) — 시간표 화면 읽기·입력·저장·재개를 작은 범위부터 검증하는 안전 절차
 
 ### archive — 보관(동결)
 - [PROJECT_STATUS.md](docs/archive/PROJECT_STATUS.md) — v1.0.0 초기 개발 현황(낡음)
