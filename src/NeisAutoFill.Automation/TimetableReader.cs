@@ -157,7 +157,8 @@ public sealed class TimetableReader(IPage page)
     /// 셀 하나를 우클릭해 할당 가능한 과목·교사 목록(카탈로그)을 읽는다.
     /// <b>반드시 [취소]로 닫는다.</b> 메뉴가 열리지 않으면 null — 학기 시작 전·휴업일의 정상 동작이다.
     /// </summary>
-    public async Task<TimetableCatalog?> ReadCatalogAsync(int rowIndex, int dayColumn)
+    /// <param name="closeAfter">읽은 뒤 메뉴를 닫을지. 입력을 이어서 할 때는 false 로 두고 호출부가 책임진다.</param>
+    public async Task<TimetableCatalog?> ReadCatalogAsync(int rowIndex, int dayColumn, bool closeAfter = true)
     {
         var gridIdx = await page.EvaluateAsync<int>(FindGridJs);
         if (gridIdx < 0) throw new InvalidOperationException("시간표 그리드를 찾지 못했습니다.");
@@ -183,8 +184,25 @@ public sealed class TimetableReader(IPage page)
 
         if (texts.Length == 0) return null;   // 메뉴가 안 열림 = CellUnavailable
 
-        await CloseMenuAsync();
+        if (closeAfter) await CloseMenuAsync();
         return new TimetableCatalog(TimetableMenuParser.ParseAll(texts));
+    }
+
+    /// <summary>
+    /// 그 좌표에 지금 있는 셀의 날짜를 읽는다 (클릭 직전 교차 확인용).
+    /// 화면이 다른 주로 바뀌었으면 여기서 어긋난 날짜가 나와 입력을 막을 수 있다.
+    /// </summary>
+    public async Task<DateOnly?> ReadCellDateAsync(int rowIndex, int dayColumn)
+    {
+        var rows = await ReadClxRowsAsync("grdWeekByClsByTi");
+        if (rowIndex < 0 || rowIndex >= rows.Count) return null;
+
+        // dayColumn 1=월 … 7=일
+        string[] prefixes = { "mon", "tue", "wed", "thu", "fri", "sat", "sun" };
+        if (dayColumn < 1 || dayColumn > prefixes.Length) return null;
+
+        return rows[rowIndex].TryGetValue(prefixes[dayColumn - 1] + "Ymd", out var ymd)
+            && DateOnly.TryParseExact(ymd.Trim(), "yyyyMMdd", out var d) ? d : null;
     }
 
     /// <summary>메뉴를 [취소]로 닫는다. 취소가 없으면 Escape — 어떤 경우에도 다른 항목을 누르지 않는다.</summary>

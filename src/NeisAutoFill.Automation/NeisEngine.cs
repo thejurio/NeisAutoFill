@@ -32,7 +32,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             {
                 _timetablePage = _page;
                 _timetable = new TimetableTools(
-                    new TimetableReader(_page), new TimetableScopeReader(_page), new TimetableDiagnostics(_page));
+                    new TimetableReader(_page), new TimetableScopeReader(_page),
+                    new TimetableDiagnostics(_page), new TimetableCellWriter(_page));
             }
             return _timetable;
         }

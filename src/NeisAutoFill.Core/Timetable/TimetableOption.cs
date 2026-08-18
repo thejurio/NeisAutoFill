@@ -72,6 +72,19 @@ public sealed record NeisTimetableOption(
         _ => $"?|{Norm(RawText)}",
     };
 
+    /// <summary>
+    /// 계정을 뺀 키 (기술설계 R-006).
+    /// <b>입력 직후(저장 전) 셀은 계정 없이 "과목(교사명)" 으로만 표시된다</b> — 2026-08-19 실측.
+    /// 그래서 정확 키로만 비교하면 방금 넣은 값을 실패로 오판한다.
+    /// 동명이인이 있으면 모호해지므로 <b>카탈로그에 이 키가 하나뿐일 때만</b> 써야 한다.
+    /// </summary>
+    public string LooseKey => Kind switch
+    {
+        TimetableOptionKind.Lesson => $"L|{Norm(Subject)}|{Person(TeacherName)}",
+        TimetableOptionKind.CreativeActivity => $"C|{CreativeKind}|{Norm(Subject)}|{Person(TeacherName)}",
+        _ => StableKey,
+    };
+
     private static string Norm(string s) => TimetableTextNormalizer.Normalize(s);
 
     /// <summary>사람을 가리키는 값은 짧은 해시로 — 같은 사람은 항상 같은 값이라 대조는 그대로 된다.</summary>

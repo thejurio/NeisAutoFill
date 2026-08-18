@@ -90,14 +90,43 @@ public class TimetableGridParserTests
     }
 
     [Fact]
-    public void 요일_열과_실제_요일이_어긋나면_경고한다()
+    public void 필드_접두사는_요일이_아니라_열_순서다()
     {
-        var row = 행(1);
-        row["tueYmd"] = "20260824";   // 월요일 날짜가 화요일 열에
+        // 실측 2026-08-19: 주차가 수요일에 시작하면 monYmd 에 수요일 날짜가 들어온다.
+        // 요일로 믿고 계산하면 엉뚱한 날에 입력하게 된다 — 경고 없이 날짜 그대로 받아들여야 한다.
+        var row = new Dictionary<string, string>
+        {
+            ["pir"] = "1",
+            ["monYmd"] = "20260819",   // 수요일
+            ["tueYmd"] = "20260820",   // 목요일
+        };
 
         var s = TimetableGridParser.Parse(new[] { row });
 
-        Assert.Contains(s.Warnings, w => w.Contains("요일이 맞지 않습니다"));
+        Assert.False(s.HasWarnings);
+        Assert.True(s.Cells.ContainsKey(new TimetableCell(new DateOnly(2026, 8, 19), 1)));
+        Assert.Equal(1, s.ColumnOf(new DateOnly(2026, 8, 19)));   // 1열
+        Assert.Equal(2, s.ColumnOf(new DateOnly(2026, 8, 20)));
+    }
+
+    [Fact]
+    public void 같은_열에_행마다_다른_날짜가_오면_경고한다()
+    {
+        // 이건 진짜 이상 신호다 — 화면 해석이 어긋났다는 뜻
+        var a = 행(1);
+        var b = 행(2); b["monYmd"] = "20260901";
+
+        var s = TimetableGridParser.Parse(new[] { a, b });
+
+        Assert.Contains(s.Warnings, w => w.Contains("행마다 다릅니다"));
+    }
+
+    [Fact]
+    public void 없는_날짜의_열을_물으면_음수다()
+    {
+        var s = TimetableGridParser.Parse(new[] { 행(1) });
+
+        Assert.Equal(-1, s.ColumnOf(new DateOnly(2030, 1, 1)));
     }
 
     [Fact]

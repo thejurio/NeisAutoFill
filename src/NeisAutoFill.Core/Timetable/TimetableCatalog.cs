@@ -38,6 +38,16 @@ public sealed class TimetableCatalog
     public NeisTimetableOption? Find(string stableKey) =>
         _byKey.TryGetValue(stableKey, out var o) ? o : null;
 
+    /// <summary>
+    /// 계정을 뺀 키로 찾기 — 저장 전 셀에는 계정이 없다(R-006).
+    /// <b>후보가 둘 이상이면 null</b>. 동명이인을 임의로 고르지 않는다(D-006).
+    /// </summary>
+    public NeisTimetableOption? FindLoose(string looseKey)
+    {
+        var hits = Assignable.Where(o => o.LooseKey == looseKey).ToList();
+        return hits.Count == 1 ? hits[0] : null;
+    }
+
     /// <summary>같은 과목의 후보들 (교사가 여러 명이면 여럿). 자동 확정 판단에 쓴다.</summary>
     public IReadOnlyList<NeisTimetableOption> FindBySubject(string subject)
     {
