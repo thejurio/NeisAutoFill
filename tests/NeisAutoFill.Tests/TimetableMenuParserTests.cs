@@ -148,4 +148,67 @@ public class TimetableMenuParserTests
 
         Assert.Equal(a.StableKey, b.StableKey);
     }
+
+    // ── 2026-08-18 실기기에서 확인된 실제 형식 ────────────────────
+
+    [Fact]
+    public void 셀_표시값은_과목과_교사가_줄바꿈으로_나뉜다()
+    {
+        // 실측: 메뉴는 "과목(교사(계정))" 인데 셀 표시는 과목과 교사 사이에 줄바꿈이 들어간다
+        var o = TimetableMenuParser.Parse("과학\n(교사A(account-a))");
+
+        Assert.Equal(TimetableOptionKind.Lesson, o.Kind);
+        Assert.Equal("과학", o.Subject);
+        Assert.Equal("교사A", o.TeacherName);
+    }
+
+    [Fact]
+    public void 셀_표시값과_메뉴_항목은_같은_안정_키를_만든다()
+    {
+        // 현재 값(셀)과 목표(메뉴)를 비교하려면 반드시 같은 키가 나와야 한다
+        var fromCell = TimetableMenuParser.Parse("과학\n(교사A(account-a))");
+        var fromMenu = TimetableMenuParser.Parse("과학(교사A(account-a))");
+
+        Assert.Equal(fromMenu.StableKey, fromCell.StableKey);
+    }
+
+    [Fact]
+    public void 계정이_샵으로_시작하는_내부_ID_여도_읽는다()
+    {
+        // 실측: 일반 ID 외에 "#P1000014282608001" 형태의 계정이 섞여 있다
+        var o = TimetableMenuParser.Parse("과학(교사A(#P1000014282608001))");
+
+        Assert.Equal("과학", o.Subject);
+        Assert.Equal("#P1000014282608001", o.TeacherAccount);
+    }
+
+    [Fact]
+    public void 실측_메뉴_29개를_후보_20개와_명령_9개로_가른다()
+    {
+        // 2026-08-18 실기기 구성 (교사명·계정은 가상값으로 치환)
+        string[] menu =
+        {
+            "국어(교사A(account-a))", "사회(교사A(account-a))",
+            "도덕(교사B(account-b))", "도덕(교사A(account-a))",
+            "수학(교사C(account-c))", "수학(교사A(account-a))",
+            "과학(교사D(#P1000014282608001))", "과학(교사E(account-e))", "과학(교사A(account-a))",
+            "실과(교사A(account-a))", "체육(교사A(account-a))", "음악(교사A(account-a))",
+            "미술(교사A(account-a))", "영어(교사F(account-f))", "영어(교사A(account-a))",
+            "자율·자치활동(교사A(account-a))", "자율·자치활동(교사B(account-b))", "자율·자치활동(교사F(account-f))",
+            "동아리활동(교사A(account-a))", "진로활동(교사A(account-a))",
+            "결보강처리", "보강등록(현장체험학습)", "행사처리", "공백삽입", "공백삭제",
+            "수업삭제", "전체 수업삭제", "교사추가", "취소",
+        };
+
+        var catalog = new TimetableCatalog(TimetableMenuParser.ParseAll(menu));
+
+        Assert.Equal(29, catalog.All.Count);
+        Assert.Equal(20, catalog.Assignable.Count);
+        Assert.Equal(9, catalog.Commands.Count);
+        Assert.Empty(catalog.Unknown);
+
+        // 실제로 복수 교사가 존재한다 — 자동 확정 금지(D-006)의 근거
+        Assert.Equal(3, catalog.FindBySubject("과학").Count);
+        Assert.Equal(3, catalog.FindBySubject("자율·자치활동").Count);
+    }
 }
