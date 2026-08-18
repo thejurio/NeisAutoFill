@@ -70,7 +70,8 @@ public static class TimetableGridParser
                     warnings.Add($"{date:yyyy-MM-dd} 이 {prefix} 열에 있습니다 — 요일이 맞지 않습니다.");
 
                 row.TryGetValue(prefix + "Otpt", out var text);
-                cells[new TimetableCell(date, period)] = (text ?? string.Empty).Trim();
+                // Otpt 는 HTML 이다 — 태그를 걷어내지 않으면 과목명이 통째로 어긋난다(실측 §4-A)
+                cells[new TimetableCell(date, period)] = TimetableTextNormalizer.StripMarkup(text);
                 dates.Add(date);
             }
         }

@@ -131,4 +131,44 @@ public class TimetableGridParserTests
         Assert.Empty(s.Dates);
         Assert.False(s.HasWarnings);
     }
+
+    // ── 2026-08-18 실기기에서 확인된 실제 셀 값 (HTML) ────────────
+
+    [Fact]
+    public void 셀_값의_HTML_태그를_걷어낸다()
+    {
+        var row = 행(1);
+        row["monOtpt"] = "<div></div>과학<br/>(교사A(account-a))";
+
+        var s = TimetableGridParser.Parse(new[] { row });
+
+        Assert.Equal("과학\n(교사A(account-a))", s.Cells[new TimetableCell(new DateOnly(2026, 8, 24), 1)]);
+    }
+
+    [Fact]
+    public void 색상_font_태그가_섞여도_같은_값이_나온다()
+    {
+        // 실측: 일부 셀은 <font style="color:deeppink;"> 로 감싸여 온다
+        var plain = 행(1); plain["monOtpt"] = "<div></div>과학<br/>(교사A(account-a))";
+        var pink = 행(1); pink["monOtpt"] = "<div></div>과학<font style=" + '"' + "color:deeppink;" + '"' + "><br/>(교사A(account-a))</font>";
+
+        var cell = new TimetableCell(new DateOnly(2026, 8, 24), 1);
+        var a = TimetableGridParser.Parse(new[] { plain });
+        var b = TimetableGridParser.Parse(new[] { pink });
+
+        Assert.Equal(a.Cells[cell], b.Cells[cell]);
+    }
+
+    [Fact]
+    public void HTML_을_걷어낸_셀_값이_메뉴_항목과_같은_안정_키를_만든다()
+    {
+        var row = 행(1);
+        row["monOtpt"] = "<div></div>과학<br/>(교사A(account-a))";
+
+        var s = TimetableGridParser.Parse(new[] { row });
+        var current = TimetableMenuParser.Parse(s.Cells[new TimetableCell(new DateOnly(2026, 8, 24), 1)]);
+        var target = TimetableMenuParser.Parse("과학(교사A(account-a))");
+
+        Assert.Equal(target.StableKey, current.StableKey);   // 현재 값 ↔ 목표 비교의 전제
+    }
 }

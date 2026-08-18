@@ -39,6 +39,27 @@ public static class TimetableTextNormalizer
         return sb.ToString();
     }
 
+    /// <summary>
+    /// CLX 셀 값에 섞여 오는 HTML 마크업을 걷어낸다 (2026-08-18 실측).
+    /// 실제 값 예: <c>&lt;div&gt;&lt;/div&gt;과학&lt;br/&gt;(교사(계정))</c> ·
+    /// <c>&lt;div&gt;&lt;/div&gt;과학&lt;font style="color:deeppink;"&gt;&lt;br/&gt;(교사(계정))&lt;/font&gt;</c>
+    /// 이 처리를 빼면 과목명에 태그가 붙어 매칭이 전부 실패한다.
+    /// </summary>
+    public static string StripMarkup(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return string.Empty;
+
+        var s = System.Text.RegularExpressions.Regex.Replace(html, @"<\s*br\s*/?\s*>", "\n",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"<[^>]*>", "");   // 남은 태그 제거
+
+        s = s.Replace("&nbsp;", " ").Replace("&amp;", "&")
+             .Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "\"");
+
+        // 줄바꿈은 남기되 앞뒤 공백 정리
+        return string.Join("\n", s.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0));
+    }
+
     /// <summary>괄호 짝이 맞는지. 안 맞으면 구조를 신뢰할 수 없으므로 해석을 포기한다.</summary>
     public static bool HasBalancedParens(string? text)
     {

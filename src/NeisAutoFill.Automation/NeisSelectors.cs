@@ -155,5 +155,11 @@ public static class Timings
     public static TimeSpan PopupPollStep => Ms(150);
     public static TimeSpan WheelStep => Ms(50);
 
+    // 연간 시간표 (2026-08-18 실측 기준 여유값)
+    /// <summary>셀 우클릭 → 컨텍스트 메뉴가 뜰 때까지.</summary>
+    public static TimeSpan TimetableMenuOpen => Ms(1200);
+    /// <summary>주차 행 클릭 → 시간표 그리드가 갱신될 때까지.</summary>
+    public static TimeSpan TimetableWeekChange => Ms(1500);
+
     private static TimeSpan Ms(int baseMs) => TimeSpan.FromMilliseconds(baseMs * _multiplier);
 }
