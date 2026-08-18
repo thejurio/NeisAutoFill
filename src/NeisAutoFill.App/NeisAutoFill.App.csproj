@@ -32,6 +32,19 @@
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <!-- Playwright 드라이버(.playwright\node\win32_x64\node.exe)는 단일 exe 안에 넣지 않는다.
+       번들에 흡수되면 실행 시 [앱폴더]\.playwright\node\win32_x64\node.exe 를 찾지 못해
+       CDP attach 가 통째로 실패한다 = [NEIS 접속] 후 자동 연결이 영영 안 됨 (v1.3.1~1.6.5 릴리스 버그).
+       드라이버 파일은 exe 옆에 그대로 두고 zip 에 함께 담는다. -->
+  <Target Name="ExcludePlaywrightDriverFromBundle" BeforeTargets="_ComputeFilesToBundle">
+    <ItemGroup>
+      <ResolvedFileToPublish
+          Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('.playwright'))">
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <!-- 창·작업표시줄 아이콘용 (WPF Window Icon 바인딩) -->
     <Resource Include="..\..\assets\app.ico" Link="app.ico" />

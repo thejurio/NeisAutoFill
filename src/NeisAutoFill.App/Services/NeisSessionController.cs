@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
 using NeisAutoFill.App.Mvvm;
+using NeisAutoFill.Automation;
 using NeisAutoFill.Automation.Abstractions;
 
 namespace NeisAutoFill.App.Services;
@@ -50,10 +51,8 @@ public sealed class NeisSessionController : ObservableObject
                     catch (Exception ex)
                     {
                         Diag.Swallow(ex, "자동연결 attach");   // 조용히 재시도하되, 사용자에겐 다음 할 일을 안내
-                        // 브라우저 자체가 없음 vs 열렸지만 나이스 탭 없음 을 구분해 안내 (우리가 던진 메시지 기준)
-                        var hint = ex is InvalidOperationException && (ex.Message.Contains("neis") || ex.Message.Contains("탭"))
-                            ? "나이스 전용 브라우저는 열렸어요. 나이스에 로그인하고 [교과별 평가](또는 [학기말 종합의견])를 조회하면 자동으로 연결됩니다."
-                            : "아직 연결되지 않았어요. [🌐 NEIS 접속] 버튼으로 전용 브라우저를 여세요. (평소 쓰던 Edge 를 그냥 열면 연결되지 않습니다)";
+                        // 브라우저 없음 / 나이스 탭 없음 / 배포본 손상(드라이버 부재) 구분은 AttachFailure 가 전담
+                        var hint = AttachFailure.Describe(ex);
                         Ui(() => ConnectionHint = hint);
                     }
                 }
