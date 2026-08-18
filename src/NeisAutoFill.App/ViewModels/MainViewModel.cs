@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
+using NeisAutoFill.App.Helpers;
 using NeisAutoFill.App.Mvvm;
 using NeisAutoFill.App.Services;
 using NeisAutoFill.Automation.Abstractions;
@@ -82,7 +83,7 @@ public sealed class MainViewModel : ObservableObject
         OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
         RunAllSubjectsCommand = new AsyncRelayCommand(RunAllSubjectsAsync);
         InspectCommand = new AsyncRelayCommand(InspectAsync);
-        TimetableCheckCommand = new AsyncRelayCommand(CheckTimetableAsync);
+        TimetableCheckCommand = new AsyncRelayCommand(RunTimetableFlowAsync);
         ExportGradesCommand = new RelayCommand(ExportGrades);
         HelpCommand = new AsyncRelayCommand(OpenHelpAsync);
 
@@ -1108,24 +1109,27 @@ public sealed class MainViewModel : ObservableObject
     public bool ShowDiagButton { get => _showDiagButton; set => SetProperty(ref _showDiagButton, value); }
     public void ToggleDiagButton() => ShowDiagButton = !ShowDiagButton;
 
-    /// <summary>연간 시간표 연결 확인 (읽기 전용) — 입력 기능이 붙기 전 상태 점검용.</summary>
+    /// <summary>연간 시간표 자동입력 (개발 중) — 문서 → 검토 → 매핑 → 계획까지.</summary>
     public ICommand TimetableCheckCommand { get; }
 
     /// <summary>
-    /// 시간표 화면을 열어 읽을 수 있는지 확인한다. <b>입력·저장은 하지 않는다.</b>
-    /// 오늘이 든 주를 기준으로 보고, 그 주에서 메뉴가 안 열리면 이유를 알려 준다.
+    /// 연간 시간표 흐름을 처음부터 끝까지 태운다.
+    /// <b>아직 실제 입력은 하지 않는다</b> — 계획을 만들어 보여 주고 멈춘다.
     /// </summary>
-    private async Task CheckTimetableAsync()
+    private async Task RunTimetableFlowAsync()
     {
         if (!_engine.Connected) { ShowError("나이스 연결 후 사용하세요. [🌐 NEIS 접속]으로 브라우저를 여세요."); return; }
         try
         {
-            Log("시간표 화면을 확인하고 있어요…");
-            var result = await _timetable.PreflightAsync(DateOnly.FromDateTime(DateTime.Today), _progress);
+            var flow = new TimetableFlow(_timetable, Log);
+            var result = await flow.RunAsync(Application.Current.MainWindow, _progress);
+
             Log(result.Message);
-            if (!result.Ok) ShowError(result.Message);
+            if (result.Plan is not null)
+                MessageBox.Show(result.Message, "시간표 실행 계획",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
         }
-        catch (Exception ex) { Log($"시간표 확인 오류: {ex.Message}"); }
+        catch (Exception ex) { Log($"시간표 오류: {ex.Message}"); }
     }
 
     private async Task InspectAsync()

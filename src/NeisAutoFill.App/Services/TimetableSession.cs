@@ -29,6 +29,10 @@ public sealed class TimetableSession(INeisEngine engine, NeisSessionController s
     /// <summary>메뉴가 열리지 않은 셀들 — 학기 시작 전·휴업일. 실패가 아니라 정상 상태다.</summary>
     public HashSet<TimetableCell> Unavailable { get; } = new();
 
+    /// <summary>나이스가 아는 학기 범위 — 주차 목록의 처음과 끝.</summary>
+    public DateOnly? TermStart { get; private set; }
+    public DateOnly? TermEnd { get; private set; }
+
     /// <summary>
     /// 화면을 준비하고 읽을 수 있는지 확인한다. 입력은 하지 않는다.
     /// 사용자가 풀어야 하는 상황(로그인 등)이면 그 문구를 그대로 돌려준다.
@@ -52,6 +56,13 @@ public sealed class TimetableSession(INeisEngine engine, NeisSessionController s
         {
             var (ok, why) = await engine.QueryAsync(ct);
             if (!ok) return new TimetablePreflight(false, $"조회하지 못했습니다. {why}");
+        }
+
+        var weeks = await reader.ReadWeeksAsync();
+        if (weeks.Count > 0)
+        {
+            TermStart = weeks.Min(w => w.Start);
+            TermEnd = weeks.Max(w => w.End);
         }
 
         var week = await reader.SelectWeekForDateAsync(targetDate);
@@ -122,7 +133,7 @@ public sealed class TimetableSession(INeisEngine engine, NeisSessionController s
             .Where(c => c.Value.Length > 0)
             .ToDictionary(c => c.Key, c => TimetableMenuParser.Parse(c.Value).StableKey);
 
-        return new TimetableScreenState(current, Unavailable);
+        return new TimetableScreenState(current, Unavailable, TermStart, TermEnd);
     }
 
     /// <summary>메뉴가 열리는 평일 셀을 찾아 카탈로그를 읽는다. 열리지 않는 날은 사용 불가로 기록한다.</summary>

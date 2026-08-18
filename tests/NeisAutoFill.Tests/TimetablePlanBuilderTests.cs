@@ -226,4 +226,33 @@ public class TimetablePlanBuilderTests
         Assert.Equal(1, p.CountByStatus[AssignmentStatus.Pending]);
         Assert.Equal(1, p.CountByStatus[AssignmentStatus.CreativeUnresolved]);
     }
+
+    [Fact]
+    public void 나이스_학기에_없는_날짜는_입력_예정이_아니다()
+    {
+        // 다른 학년도 문서를 넣으면 존재하지 않는 날에 입력하려 들게 된다 —
+        // 실제로 2025학년도 시간표를 2026학년도 화면에 태워 392칸이 모두 '입력 예정'이 되는 것을 확인했다.
+        var 작년 = new TimetableCell(new DateOnly(2025, 3, 3), 1);
+
+        var p = TimetablePlanBuilder.Build(
+            new[] { new TimetableSourceLesson(작년, "국") },
+            new[] { new TimetableMappingRule("국", 키("국어(교사A(account-a))"), MappingScope.Default) },
+            카탈로그,
+            new TimetableScreenState(new Dictionary<TimetableCell, string>(), new HashSet<TimetableCell>(),
+                TermStart: new DateOnly(2026, 8, 19), TermEnd: new DateOnly(2027, 2, 28)));
+
+        Assert.Equal(AssignmentStatus.OutOfRange, p.Assignments[0].Status);
+        Assert.True(p.Assignments[0].IsBlocking);
+        Assert.False(p.CanRun);
+    }
+
+    [Fact]
+    public void 학기_범위를_모르면_검사하지_않는다()
+    {
+        var p = 계획(
+            new[] { new TimetableSourceLesson(new TimetableCell(월, 1), "국") },
+            new[] { new TimetableMappingRule("국", 키("국어(교사A(account-a))"), MappingScope.Default) });
+
+        Assert.Equal(AssignmentStatus.Pending, p.Assignments[0].Status);
+    }
 }

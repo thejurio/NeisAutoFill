@@ -26,6 +26,8 @@ public enum AssignmentStatus
     ExistingValueConflict,
     /// <summary>휴업일 등으로 셀을 쓸 수 없다.</summary>
     CellUnavailable,
+    /// <summary>나이스의 이 학기에 없는 날짜다 — 다른 학년도·학기 문서를 넣은 경우.</summary>
+    OutOfRange,
     /// <summary>같은 셀을 두 원본이 노린다.</summary>
     DuplicateTarget,
 }
@@ -53,6 +55,7 @@ public sealed record TimetableAssignment(
 
     /// <summary>사람이 풀어야 실행할 수 있는 상태인가 (기술설계 §12 사전 검증).</summary>
     public bool IsBlocking => Status is
+        AssignmentStatus.OutOfRange or
         AssignmentStatus.SourceUnresolved or
         AssignmentStatus.MappingUnresolved or
         AssignmentStatus.MappingConflict or

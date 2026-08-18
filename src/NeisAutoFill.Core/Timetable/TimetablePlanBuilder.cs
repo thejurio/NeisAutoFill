@@ -8,12 +8,24 @@ public sealed record TimetableSourceLesson(TimetableCell Cell, string SourceToke
 /// <summary>계획을 만들 때 필요한 나이스 쪽 현재 상태 (브라우저 없이 테스트할 수 있도록 값으로 받는다).</summary>
 /// <param name="CurrentValues">셀 → 현재 값의 안정 키. 비어 있는 셀은 넣지 않는다</param>
 /// <param name="UnavailableCells">휴업일 등 메뉴를 열 수 없는 셀</param>
+/// <param name="TermStart">나이스가 아는 학기 시작일. null 이면 범위를 검사하지 않는다</param>
+/// <param name="TermEnd">학기 종료일</param>
 public sealed record TimetableScreenState(
     IReadOnlyDictionary<TimetableCell, string> CurrentValues,
-    IReadOnlySet<TimetableCell> UnavailableCells)
+    IReadOnlySet<TimetableCell> UnavailableCells,
+    DateOnly? TermStart = null,
+    DateOnly? TermEnd = null)
 {
     public static TimetableScreenState Empty { get; } =
         new(new Dictionary<TimetableCell, string>(), new HashSet<TimetableCell>());
+
+    /// <summary>
+    /// 그 날짜가 나이스 학기 안에 있는가.
+    /// 다른 학년도·학기 문서를 넣으면 존재하지도 않는 날에 입력하려 들게 된다 —
+    /// 실제로 2025학년도 시간표를 2026학년도 화면에 태워 392칸이 모두 '입력 예정'으로 잡히는 것을 확인했다.
+    /// </summary>
+    public bool IsInTerm(DateOnly date) =>
+        (TermStart is null || date >= TermStart) && (TermEnd is null || date <= TermEnd);
 }
 
 /// <summary>
@@ -69,11 +81,16 @@ public static class TimetablePlanBuilder
         if (duplicated.Contains(cell))
             return At(AssignmentStatus.DuplicateTarget, "같은 날짜·교시에 원본 수업이 둘 이상입니다.");
 
-        // ③ 휴업일 등 셀을 못 쓰는 경우 (실패가 아니라 정상적인 건너뜀 상태)
+        // ③ 나이스 학기 범위 밖 — 그 날짜는 화면에 아예 없다
+        if (!screen.IsInTerm(cell.Date))
+            return At(AssignmentStatus.OutOfRange,
+                $"{cell.Date:yyyy-MM-dd} 은 나이스의 이 학기에 없는 날짜입니다. 문서의 학년도·학기를 확인하세요.");
+
+        // ④ 휴업일 등 셀을 못 쓰는 경우 (실패가 아니라 정상적인 건너뜀 상태)
         if (screen.UnavailableCells.Contains(cell))
             return At(AssignmentStatus.CellUnavailable, "수업이 없는 날이라 입력할 수 없습니다.");
 
-        // ④ 매핑 해석
+        // ⑤ 매핑 해석
         var resolution = TimetableMappingResolver.Resolve(token, cell, rules);
         switch (resolution.Kind)
         {
@@ -94,12 +111,12 @@ public static class TimetablePlanBuilder
 
         var target = resolution.TargetStableKey;
 
-        // ⑤ 대상이 지금 메뉴에 실제로 있는지 — 저장된 규칙의 교사가 사라졌을 수 있다
+        // ⑥ 대상이 지금 메뉴에 실제로 있는지 — 저장된 규칙의 교사가 사라졌을 수 있다
         if (catalog.Find(target) is null)
             return At(AssignmentStatus.OptionNotFound,
                 "지정한 과목·교사가 현재 나이스 목록에 없습니다.", target);
 
-        // ⑥ 현재 값과 비교
+        // ⑦ 현재 값과 비교
         if (current.Length == 0)
             return At(AssignmentStatus.Pending, resolution.Describe(), target);
 
