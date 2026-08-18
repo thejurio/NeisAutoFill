@@ -125,6 +125,10 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
                 ("학기말종합의견", new[] { "학기말종합의견 3단계", "학기말종합의견" }, System.Array.Empty<string>(), "학기말종합의견", "학기말종합의견"),
             NeisTarget.SubjectDevelopment =>
                 ("교과학습발달상황", new[] { "교과학습발달상황 3단계", "교과학습발달상황" }, System.Array.Empty<string>(), "교과학습발달상황", "교과학습발달상황"),
+            // 메뉴 라벨은 "학급시간표관리"(붙임)인데 화면 제목은 "학급시간표 관리"(띄어쓰기) — 실측 2026-08-18.
+            // 도착 판정은 두 표기에 모두 걸리는 "학급시간표" 로 한다.
+            NeisTarget.ClassTimetable =>
+                ("학급시간표관리", new[] { "학급시간표관리 3단계", "학급시간표관리" }, System.Array.Empty<string>(), "학급시간표관리", "학급시간표"),
             _ => ("교과평가", new[] { "교과평가" }, System.Array.Empty<string>(), "교과평가", "교과평가"),
         };
 
@@ -132,10 +136,16 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         // 제목만으로 판단한다 (그리드 요구하면 조회 전엔 영영 도착으로 안 잡힘).
         if ((await ReadScreenTitleAsync()).Contains(title)) return true;
 
+        // 2단계 메뉴가 목적지마다 다르다: 평가·서술문은 [학생평가], 시간표는 [시간표관리]
+        var secondName = target == NeisTarget.ClassTimetable ? "시간표관리" : "학생평가";
+        var secondLabels = target == NeisTarget.ClassTimetable
+            ? new[] { "시간표관리 2단계", "시간표관리" }
+            : new[] { "학생평가 2단계", "학생평가" };
+
         var steps = new List<(string name, string[] labels)>
         {
             ("학급담임", new[] { "학급담임 0단계", "학급담임" }),
-            ("학생평가", new[] { "학생평가 2단계", "학생평가" }),
+            (secondName, secondLabels),
             (thirdName, thirdLabels),
         };
         if (tabLabels.Length > 0) steps.Add((screenName, tabLabels));   // 교과평가만 하위 탭

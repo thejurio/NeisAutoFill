@@ -25,6 +25,7 @@ public enum NeisTarget
     Evaluation,          // 교과평가 → [교과별 평가] 탭 (성적 등급 입력)
     TermOpinion,         // 학기말종합의견 (종합의견 서술문)
     SubjectDevelopment,  // 교과학습발달상황 (교과 세특 서술문)
+    ClassTimetable,      // 학급시간표관리 (연간 시간표 입력) — 2단계가 '시간표관리'로 다르다
 }
 
 /// <summary>화면 파악 결과 — UI 가 매칭을 검토·결정할 재료.</summary>

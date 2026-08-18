@@ -75,9 +75,19 @@ public sealed class TimetableReader(IPage page)
   return rows;
 }";
 
-    /// <summary>현재 화면이 학급시간표관리인지 — 시간표 그리드가 보이면 준비된 것으로 본다.</summary>
+    /// <summary>
+    /// 현재 화면이 학급시간표관리인지. 제목으로 판정한다 —
+    /// 실측: 메뉴 라벨은 "학급시간표관리"(붙임)인데 화면 제목은 <b>"학급시간표 관리"(띄어쓰기)</b> 라
+    /// 두 표기에 모두 걸리는 "학급시간표" 로 비교한다.
+    /// 이동 직후에는 그리드가 비어 있으므로 <b>그리드 유무로 판정하면 안 된다</b>.
+    /// </summary>
     public async Task<bool> IsTimetableScreenAsync() =>
-        await page.EvaluateAsync<int>(FindGridJs) >= 0;
+        await page.EvaluateAsync<bool>(@"() => [...document.querySelectorAll('div.app-tit')]
+            .some(t => { const r = t.getBoundingClientRect();
+                         return r.width > 0 && r.height > 0 && (t.innerText || '').includes('학급시간표'); })");
+
+    /// <summary>시간표 그리드가 실제로 그려져 있는지 (조회·주차 선택이 끝났는지).</summary>
+    public async Task<bool> HasGridAsync() => await page.EvaluateAsync<int>(FindGridJs) >= 0;
 
     /// <summary>주차 목록. 주차 전환·행사(휴업일) 확인에 쓴다.</summary>
     public async Task<IReadOnlyList<TimetableWeek>> ReadWeeksAsync()
@@ -120,6 +130,27 @@ public sealed class TimetableReader(IPage page)
                            $"div.cl-grid-row[data-rowindex='{weekRowIndex}'] div[role=gridcell] >> nth=0")
                   .ClickAsync();
         await page.WaitForTimeoutAsync((float)Timings.TimetableWeekChange.TotalMilliseconds);
+    }
+
+    /// <summary>
+    /// 해당 날짜가 들어 있는 주차를 골라 시간표를 띄운다.
+    /// 조회 직후에는 주차 목록만 있고 그리드가 비어 있으므로, 읽기 전에 반드시 한 번 호출해야 한다.
+    /// 주차 목록의 범위는 <b>수업일</b> 기준이라 월~일 전체와 다르다 — 주 시작일을 월요일로 맞춰 비교한다.
+    /// </summary>
+    /// <returns>고른 주차. 해당 날짜의 주차를 찾지 못하면 null</returns>
+    public async Task<TimetableWeek?> SelectWeekForDateAsync(DateOnly date)
+    {
+        var weeks = await ReadWeeksAsync();
+        var monday = date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
+
+        var week = weeks.FirstOrDefault(w =>
+            (date >= w.Start && date <= w.End) ||                                   // 수업일 범위 안
+            w.Start.AddDays(-(((int)w.Start.DayOfWeek + 6) % 7)) == monday);        // 같은 주(월요일 기준)
+
+        if (week is null) return null;
+
+        await SelectWeekAsync(week.Index);
+        return week;
     }
 
     /// <summary>
