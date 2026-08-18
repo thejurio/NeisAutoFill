@@ -40,7 +40,19 @@ $driver = Join-Path $pub '.playwright/node/win32_x64/node.exe'
 if (-not (Test-Path $driver)) { throw "Playwright 드라이버 누락: $driver — 배포 중단" }
 Write-Host "  ✓ 드라이버 확인" -ForegroundColor Green
 
-# ── 3. Velopack 패키징 ────────────────────────────────────────
+# ── 3. 토큰 (gh 로그인에서 가져옴 — 별도 PAT 관리 불필요) ────
+$token = (gh auth token).Trim()
+if (-not $token) { throw "GitHub 토큰을 얻지 못했습니다 — 'gh auth login' 을 먼저 하세요." }
+$repoUrl = 'https://github.com/thejurio/NeisAutoFill'
+
+# ── 4. 이전 릴리스 받아오기 (델타 생성의 전제) ────────────────
+# vpk 는 Releases/ 안의 직전 버전 패키지와 비교해 델타를 만든다. 없으면 전체 패키지만 나온다.
+Write-Host "▶ 이전 릴리스 내려받기 (델타 기준)" -ForegroundColor Cyan
+if (Test-Path Releases) { Remove-Item Releases -Recurse -Force }
+vpk download github --repoUrl $repoUrl --token $token
+if ($LASTEXITCODE -ne 0) { Write-Host "  (이전 릴리스 없음 — 전체 패키지만 생성)" -ForegroundColor Yellow }
+
+# ── 5. Velopack 패키징 ────────────────────────────────────────
 Write-Host "▶ Velopack 패키징" -ForegroundColor Cyan
 vpk pack `
     --packId NeisAutoFill `
@@ -52,14 +64,15 @@ vpk pack `
     --icon assets/app.ico
 if ($LASTEXITCODE -ne 0) { throw "vpk pack 실패" }
 
-Get-ChildItem Releases | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}} | Format-Table -AutoSize
+Get-ChildItem Releases | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,2)}} | Format-Table -AutoSize
 
 if ($DryRun) { Write-Host "▶ DryRun — 업로드 생략" -ForegroundColor Yellow; exit 0 }
 
-# ── 4. GitHub 릴리스 업로드 ───────────────────────────────────
+# ── 6. GitHub 릴리스 업로드 ───────────────────────────────────
 Write-Host "▶ GitHub 업로드 (v$version)" -ForegroundColor Cyan
 vpk upload github `
-    --repoUrl https://github.com/thejurio/NeisAutoFill `
+    --repoUrl $repoUrl `
+    --token $token `
     --tag "v$version" `
     --releaseName "v$version" `
     --merge --publish
