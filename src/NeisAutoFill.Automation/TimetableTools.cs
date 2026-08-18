@@ -8,8 +8,10 @@ namespace NeisAutoFill.Automation;
 /// <param name="Scope">조회 조건·학교·사용자 범위</param>
 /// <param name="Diagnostics">비식별 진단 리포트</param>
 /// <param name="Writer">셀 입력 (저장은 하지 않는다)</param>
+/// <param name="Runner">주 단위 실행</param>
 public sealed record TimetableTools(
     TimetableReader Reader,
     TimetableScopeReader Scope,
     TimetableDiagnostics Diagnostics,
-    TimetableCellWriter Writer);
+    TimetableCellWriter Writer,
+    TimetableWeekRunner Runner);

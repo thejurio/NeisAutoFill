@@ -255,4 +255,35 @@ public class TimetablePlanBuilderTests
 
         Assert.Equal(AssignmentStatus.Pending, p.Assignments[0].Status);
     }
+
+    [Fact]
+    public void 저장_전_표기도_이미_같음으로_본다()
+    {
+        // 저장 전 셀에는 계정이 빠진다(R-006). 이걸 모르면 방금 입력한 칸이
+        // 전부 '기존 값 충돌'로 잠긴다 — 실제로 한 주 입력 뒤 재계획에서 겪었다.
+        var cell = new TimetableCell(월, 1);
+        var target = TimetableMenuParser.Parse("국어(교사A(account-a))");
+        var 저장전 = target.LooseKey + "|";   // 계정 칸이 빈 형태
+
+        var p = 계획(
+            new[] { new TimetableSourceLesson(cell, "국") },
+            new[] { new TimetableMappingRule("국", target.StableKey, MappingScope.Default) },
+            화면(new Dictionary<TimetableCell, string> { [cell] = 저장전 }));
+
+        Assert.Equal(AssignmentStatus.AlreadyMatches, p.Assignments[0].Status);
+    }
+
+    [Fact]
+    public void 저장_전_표기여도_다른_과목이면_충돌이다()
+    {
+        var cell = new TimetableCell(월, 1);
+        var 체육저장전 = TimetableMenuParser.Parse("체육(교사B(account-b))").LooseKey + "|";
+
+        var p = 계획(
+            new[] { new TimetableSourceLesson(cell, "국") },
+            new[] { new TimetableMappingRule("국", 키("국어(교사A(account-a))"), MappingScope.Default) },
+            화면(new Dictionary<TimetableCell, string> { [cell] = 체육저장전 }));
+
+        Assert.Equal(AssignmentStatus.ExistingValueConflict, p.Assignments[0].Status);
+    }
 }

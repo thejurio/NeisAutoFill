@@ -31,9 +31,11 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             if (!ReferenceEquals(_timetablePage, _page))
             {
                 _timetablePage = _page;
+                var reader = new TimetableReader(_page);
+                var writer = new TimetableCellWriter(_page);
                 _timetable = new TimetableTools(
-                    new TimetableReader(_page), new TimetableScopeReader(_page),
-                    new TimetableDiagnostics(_page), new TimetableCellWriter(_page));
+                    reader, new TimetableScopeReader(_page), new TimetableDiagnostics(_page),
+                    writer, new TimetableWeekRunner(reader, writer));
             }
             return _timetable;
         }

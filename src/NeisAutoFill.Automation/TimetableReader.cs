@@ -128,8 +128,14 @@ public sealed class TimetableReader(IPage page)
 
         await page.Locator($"div.cl-grid[role=grid] >> nth={weekGrid} >> " +
                            $"div.cl-grid-row[data-rowindex='{weekRowIndex}'] div[role=gridcell] >> nth=0")
-                  .ClickAsync();
+                  .ClickAsync(new LocatorClickOptions { Timeout = 5000 });
         await page.WaitForTimeoutAsync((float)Timings.TimetableWeekChange.TotalMilliseconds);
+
+        // 미저장 변경이 있으면 여기서 저장 확인 대화상자가 뜬다 — 누르지 않고 알린다
+        if (await HasSaveDialogAsync())
+            throw new InvalidOperationException(
+                "저장하지 않은 변경이 있어 주차를 옮길 수 없습니다. " +
+                "나이스에서 저장하거나 변경을 버린 뒤 다시 시도하세요.");
     }
 
     /// <summary>
@@ -148,6 +154,11 @@ public sealed class TimetableReader(IPage page)
             w.Start.AddDays(-(((int)w.Start.DayOfWeek + 6) % 7)) == monday);        // 같은 주(월요일 기준)
 
         if (week is null) return null;
+
+        // 이미 그 주가 떠 있으면 클릭하지 않는다.
+        // 미저장 변경이 있는 채로 주차를 누르면 "저장하시겠습니까?" 대화상자가 떠 멈춘다(실측).
+        var current = await ReadCurrentWeekAsync();
+        if (current.Dates.Contains(date)) return week;
 
         await SelectWeekAsync(week.Index);
         return week;
@@ -203,6 +214,46 @@ public sealed class TimetableReader(IPage page)
 
         return rows[rowIndex].TryGetValue(prefixes[dayColumn - 1] + "Ymd", out var ymd)
             && DateOnly.TryParseExact(ymd.Trim(), "yyyyMMdd", out var d) ? d : null;
+    }
+
+    /// <summary>
+    /// 저장 확인 대화상자가 떠 있는지 (실측 2026-08-19).
+    /// 미저장 변경이 있는 채로 조회·주차 이동을 하면 나이스가 이걸 띄운다:
+    /// <c>"시간표에 변경된 항목이 존재합니다. 조회전에 저장하셔야합니다. 저장하시겠습니까?"</c>
+    /// <b>[확인]을 누르면 저장된다</b> — 자동으로 누르지 않는다(D-010, 실기기검증 §11).
+    /// </summary>
+    public async Task<bool> HasSaveDialogAsync() =>
+        await page.EvaluateAsync<bool>(@"() => [...document.querySelectorAll('[role=button], button, .cl-button')]
+            .some(b => {
+                const r = b.getBoundingClientRect();
+                if (!(r.width > 0 && r.height > 0)) return false;
+                for (let e = b.parentElement; e; e = e.parentElement)
+                    if ((e.innerText || '').includes('저장하시겠습니까')) return true;
+                return false;
+            })");
+
+    /// <summary>
+    /// 저장 확인 대화상자를 <b>[취소]</b>로 닫는다 — 저장하지 않고 변경을 버린다.
+    /// [확인]은 이 클래스에서 절대 누르지 않는다. 저장은 별도 승인 경로에서만 한다.
+    /// </summary>
+    public async Task<bool> DismissSaveDialogAsync()
+    {
+        var ok = await page.EvaluateAsync<bool>(@"() => {
+          const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+          const cancel = [...document.querySelectorAll('[role=button], button, .cl-button')]
+            .filter(vis)
+            .filter(b => (b.innerText || '').trim() === '취소')
+            .filter(b => { for (let e = b.parentElement; e; e = e.parentElement)
+                             if ((e.innerText || '').includes('저장하시겠습니까')) return true;
+                           return false; })
+            .pop();
+          if (!cancel) return false;
+          cancel.click();
+          return true;
+        }");
+
+        if (ok) await page.WaitForTimeoutAsync((float)Timings.TimetableWeekChange.TotalMilliseconds);
+        return ok;
     }
 
     /// <summary>메뉴를 [취소]로 닫는다. 취소가 없으면 Escape — 어떤 경우에도 다른 항목을 누르지 않는다.</summary>

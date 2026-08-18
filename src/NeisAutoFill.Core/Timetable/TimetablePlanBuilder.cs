@@ -58,6 +58,24 @@ public static class TimetablePlanBuilder
         return new TimetablePlan(result);
     }
 
+    /// <summary>
+    /// 지금 셀 값이 목표와 같은가 (기술설계 R-006).
+    /// <b>저장 전 셀에는 계정이 빠진다</b> — 방금 입력한 칸을 "기존에 다른 수업이 있다"고 오판하면
+    /// 재실행할 때마다 전부 충돌로 잠긴다. 실제로 한 주 입력 뒤 재계획에서 그 현상을 확인했다.
+    /// 계정이 빈 키는 <see cref="NeisTimetableOption.LooseKey"/> 로 비교하되,
+    /// 그 키가 카탈로그에서 유일할 때만 인정한다(동명이인 방지, D-006).
+    /// </summary>
+    private static bool SameValue(string current, NeisTimetableOption target, TimetableCatalog catalog)
+    {
+        if (current == target.StableKey) return true;
+
+        // "L|국어|해시|" 처럼 마지막 칸이 비어 있으면 저장 전 표기다
+        if (!current.EndsWith('|')) return false;
+
+        var loose = current[..^1];
+        return loose == target.LooseKey && catalog.FindLoose(loose) is not null;
+    }
+
     private static TimetableAssignment Classify(
         TimetableSourceLesson lesson,
         IReadOnlyList<TimetableMappingRule> rules,
@@ -120,7 +138,7 @@ public static class TimetablePlanBuilder
         if (current.Length == 0)
             return At(AssignmentStatus.Pending, resolution.Describe(), target);
 
-        if (current == target)
+        if (SameValue(current, catalog.Find(target)!, catalog))
             return At(AssignmentStatus.AlreadyMatches, "이미 목표와 같습니다.", target);
 
         return At(AssignmentStatus.ExistingValueConflict,
