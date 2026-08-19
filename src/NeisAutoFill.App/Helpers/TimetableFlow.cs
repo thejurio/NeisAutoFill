@@ -25,29 +25,24 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
     public sealed record Result(TimetablePlan? Plan, string Message);
 
     /// <summary>
-    /// 이미 읽어 둔 수업과 기간으로 <b>나이스 준비부터</b> 진행한다 (시간표 탭에서 쓴다).
-    ///
-    /// 파일 고르기·검토·기간 선택은 탭 화면이 이미 담당하므로 여기서 다시 묻지 않는다.
+    /// 탭에서 <b>교사 배정까지 끝낸</b> 상태로 실행한다 — 매핑 창을 다시 띄우지 않는다.
     /// </summary>
-    public async Task<Result> RunLessonsAsync(
+    /// <param name="rules">탭에서 만든 규칙 (기본 + 정기 예외 + 비정기 예외)</param>
+    public async Task<Result> RunPreparedAsync(
         IReadOnlyList<TimetableSourceLesson> lessons,
+        IReadOnlyList<TimetableMappingRule> rules,
         TimetableRangeChoice range,
         Window? owner,
         IProgress<ProgressInfo>? progress = null)
     {
         if (lessons.Count == 0) return new(null, "넣을 수업이 없습니다.");
 
-        // ── 나이스 준비 (읽기 전용) ─────────────────────────────
         var pre = await session.PreflightAsync(lessons.Min(l => l.Cell.Date), progress);
         if (!pre.Ok) return new(null, pre.Message);
 
         log(pre.Message);
 
-        // 나이스가 아는 학기 밖이면 한 칸도 넣을 수 없다 — 매핑까지 가기 전에 멈춘다
-        var inTerm = lessons.Where(l =>
-            (session.TermStart is null || l.Cell.Date >= session.TermStart) &&
-            (session.TermEnd is null || l.Cell.Date <= session.TermEnd)).ToList();
-
+        var inTerm = InTerm(lessons);
         if (inTerm.Count == 0)
             return new(null,
                 $"고른 기간({range.From:yyyy-MM-dd}~{range.To:yyyy-MM-dd})이 나이스에서 조회한 학기" +
@@ -57,13 +52,6 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
         if (inTerm.Count < lessons.Count)
             log($"나이스 학기 밖 {lessons.Count - inTerm.Count}칸은 제외합니다.");
 
-        // ── 매핑 ───────────────────────────────────────────────
-        var rules = session.OpenMapping(inTerm, owner);
-        if (rules is null) return new(null, "매핑을 취소했습니다.");
-
-        log($"매핑 규칙 {rules.Count}건 확정");
-
-        // ── 실행 계획 ──────────────────────────────────────────
         var plan = TimetablePlanBuilder.Build(
             inTerm, rules, session.Catalog!, session.ScreenState(), range.AllowOverwrite);
         log(Describe(plan));
@@ -72,6 +60,12 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
 
         return await RunPlanAsync(plan, inTerm, rules, range, owner, progress);
     }
+
+    /// <summary>나이스가 아는 학기 안의 수업만. 학기 밖 날짜는 화면에 존재하지도 않는다.</summary>
+    private IReadOnlyList<TimetableSourceLesson> InTerm(IEnumerable<TimetableSourceLesson> lessons) =>
+        lessons.Where(l =>
+            (session.TermStart is null || l.Cell.Date >= session.TermStart) &&
+            (session.TermEnd is null || l.Cell.Date <= session.TermEnd)).ToList();
 
     /// <summary>
     /// 동의를 받고 실제로 입력·저장한다. 멈추면 결과 창에서 이어서 다시 시도할 수 있다.

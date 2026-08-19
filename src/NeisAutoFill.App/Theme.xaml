@@ -332,23 +332,26 @@
     </Style>
 
     <!-- ==== 앱 상위 탭 (평가 / 시간표) ====
-         과목 탭(UnderlineTab)과 섞이지 않게 더 크고 진하게, 선택된 탭만 흰 배경으로 띄운다. -->
+         밑줄만으로는 "누르는 것"으로 보이지 않아서, 서로 붙은 알약형 버튼으로 만든다.
+         고르지 않은 탭도 테두리와 배경이 있어 클릭 대상임이 드러난다. -->
     <Style x:Key="MainTab" TargetType="TabItem">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
-        <Setter Property="FontSize" Value="13.5"/>
+        <Setter Property="FontSize" Value="13"/>
         <Setter Property="Foreground" Value="{StaticResource Sub}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Margin" Value="0,0,6,0"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="b" Background="Transparent" BorderThickness="0,0,0,3"
-                            BorderBrush="Transparent" Padding="20,10">
+                    <Border x:Name="b" Background="White" BorderThickness="1" CornerRadius="8"
+                            BorderBrush="#CBD5E1" Padding="18,8" SnapsToDevicePixels="True">
                         <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="b" Property="Background" Value="White"/>
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource Neis}"/>
                             <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Neis}"/>
-                            <Setter Property="Foreground" Value="{StaticResource Neis}"/>
+                            <Setter Property="Foreground" Value="White"/>
                             <Setter Property="FontWeight" Value="Bold"/>
                         </Trigger>
                         <MultiTrigger>
@@ -356,9 +359,38 @@
                                 <Condition Property="IsSelected" Value="False"/>
                                 <Condition Property="IsMouseOver" Value="True"/>
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="b" Property="Background" Value="#EEF2F7"/>
-                            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                            <Setter TargetName="b" Property="Background" Value="{StaticResource NeisSoft}"/>
+                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Neis}"/>
+                            <Setter Property="Foreground" Value="{StaticResource Neis}"/>
                         </MultiTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 탭 머리줄 — 버튼 띠처럼 보이도록 배경과 여백을 준다 -->
+    <Style x:Key="MainTabPanel" TargetType="TabPanel">
+        <Setter Property="Margin" Value="14,8,14,8"/>
+    </Style>
+
+    <!-- ==== 시간표 격자의 칸 ==== -->
+    <Style x:Key="TimetableCellButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="Transparent" BorderThickness="2" BorderBrush="Transparent"
+                            Padding="4,3">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="#F1F5F9"/>
+                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
