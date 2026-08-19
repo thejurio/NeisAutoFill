@@ -35,11 +35,17 @@ public sealed record TimetableScreenState(
 /// </summary>
 public static class TimetablePlanBuilder
 {
+    /// <param name="allowOverwrite">
+    /// 이미 다른 값이 들어 있는 칸을 덮어쓸지 (D-010).
+    /// <b>기본은 false</b> — 사용자가 동의 창에서 명시적으로 허용했을 때만 true 로 넘긴다.
+    /// 나이스 학급시간표는 기준시간표로 일괄 생성돼 이미 차 있는 경우가 흔하다.
+    /// </param>
     public static TimetablePlan Build(
         IEnumerable<TimetableSourceLesson> lessons,
         IEnumerable<TimetableMappingRule> rules,
         TimetableCatalog catalog,
-        TimetableScreenState screen)
+        TimetableScreenState screen,
+        bool allowOverwrite = false)
     {
         var ruleList = rules.ToList();
         var lessonList = lessons.ToList();
@@ -53,7 +59,7 @@ public static class TimetablePlanBuilder
 
         var result = new List<TimetableAssignment>(lessonList.Count);
         foreach (var lesson in lessonList)
-            result.Add(Classify(lesson, ruleList, catalog, screen, duplicated));
+            result.Add(Classify(lesson, ruleList, catalog, screen, duplicated, allowOverwrite));
 
         return new TimetablePlan(result);
     }
@@ -81,7 +87,8 @@ public static class TimetablePlanBuilder
         IReadOnlyList<TimetableMappingRule> rules,
         TimetableCatalog catalog,
         TimetableScreenState screen,
-        IReadOnlySet<TimetableCell> duplicated)
+        IReadOnlySet<TimetableCell> duplicated,
+        bool allowOverwrite)
     {
         var cell = lesson.Cell;
         var token = lesson.SourceToken;
@@ -141,7 +148,9 @@ public static class TimetablePlanBuilder
         if (SameValue(current, catalog.Find(target)!, catalog))
             return At(AssignmentStatus.AlreadyMatches, "이미 목표와 같습니다.", target);
 
-        return At(AssignmentStatus.ExistingValueConflict,
-            "기존에 다른 수업이 들어 있습니다. 덮어쓰려면 확인이 필요합니다.", target);
+        return allowOverwrite
+            ? At(AssignmentStatus.Pending, "기존 값을 덮어씁니다.", target) with { Overwrite = true }
+            : At(AssignmentStatus.ExistingValueConflict,
+                "기존에 다른 수업이 들어 있습니다. 덮어쓰려면 확인이 필요합니다.", target);
     }
 }

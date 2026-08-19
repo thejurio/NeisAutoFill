@@ -274,6 +274,69 @@ public class TimetablePlanBuilderTests
     }
 
     [Fact]
+    public void 덮어쓰기를_허용하면_기존_값이_달라도_입력한다()
+    {
+        // 나이스 학급시간표는 기준시간표로 이미 채워져 있는 경우가 흔하다(실기기검증 §4-F).
+        // 그때는 '빈 칸 채우기'가 아니라 '있는 값 고치기'가 된다 — 사용자가 미리 동의했을 때만.
+        var cell = new TimetableCell(월, 1);
+
+        var p = TimetablePlanBuilder.Build(
+            new[] { new TimetableSourceLesson(cell, "국") },
+            new[] { new TimetableMappingRule("국", 키("국어(교사A(account-a))"), MappingScope.Default) },
+            카탈로그,
+            화면(new Dictionary<TimetableCell, string> { [cell] = 키("체육(교사B(account-b))") }),
+            allowOverwrite: true);
+
+        Assert.Equal(AssignmentStatus.Pending, p.Assignments[0].Status);
+        Assert.True(p.Assignments[0].Overwrite);
+        Assert.True(p.CanRun);
+        Assert.Single(p.Overwriting);
+    }
+
+    [Fact]
+    public void 덮어쓰기를_허용해도_이미_같으면_건드리지_않는다()
+    {
+        var cell = new TimetableCell(월, 1);
+        var target = 키("국어(교사A(account-a))");
+
+        var p = TimetablePlanBuilder.Build(
+            new[] { new TimetableSourceLesson(cell, "국") },
+            new[] { new TimetableMappingRule("국", target, MappingScope.Default) },
+            카탈로그,
+            화면(new Dictionary<TimetableCell, string> { [cell] = target }),
+            allowOverwrite: true);
+
+        Assert.Equal(AssignmentStatus.AlreadyMatches, p.Assignments[0].Status);
+        Assert.Empty(p.Overwriting);   // 멱등성은 덮어쓰기와 무관하게 지켜진다
+    }
+
+    [Fact]
+    public void 덮어쓰기를_허용해도_빈_칸은_덮어쓰기가_아니다()
+    {
+        var p = TimetablePlanBuilder.Build(
+            new[] { new TimetableSourceLesson(new TimetableCell(월, 1), "국") },
+            new[] { new TimetableMappingRule("국", 키("국어(교사A(account-a))"), MappingScope.Default) },
+            카탈로그, 화면(), allowOverwrite: true);
+
+        Assert.Equal(AssignmentStatus.Pending, p.Assignments[0].Status);
+        Assert.False(p.Assignments[0].Overwrite);
+        Assert.Empty(p.Overwriting);
+    }
+
+    [Fact]
+    public void 덮어쓰기를_허용해도_다른_막힘은_그대로_막는다()
+    {
+        // 덮어쓰기 동의는 '기존 값'에 대한 것이지 매핑 미해결까지 통과시키는 것이 아니다
+        var p = TimetablePlanBuilder.Build(
+            new[] { new TimetableSourceLesson(new TimetableCell(월, 1), "미지의과목") },
+            Array.Empty<TimetableMappingRule>(),
+            카탈로그, 화면(), allowOverwrite: true);
+
+        Assert.Equal(AssignmentStatus.MappingUnresolved, p.Assignments[0].Status);
+        Assert.False(p.CanRun);
+    }
+
+    [Fact]
     public void 저장_전_표기여도_다른_과목이면_충돌이다()
     {
         var cell = new TimetableCell(월, 1);

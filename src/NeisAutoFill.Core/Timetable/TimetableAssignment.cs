@@ -42,13 +42,15 @@ public enum AssignmentStatus
 /// <param name="TargetStableKey">확정된 대상 (없으면 빈 문자열)</param>
 /// <param name="CurrentStableKey">나이스의 현재 값 (비어 있으면 빈 문자열)</param>
 /// <param name="Reason">이 분류가 나온 이유 — 사용자에게 그대로 보여 준다</param>
+/// <param name="Overwrite">이미 다른 값이 들어 있는 칸을 덮어쓰는가 (사용자가 미리 동의했을 때만 true)</param>
 public sealed record TimetableAssignment(
     TimetableCell Cell,
     string SourceToken,
     AssignmentStatus Status,
     string TargetStableKey = "",
     string CurrentStableKey = "",
-    string Reason = "")
+    string Reason = "",
+    bool Overwrite = false)
 {
     /// <summary>실제로 클릭이 일어날 항목인가.</summary>
     public bool WillWrite => Status == AssignmentStatus.Pending;
@@ -76,6 +78,10 @@ public sealed record TimetablePlan(IReadOnlyList<TimetableAssignment> Assignment
 
     public IReadOnlyList<TimetableAssignment> Writable =>
         Assignments.Where(a => a.WillWrite).ToList();
+
+    /// <summary>이미 값이 있는데 덮어쓸 칸 — 동의 창에서 개수를 알린다.</summary>
+    public IReadOnlyList<TimetableAssignment> Overwriting =>
+        Assignments.Where(a => a.WillWrite && a.Overwrite).ToList();
 
     /// <summary>기본 실행 가능 여부. 막힌 항목이 없어야 한다.</summary>
     public bool CanRun => Blocking.Count == 0 && Writable.Count > 0;

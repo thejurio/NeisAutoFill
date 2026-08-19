@@ -14,7 +14,7 @@ namespace NeisAutoFill.App.Helpers;
 /// 연간 시간표 자동입력의 전체 흐름을 한 곳에 모은다 (BatchUploadFlow 와 같은 역할).
 ///
 /// <code>
-/// 파일 고르기 → 문서 해석 → 검토 창 → 나이스 준비·카탈로그 → 매핑 창 → 실행 계획
+/// 파일 고르기 → 문서 해석 → 검토 창 → 기간·덮어쓰기 선택 → 나이스 준비·카탈로그 → 매핑 창 → 실행 계획
 ///   → 동의 창 → 주 단위 입력·저장·검증 → 결과 창
 /// </code>
 ///
@@ -85,6 +85,14 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
 
         log($"검토 완료 — {reviewed.Count}칸");
 
+        // ── ③-2 기간·덮어쓰기 선택 ──────────────────────────────
+        var range = TimetableRangeWindow.Ask(reviewed, owner);
+        if (range is null) return new(null, "취소했습니다.");
+
+        reviewed = range.Filter(reviewed);
+        log($"기간 {range.From:yyyy-MM-dd}~{range.To:yyyy-MM-dd} · {reviewed.Count}칸" +
+            (range.AllowOverwrite ? " · 기존 값 덮어씀" : " · 기존 값 유지"));
+
         // ── ④ 나이스 준비 (읽기 전용) ───────────────────────────
         var target = reviewed.Min(l => l.Cell.Date);
         var pre = await session.PreflightAsync(target, progress);
@@ -99,14 +107,15 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
         log($"매핑 규칙 {rules.Count}건 확정");
 
         // ── ⑥ 실행 계획 ────────────────────────────────────────
-        var plan = TimetablePlanBuilder.Build(reviewed, rules, session.Catalog!, session.ScreenState());
+        var plan = TimetablePlanBuilder.Build(
+            reviewed, rules, session.Catalog!, session.ScreenState(), range.AllowOverwrite);
         log(Describe(plan));
 
         if (!plan.CanRun)
             return new(plan, Describe(plan));
 
         // ── ⑦ 동의 → 입력·저장 → 결과 ──────────────────────────
-        return await RunPlanAsync(plan, reviewed, rules, owner, progress);
+        return await RunPlanAsync(plan, reviewed, rules, range, owner, progress);
     }
 
     /// <summary>
@@ -116,18 +125,20 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
         TimetablePlan plan,
         IReadOnlyList<TimetableSourceLesson> lessons,
         IReadOnlyList<TimetableMappingRule> rules,
+        TimetableRangeChoice range,
         Window? owner,
         IProgress<ProgressInfo>? progress)
     {
         var checkpoint = session.ResumePoint(plan, out var blocker);
         if (blocker is not null) log($"이전 기록을 이어서 쓰지 않습니다 — {blocker}");
 
-        if (!TimetableRunConsentWindow.Ask(plan, checkpoint, blocker, owner))
+        if (!TimetableRunConsentWindow.Ask(plan, checkpoint, blocker, range, owner))
             return new(plan, "입력을 취소했습니다. 나이스는 그대로입니다.");
 
         while (true)
         {
-            var result = await session.RunBatchAsync(plan, lessons, rules, checkpoint, progress);
+            var result = await session.RunBatchAsync(
+                plan, lessons, rules, checkpoint, range.AllowOverwrite, progress);
             checkpoint = result.Checkpoint;
 
             foreach (var week in result.Weeks) log(week.Describe());

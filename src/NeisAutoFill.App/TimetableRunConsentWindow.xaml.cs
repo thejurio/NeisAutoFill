@@ -24,15 +24,22 @@ public partial class TimetableRunConsentWindow : Window
     }
 
     /// <summary>동의를 받으면 true. 취소하면 false.</summary>
-    public static bool Ask(TimetablePlan plan, TimetableRunCheckpoint checkpoint, string? resumeBlocker, Window? owner)
+    /// <param name="range">사용자가 고른 기간과 덮어쓰기 여부</param>
+    public static bool Ask(
+        TimetablePlan plan, TimetableRunCheckpoint checkpoint, string? resumeBlocker,
+        TimetableRangeChoice range, Window? owner)
     {
         var weeks = plan.ByWeek.Select(w => w.Key).ToList();
         var todo = weeks.Count(w => !checkpoint.IsCompleted(w));
 
         var summary =
+            $"기간 {range.From:yyyy-MM-dd} ~ {range.To:yyyy-MM-dd}\n" +
             $"입력할 칸 {plan.Writable.Count}칸 · 주 {todo}개\n" +
-            $"이미 같아서 건드리지 않는 칸 {plan.CountByStatus.GetValueOrDefault(AssignmentStatus.AlreadyMatches)}칸\n\n" +
-            "주 하나마다 이 순서로 진행합니다:\n" +
+            $"이미 같아서 건드리지 않는 칸 {plan.CountByStatus.GetValueOrDefault(AssignmentStatus.AlreadyMatches)}칸\n" +
+            (range.AllowOverwrite
+                ? "\n이미 다른 값이 들어 있는 칸은 계획대로 덮어씁니다.\n"
+                : "\n이미 다른 값이 들어 있는 칸은 건드리지 않고 거기서 멈춥니다.\n") +
+            "\n주 하나마다 이 순서로 진행합니다:\n" +
             "그 주로 이동 → 지금 값 다시 확인 → 입력 → 저장 → 다시 조회해서 검증";
 
         var note = resumeBlocker is not null

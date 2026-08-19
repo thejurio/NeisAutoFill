@@ -52,13 +52,15 @@ public sealed record BatchRunResult(
 /// <param name="Rules">확정된 매핑 규칙</param>
 /// <param name="Catalog">나이스 과목·교사 목록</param>
 /// <param name="Weeks">처리할 주의 시작일(월요일), 순서대로</param>
+/// <param name="AllowOverwrite">이미 값이 있는 칸을 덮어쓸지 — 사용자가 동의 창에서 허용했을 때만 true</param>
 public sealed record TimetableRunRequest(
     IReadOnlyList<TimetableSourceLesson> Lessons,
     IReadOnlyList<TimetableMappingRule> Rules,
     TimetableCatalog Catalog,
     IReadOnlyList<DateOnly> Weeks,
     DateOnly? TermStart = null,
-    DateOnly? TermEnd = null);
+    DateOnly? TermEnd = null,
+    bool AllowOverwrite = false);
 
 /// <summary>
 /// 연간 입력을 <b>주 단위로</b> 끝까지 진행한다 (기술설계 §12, 로드맵 T8).
@@ -166,7 +168,7 @@ public sealed class TimetableBatchRunner(
 
             progress?.Report(new($"{a.Cell} 입력 중…", ++cellDone, targets.Count));
 
-            var r = await writer.WriteAsync(a.Cell, a.TargetStableKey, allowOverwrite: false, ct);
+            var r = await writer.WriteAsync(a.Cell, a.TargetStableKey, a.Overwrite, ct);
             records.Add(new(a.Cell, r.Outcome, r.Detail));
 
             if (r.Outcome is not (CellWriteOutcome.Written or CellWriteOutcome.AlreadyMatches
@@ -208,7 +210,8 @@ public sealed class TimetableBatchRunner(
         var screen = new TimetableScreenState(
             current, new HashSet<TimetableCell>(), request.TermStart, request.TermEnd);
 
-        return TimetablePlanBuilder.Build(lessons, request.Rules, request.Catalog, screen);
+        return TimetablePlanBuilder.Build(
+            lessons, request.Rules, request.Catalog, screen, request.AllowOverwrite);
     }
 
     /// <summary>

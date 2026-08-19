@@ -152,6 +152,7 @@ public sealed class TimetableSession(
         IReadOnlyList<TimetableSourceLesson> lessons,
         IReadOnlyList<TimetableMappingRule> rules,
         TimetableRunCheckpoint checkpoint,
+        bool allowOverwrite = false,
         IProgress<ProgressInfo>? progress = null,
         CancellationToken ct = default)
     {
@@ -161,7 +162,7 @@ public sealed class TimetableSession(
         var request = new TimetableRunRequest(
             lessons, rules, Catalog!,
             plan.ByWeek.Select(w => w.Key).ToList(),
-            TermStart, TermEnd);
+            TermStart, TermEnd, allowOverwrite);
 
         var canPersist = Scope is not null;
 
