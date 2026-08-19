@@ -13,9 +13,17 @@ namespace NeisAutoFill.App.ViewModels;
 /// <summary>시간표 격자의 칸 하나.</summary>
 public sealed class TimetableCellVm : ObservableObject
 {
-    public TimetableCellVm(TimetableCell cell) => Cell = cell;
+    public TimetableCellVm(TimetableCell cell, TimetableTabViewModel owner)
+    {
+        Cell = cell;
+        Owner = owner;
+    }
 
     public TimetableCell Cell { get; }
+
+    /// <summary>칸 위에 뜨는 팝업이 명령을 쓰려면 주인을 알아야 한다 —
+    /// Popup 은 시각 트리 밖이라 부모를 거슬러 찾을 수 없다.</summary>
+    public TimetableTabViewModel Owner { get; }
 
     /// <summary>원본 표기 ("국"). 수업이 없으면 빈 문자열.</summary>
     public string Token { get; set; } = "";
@@ -290,6 +298,34 @@ public sealed class TimetableTabViewModel : ObservableObject
     public bool HasSource => _source is not null;
     public bool HasCatalog => _catalog is not null;
 
+    /// <summary>교사 배정이 끝났는가 — 정하지 않은 과목이 하나도 없어야 한다.</summary>
+    public bool TeachersReady => _catalog is not null && Subjects.Count > 0 && Subjects.All(x => !x.NeedsTeacher);
+
+    /// <summary>진행 막대의 각 칸 상태 — 끝난 단계는 ✓ 로 접힌다.</summary>
+    public string Step1Text => _source is null ? "시간표 문서를 고르세요" : TimetableFileName;
+    public string Step2Text => _catalog is null ? "나이스에서 과목·교사 불러오기" : CatalogState;
+    public string Step3Text => SelectedSemester?.Description ?? "학기·기간";
+    public string Step4Text
+    {
+        get
+        {
+            if (_catalog is null) return "교사 배정";
+            var missing = Subjects.Count(x => x.NeedsTeacher);
+            return missing == 0 ? $"교사 {Subjects.Count}과목 배정 완료" : $"교사 미정 {missing}과목";
+        }
+    }
+
+    private void RefreshSteps()
+    {
+        OnPropertyChanged(nameof(HasSource));
+        OnPropertyChanged(nameof(HasCatalog));
+        OnPropertyChanged(nameof(TeachersReady));
+        OnPropertyChanged(nameof(Step1Text));
+        OnPropertyChanged(nameof(Step2Text));
+        OnPropertyChanged(nameof(Step3Text));
+        OnPropertyChanged(nameof(Step4Text));
+    }
+
     // ── 범위 ────────────────────────────────────────────────
 
     public TimetableSemesterPart? SelectedSemester
@@ -532,6 +568,7 @@ public sealed class TimetableTabViewModel : ObservableObject
 
     public void RefreshRunnable()
     {
+        RefreshSteps();
         OnPropertyChanged(nameof(CanRun));
         RunCommand.RaiseCanExecuteChanged();
         LoadCatalogCommand.RaiseCanExecuteChanged();
@@ -891,7 +928,7 @@ public sealed class TimetableTabViewModel : ObservableObject
             for (var d = 0; d < 5; d++)
             {
                 var date = start.AddDays(d);
-                var cell = new TimetableCellVm(new TimetableCell(date, period));
+                var cell = new TimetableCellVm(new TimetableCell(date, period), this);
 
                 if (IsHoliday(date))
                 {
@@ -999,7 +1036,20 @@ public sealed class TimetableTabViewModel : ObservableObject
         else _standardEdits[subject] = value.Value;
     }
 
-    private void SelectCell(TimetableCellVm? cell) => SelectedCell = cell;
+    private void SelectCell(TimetableCellVm? cell)
+    {
+        if (cell is null) return;
+
+        // 같은 칸을 다시 눌렀을 때 — 쪽지는 바깥을 누르면 스스로 닫히므로(IsSelected=false)
+        // 참조가 같다고 그냥 넘기면 다시 열리지 않는다.
+        if (ReferenceEquals(_selectedCell, cell))
+        {
+            cell.IsSelected = true;
+            return;
+        }
+
+        SelectedCell = cell;
+    }
 
     /// <param name="regular">true 면 요일+교시 전체(정기), false 면 그 날짜 한 칸만(비정기)</param>
     private void ApplyTeacher(bool regular)
