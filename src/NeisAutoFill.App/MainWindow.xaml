@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:NeisAutoFill.App.ViewModels"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="NEIS 교과평가 자동입력기" Height="780" Width="1280" MinWidth="1120" MinHeight="620"
+        Title="NEIS 교과평가 자동입력기" Height="780" Width="1200" MinWidth="1020" MinHeight="640"
         Icon="app.ico" WindowStyle="None" ResizeMode="CanResize"
         AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver" Closing="Window_Closing"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
@@ -370,8 +370,9 @@
                     </TabItem>
 
                     <!-- ─────────── 시간표 탭 ───────────
-                         3단: 왼쪽 = 순서대로 따라가는 단계, 가운데 = 주별 시간표, 오른쪽 = 과목·교사.
-                         탭으로 나누면 찾아가야 해서 오히려 불편하다. 셋을 한눈에 둔다. -->
+                         ㅏ 배치: 왼쪽은 위에서 아래까지 통으로 "순서",
+                         오른쪽은 위아래 둘로 나눠 위에 과목·교사(실제 작업),
+                         아래에 주별 시간표(확인·예외 만들기). -->
                     <TabItem>
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal" TextOptions.TextFormattingMode="Ideal">
@@ -383,11 +384,10 @@
                       <Grid Background="White" DataContext="{Binding Timetable}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="318"/>
-                            <ColumnDefinition Width="*" MinWidth="430"/>
-                            <ColumnDefinition Width="432"/>
+                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- ══════ 왼쪽: 순서 ══════ -->
+                        <!-- ══════ 왼쪽: 순서 (위에서 아래까지 통) ══════ -->
                         <Border Grid.Column="0" Background="{StaticResource Panel2}"
                                 BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
                             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,12,10,12">
@@ -475,11 +475,16 @@
                             </ScrollViewer>
                         </Border>
 
-                        <!-- ══════ 가운데: 주별 시간표 ══════ -->
-                        <DockPanel Grid.Column="1" Margin="14,12,14,12">
+                        <!-- ══════ 오른쪽: 위 과목·교사 / 아래 주별 시간표 ══════ -->
+                        <Grid Grid.Column="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
 
-                            <!-- 자료 없을 때 -->
-                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="380"
+                            <!-- 자료 없을 때 — 오른쪽 전체를 덮는다 -->
+                            <StackPanel Grid.RowSpan="3" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="420"
                                         Visibility="{Binding HasSource, Converter={StaticResource TrueToCollapsed}}">
                                 <TextBlock Text="🗓" FontFamily="Segoe UI Emoji" FontSize="40"
                                            HorizontalAlignment="Center" Margin="0,0,0,12"/>
@@ -487,177 +492,184 @@
                                            Foreground="{StaticResource Ink}" HorizontalAlignment="Center" TextAlignment="Center"/>
                                 <TextBlock Margin="0,10,0,0" FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center"
                                            LineHeight="21" Foreground="{StaticResource Sub}"
-                                           Text="문서를 읽으면 여기에 주별 시간표가 나타납니다. 칸을 누르면 그 시간만 손볼 수 있어요."/>
+                                           Text="문서를 읽으면 여기 위에 과목별 담당 교사, 아래에 주별 시간표가 나타납니다."/>
                             </StackPanel>
 
-                            <!-- 주 이동 -->
-                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8"
+                            <!-- ── 위: 과목별 담당 교사와 시수 ── -->
+                            <DockPanel Grid.Row="0" Margin="14,12,14,0"
                                        Visibility="{Binding HasSource, Converter={StaticResource BoolToVis}}">
-                                <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="◀"
-                                        Command="{Binding PreviousWeekCommand}" Padding="10,3"/>
-                                <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="▶"
-                                        Command="{Binding NextWeekCommand}" Padding="10,3" Margin="4,0,10,0"/>
-                                <TextBlock Text="{Binding WeekLabel}" VerticalAlignment="Center"
-                                           FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
-                            </DockPanel>
-
-                            <TextBlock DockPanel.Dock="Bottom" Margin="0,7,0,0" FontSize="11.5"
-                                       Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                       Visibility="{Binding HasSource, Converter={StaticResource BoolToVis}}"
-                                       Text="칸을 누르면 그 시간만 교사를 바꾸거나 쉬는 날로 만들 수 있어요. 붉은 칸은 넣지 않습니다."/>
-
-                            <Border BorderBrush="{StaticResource Line}" BorderThickness="1" Background="White"
-                                    VerticalAlignment="Top"
-                                    Visibility="{Binding HasSource, Converter={StaticResource BoolToVis}}">
-                                <DockPanel>
-                                    <!-- 요일 머리 — 날짜와 못 넣는 이유 -->
-                                    <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding DayHeaders}" Background="#F8FAFC">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <UniformGrid Rows="1" Margin="46,0,0,0"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border x:Name="dh" BorderBrush="#EEF2F7" BorderThickness="0,0,1,1" Padding="4,5"
-                                                        Background="Transparent">
-                                                    <StackPanel>
-                                                        <TextBlock Text="{Binding Title}" HorizontalAlignment="Center"
-                                                                   FontWeight="SemiBold" FontSize="12" Foreground="#475569"/>
-                                                        <TextBlock Text="{Binding Reason}" HorizontalAlignment="Center"
-                                                                   FontSize="10.5" Foreground="#B91C1C" TextWrapping="Wrap"
-                                                                   TextAlignment="Center" Margin="0,2,0,0"
-                                                                   Visibility="{Binding Reason, Converter={StaticResource StringToVis}}"/>
-                                                        <TextBlock Text="{Binding Note}" HorizontalAlignment="Center"
-                                                                   FontSize="10" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                                                   TextAlignment="Center" Margin="0,2,0,0" MaxHeight="28"
-                                                                   Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}"
-                                                                   ToolTip="{Binding Note}"/>
-                                                    </StackPanel>
-                                                </Border>
-                                                <DataTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding Blocked}" Value="True">
-                                                        <Setter TargetName="dh" Property="Background" Value="#FEE2E2"/>
-                                                    </DataTrigger>
-                                                </DataTemplate.Triggers>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding Grid}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="46"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="*"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#EEF2F7" BorderThickness="0,0,1,1">
-                                                            <TextBlock Text="{Binding Period}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                                       FontSize="11" Foreground="#475569"/>
-                                                        </Border>
-                                                        <ContentPresenter Grid.Column="1" Content="{Binding Mon}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
-                                                        <ContentPresenter Grid.Column="2" Content="{Binding Tue}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
-                                                        <ContentPresenter Grid.Column="3" Content="{Binding Wed}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
-                                                        <ContentPresenter Grid.Column="4" Content="{Binding Thu}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
-                                                        <ContentPresenter Grid.Column="5" Content="{Binding Fri}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </ScrollViewer>
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,7">
+                                    <TextBlock Text="과목별 담당 교사와 시수" FontWeight="Bold" FontSize="13"
+                                               Foreground="{StaticResource Ink}" VerticalAlignment="Center"/>
+                                    <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" FontSize="11.5"
+                                               Foreground="{StaticResource Sub}" TextTrimming="CharacterEllipsis"
+                                               Text="과목마다 기본 교사를 하나 고릅니다. 몇 시간만 다르면 아래 시간표에서 그 칸을 누르세요."/>
                                 </DockPanel>
-                            </Border>
-                        </DockPanel>
 
-                        <!-- ══════ 오른쪽: 과목·교사 ══════ -->
-                        <Border Grid.Column="2" Background="{StaticResource Panel2}"
-                                BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0">
-                            <DockPanel Margin="12,12,12,12">
-                                <TextBlock DockPanel.Dock="Top" Text="과목별 담당 교사" Style="{StaticResource StepTitle}"
-                                           Margin="0,0,0,6"/>
-                                <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" FontSize="11.5" TextWrapping="Wrap"
-                                           Foreground="{StaticResource Sub}"
-                                           Text="과목마다 기본 교사를 하나 고릅니다. 몇 시간만 다르면 가운데 시간표에서 그 칸을 누르세요."/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
 
-                                <!-- 예외 (아래에 붙는다) -->
-                                <StackPanel DockPanel.Dock="Bottom"
-                                            Visibility="{Binding HasExceptions, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="예외" FontSize="12" FontWeight="Bold" Margin="0,12,0,6"
-                                               Foreground="{StaticResource Ink}"/>
-                                    <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding Exceptions}">
+                                    <DataGrid Grid.Column="0" ItemsSource="{Binding Subjects}" AutoGenerateColumns="False"
+                                              Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
+                                              CanUserSortColumns="False" CanUserAddRows="False" RowHeight="32"
+                                              BorderBrush="{StaticResource Line}" BorderThickness="1" MaxHeight="272">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="과목" Binding="{Binding Subject}" Width="150" IsReadOnly="True"/>
+                                            <DataGridTemplateColumn Header="담당 교사" Width="*">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding Teacher, Mode=TwoWay}"
+                                                                  DisplayMemberPath="Label" FontSize="12" Margin="3,2"
+                                                                  BorderBrush="{StaticResource Line}"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="배정" Binding="{Binding Assigned}" Width="58" IsReadOnly="True"
+                                                                ElementStyle="{StaticResource NumberCell}"/>
+                                            <DataGridTextColumn Header="기준" Binding="{Binding Standard, UpdateSourceTrigger=LostFocus}" Width="58"
+                                                                ElementStyle="{StaticResource NumberCell}"/>
+                                            <DataGridTextColumn Header="차이" Binding="{Binding DifferenceText}" Width="58" IsReadOnly="True">
+                                                <DataGridTextColumn.ElementStyle>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource NumberCell}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsShort}" Value="True">
+                                                                <Setter Property="Foreground" Value="#B91C1C"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsOver}" Value="True">
+                                                                <Setter Property="Foreground" Value="#1D4ED8"/>
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </DataGridTextColumn.ElementStyle>
+                                            </DataGridTextColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+
+                                    <!-- 예외 — 있을 때만 오른쪽에 붙는다 -->
+                                    <DockPanel Grid.Column="1" Width="290" Margin="12,0,0,0"
+                                               Visibility="{Binding HasExceptions, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock DockPanel.Dock="Top" Text="예외" FontSize="12" FontWeight="Bold"
+                                                   Margin="0,0,0,5" Foreground="{StaticResource Ink}"/>
+                                        <ScrollViewer MaxHeight="248" VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl ItemsSource="{Binding Exceptions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1"
+                                                                CornerRadius="6" Padding="8,5" Margin="0,0,0,4">
+                                                            <DockPanel>
+                                                                <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="✕"
+                                                                        Padding="6,1" FontSize="11"
+                                                                        Command="{Binding DataContext.RemoveExceptionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}"/>
+                                                                <Border DockPanel.Dock="Left" Background="{StaticResource NeisSoft}" CornerRadius="4"
+                                                                        Padding="5,1" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding Kind}" FontSize="10.5" FontWeight="Bold"
+                                                                               Foreground="{StaticResource Neis}"/>
+                                                                </Border>
+                                                                <TextBlock Text="{Binding Text}" FontSize="11.5" VerticalAlignment="Center"
+                                                                           TextWrapping="Wrap" Foreground="{StaticResource Ink}"/>
+                                                            </DockPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </DockPanel>
+                                </Grid>
+                            </DockPanel>
+
+                            <TextBlock Grid.Row="1" Text="{Binding CreativeSummary}" Margin="14,5,14,0"
+                                       FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
+                                       Visibility="{Binding HasSource, Converter={StaticResource BoolToVis}}"/>
+
+                            <!-- ── 아래: 주별 시간표 ── -->
+                            <DockPanel Grid.Row="2" Margin="14,14,14,12"
+                                       Visibility="{Binding HasSource, Converter={StaticResource BoolToVis}}">
+                                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,7">
+                                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="◀"
+                                            Command="{Binding PreviousWeekCommand}" Padding="10,3"/>
+                                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="▶"
+                                            Command="{Binding NextWeekCommand}" Padding="10,3" Margin="4,0,10,0"/>
+                                    <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" FontSize="11.5"
+                                               Foreground="{StaticResource Sub}" TextTrimming="CharacterEllipsis"
+                                               Text="칸을 누르면 그 시간만 손볼 수 있어요. 붉은 칸은 넣지 않습니다."/>
+                                    <TextBlock Text="{Binding WeekLabel}" VerticalAlignment="Center"
+                                               FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
+                                </DockPanel>
+
+                                <Border BorderBrush="{StaticResource Line}" BorderThickness="1" Background="White"
+                                        VerticalAlignment="Top">
+                                    <DockPanel>
+                                        <!-- 요일 머리 — 날짜와 못 넣는 이유 -->
+                                        <ItemsControl DockPanel.Dock="Top" ItemsSource="{Binding DayHeaders}" Background="#F8FAFC">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Rows="1" Margin="46,0,0,0"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1"
-                                                            CornerRadius="6" Padding="8,5" Margin="0,0,0,4">
-                                                        <DockPanel>
-                                                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="✕"
-                                                                    Padding="6,1" FontSize="11"
-                                                                    Command="{Binding DataContext.RemoveExceptionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                                    CommandParameter="{Binding}"/>
-                                                            <Border DockPanel.Dock="Left" Background="{StaticResource NeisSoft}" CornerRadius="4"
-                                                                    Padding="5,1" Margin="0,0,6,0" VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding Kind}" FontSize="10.5" FontWeight="Bold"
-                                                                           Foreground="{StaticResource Neis}"/>
-                                                            </Border>
-                                                            <TextBlock Text="{Binding Text}" FontSize="11.5" VerticalAlignment="Center"
-                                                                       TextWrapping="Wrap" Foreground="{StaticResource Ink}"/>
-                                                        </DockPanel>
+                                                    <Border x:Name="dh" BorderBrush="#EEF2F7" BorderThickness="0,0,1,1" Padding="4,5"
+                                                            Background="Transparent">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" HorizontalAlignment="Center"
+                                                                       FontWeight="SemiBold" FontSize="12" Foreground="#475569"/>
+                                                            <TextBlock Text="{Binding Reason}" HorizontalAlignment="Center"
+                                                                       FontSize="10.5" Foreground="#B91C1C" TextWrapping="Wrap"
+                                                                       TextAlignment="Center" Margin="0,2,0,0"
+                                                                       Visibility="{Binding Reason, Converter={StaticResource StringToVis}}"/>
+                                                            <TextBlock Text="{Binding Note}" HorizontalAlignment="Center"
+                                                                       FontSize="10" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
+                                                                       TextAlignment="Center" Margin="0,2,0,0" MaxHeight="26"
+                                                                       Visibility="{Binding HasNote, Converter={StaticResource BoolToVis}}"
+                                                                       ToolTip="{Binding Note}"/>
+                                                        </StackPanel>
                                                     </Border>
+                                                    <DataTemplate.Triggers>
+                                                        <DataTrigger Binding="{Binding Blocked}" Value="True">
+                                                            <Setter TargetName="dh" Property="Background" Value="#FEE2E2"/>
+                                                        </DataTrigger>
+                                                    </DataTemplate.Triggers>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                    </ScrollViewer>
-                                </StackPanel>
 
-                                <TextBlock DockPanel.Dock="Bottom" Text="{Binding CreativeSummary}"
-                                           Style="{StaticResource StepNote}"/>
-
-                                <DataGrid ItemsSource="{Binding Subjects}" AutoGenerateColumns="False"
-                                          Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
-                                          CanUserSortColumns="False" CanUserAddRows="False" RowHeight="32"
-                                          BorderBrush="{StaticResource Line}" BorderThickness="1">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="과목" Binding="{Binding Subject}" Width="112" IsReadOnly="True"/>
-                                        <DataGridTemplateColumn Header="담당 교사" Width="*">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding Teacher, Mode=TwoWay}"
-                                                              DisplayMemberPath="Label" FontSize="12" Margin="2,1"
-                                                              BorderBrush="{StaticResource Line}"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
-                                        <DataGridTextColumn Header="배정" Binding="{Binding Assigned}" Width="46" IsReadOnly="True"
-                                                            ElementStyle="{StaticResource NumberCell}"/>
-                                        <DataGridTextColumn Header="기준" Binding="{Binding Standard, UpdateSourceTrigger=LostFocus}" Width="46"
-                                                            ElementStyle="{StaticResource NumberCell}"/>
-                                        <DataGridTextColumn Header="차이" Binding="{Binding DifferenceText}" Width="46" IsReadOnly="True">
-                                            <DataGridTextColumn.ElementStyle>
-                                                <Style TargetType="TextBlock" BasedOn="{StaticResource NumberCell}">
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsShort}" Value="True">
-                                                            <Setter Property="Foreground" Value="#B91C1C"/>
-                                                            <Setter Property="FontWeight" Value="Bold"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding IsOver}" Value="True">
-                                                            <Setter Property="Foreground" Value="#1D4ED8"/>
-                                                            <Setter Property="FontWeight" Value="Bold"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </DataGridTextColumn.ElementStyle>
-                                        </DataGridTextColumn>
-                                    </DataGrid.Columns>
-                                </DataGrid>
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl ItemsSource="{Binding Grid}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="46"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#EEF2F7" BorderThickness="0,0,1,1">
+                                                                <TextBlock Text="{Binding Period}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                           FontSize="11" Foreground="#475569"/>
+                                                            </Border>
+                                                            <ContentPresenter Grid.Column="1" Content="{Binding Mon}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
+                                                            <ContentPresenter Grid.Column="2" Content="{Binding Tue}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
+                                                            <ContentPresenter Grid.Column="3" Content="{Binding Wed}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
+                                                            <ContentPresenter Grid.Column="4" Content="{Binding Thu}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
+                                                            <ContentPresenter Grid.Column="5" Content="{Binding Fri}" ContentTemplate="{StaticResource TimetableCellTemplate}"/>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </DockPanel>
+                                </Border>
                             </DockPanel>
-                        </Border>
+                        </Grid>
                       </Grid>
                     </TabItem>
                 </TabControl>
