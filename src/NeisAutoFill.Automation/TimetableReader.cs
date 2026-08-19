@@ -126,6 +126,10 @@ public sealed class TimetableReader(IPage page)
         }");
         if (weekGrid < 0) throw new InvalidOperationException("주차 목록 그리드를 찾지 못했습니다.");
 
+        if (!await ScrollWeekRowIntoViewAsync(weekGrid, weekRowIndex))
+            throw new InvalidOperationException(
+                $"주차 목록에서 {weekRowIndex + 1}번째 주를 화면에 띄우지 못했습니다.");
+
         await page.Locator($"div.cl-grid[role=grid] >> nth={weekGrid} >> " +
                            $"div.cl-grid-row[data-rowindex='{weekRowIndex}'] div[role=gridcell] >> nth=0")
                   .ClickAsync(new LocatorClickOptions { Timeout = 5000 });
@@ -136,6 +140,53 @@ public sealed class TimetableReader(IPage page)
             throw new InvalidOperationException(
                 "저장하지 않은 변경이 있어 주차를 옮길 수 없습니다. " +
                 "나이스에서 저장하거나 변경을 버린 뒤 다시 시도하세요.");
+    }
+
+    /// <summary>
+    /// 주차 목록에서 그 행이 실제로 그려지도록 스크롤한다.
+    ///
+    /// <b>주차 목록은 가상 스크롤이다</b> — 28주짜리 학기여도 DOM 에는 18행 정도만 있고,
+    /// 나머지는 스크롤해야 생긴다. 이걸 모르면 12월 이후 주차에서 클릭이 통째로 실패한다(실측 2026-08-19).
+    /// </summary>
+    private async Task<bool> ScrollWeekRowIntoViewAsync(int gridIndex, int rowIndex)
+    {
+        const string ScrollJs = @"(a) => {
+          const grid = [...document.querySelectorAll('div.cl-grid[role=grid]')][a.gridIndex];
+          if (!grid) return 'no-grid';
+          if (grid.querySelector(`div.cl-grid-row[data-rowindex='${a.rowIndex}']`)) return 'present';
+
+          const rows = [...grid.querySelectorAll('div.cl-grid-row[data-rowindex]')];
+          if (rows.length === 0) return 'no-rows';
+
+          const shown = rows.map(r => +r.getAttribute('data-rowindex'));
+          const min = Math.min(...shown), max = Math.max(...shown);
+          const height = rows[0].getBoundingClientRect().height || 24;
+
+          // 실제로 스크롤되는 안쪽 요소를 찾는다 (그리드 자신일 수도 있다)
+          const scroller = [grid, ...grid.querySelectorAll('div')]
+            .filter(e => e.scrollHeight > e.clientHeight + 4)
+            .sort((x, y) => y.scrollHeight - x.scrollHeight)[0];
+          if (!scroller) return 'no-scroller';
+
+          // 한 화면씩 넘어가지 말고 목표 근처로 바로 보낸다 (여유 한 줄)
+          scroller.scrollTop += a.rowIndex < min
+            ? (a.rowIndex - min - 1) * height
+            : (a.rowIndex - max + 1) * height;
+
+          return 'scrolled';
+        }";
+
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            var state = await page.EvaluateAsync<string>(ScrollJs, new { gridIndex, rowIndex });
+
+            if (state == "present") return true;
+            if (state is "no-grid" or "no-rows" or "no-scroller") return false;
+
+            await page.WaitForTimeoutAsync(200);   // 가상 스크롤이 행을 그릴 시간
+        }
+
+        return false;
     }
 
     /// <summary>
