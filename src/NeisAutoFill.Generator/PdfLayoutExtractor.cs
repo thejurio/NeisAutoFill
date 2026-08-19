@@ -24,9 +24,15 @@ public static class PdfLayoutExtractor
         for (var i = 1; i <= doc.NumberOfPages; i++)
         {
             var page = doc.GetPage(i);
+            // 색까지 가져온다 — 이 문서들에서 빨강은 공휴일이고, 흰색은 그림자 글꼴의 안 보이는 사본이다
             var glyphs = page.Letters
                 .Where(l => !string.IsNullOrWhiteSpace(l.Value))
-                .Select(l => new TextGlyph(l.Value, l.BoundingBox.Left, l.BoundingBox.Bottom, l.BoundingBox.Width))
+                .Select(l =>
+                {
+                    var (r, g, b) = l.Color.ToRGBValues();
+                    return new TextGlyph(l.Value,
+                        l.BoundingBox.Left, l.BoundingBox.Bottom, l.BoundingBox.Width, r, g, b);
+                })
                 .ToList();
             pages.Add(new DocumentPage(i, glyphs));
         }

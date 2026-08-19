@@ -7,15 +7,21 @@ namespace NeisAutoFill.Core.Timetable;
 /// <param name="Semester">학기</param>
 /// <param name="Lessons">날짜+교시별 수업</param>
 /// <param name="Events">비고 칸의 행사 (날짜와 함께)</param>
+/// <param name="Holidays">빨간 글씨로 적힌 공휴일·휴업일 (날짜 → 이름). 수업으로 넣지 않는다</param>
 /// <param name="Warnings">해석하지 못한 것 — 조용히 버리지 않는다</param>
 public sealed record TimetableSourcePackage(
     int SchoolYear,
     int Semester,
     IReadOnlyList<TimetableSourceLesson> Lessons,
     IReadOnlyList<(DateOnly Date, string Text)> Events,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings,
+    IReadOnlyDictionary<DateOnly, string>? Holidays = null)
 {
     public bool HasWarnings => Warnings.Count > 0;
+
+    /// <summary>빨간 글씨로 적힌 공휴일·휴업일. 파서가 채운다.</summary>
+    public IReadOnlyDictionary<DateOnly, string> HolidayNames =>
+        Holidays ?? new Dictionary<DateOnly, string>();
 }
 
 /// <summary>
@@ -59,6 +65,7 @@ public static partial class TimetableDocumentParser
         var warnings = new List<string>();
         var lessons = new List<TimetableSourceLesson>();
         var events = new List<(DateOnly, string)>();
+        var holidays = new Dictionary<DateOnly, string>();
 
         var (year, semester) = ReadHeader(layout, warnings);
 
@@ -107,12 +114,13 @@ public static partial class TimetableDocumentParser
                     .Where(g => g.Y <= top && g.Y > bottom && g.Y < headerY - 1)
                     .ToList();
 
-                ReadWeekRow(rowGlyphs, slots, periodsPerDay, noteX, weekStart, lessons, warnings, page.Number);
+                ReadWeekRow(rowGlyphs, slots, periodsPerDay, noteX, weekStart,
+                    lessons, holidays, warnings, page.Number);
                 ReadEvents(rowGlyphs, noteX, year, semester, events);
             }
         }
 
-        return new TimetableSourcePackage(year, semester, lessons, events, warnings);
+        return new TimetableSourcePackage(year, semester, lessons, events, warnings, holidays);
     }
 
     /// <summary>헤더에서 학년도·학기. 못 찾으면 경고하고 0 을 돌려준다 — 사용자가 화면에서 고칠 수 있다.</summary>
@@ -176,14 +184,48 @@ public static partial class TimetableDocumentParser
         return fallback;
     }
 
+    /// <summary>
+    /// 이 가로 좌표가 어느 교시 칸에 들어가는지. 범위를 벗어나면 -1.
+    /// 왼쪽 좌표가 아니라 <b>중심</b>으로 본다 — 한글과 숫자는 폭이 달라 왼쪽으로 재면 칸이 밀린다.
+    /// 오른쪽은 비고 열로 막는다 — 비고 글자가 마지막 교시 칸에 빨려 들어가는 일이 있다.
+    /// </summary>
+    private static int NearestSlot(
+        double centerX, IReadOnlyList<(int Period, double X)> slots, double half, double noteX)
+    {
+        if (centerX < slots[0].X - half || centerX > Math.Min(slots[^1].X + half, noteX)) return -1;
+
+        var best = -1;
+        var bestDistance = double.MaxValue;
+        for (var i = 0; i < slots.Count; i++)
+        {
+            var d = Math.Abs(slots[i].X - centerX);
+            if (d < bestDistance) { bestDistance = d; best = i; }
+        }
+
+        return bestDistance > half ? -1 : best;
+    }
+
     /// <summary>주차 한 줄의 글자를 가장 가까운 교시 칸에 배정한다.</summary>
     private static void ReadWeekRow(
         IReadOnlyList<TextGlyph> rowGlyphs, IReadOnlyList<(int Period, double X)> slots,
         int periodsPerDay, double noteX,
-        DateOnly weekStart, List<TimetableSourceLesson> lessons, List<string> warnings, int pageNumber)
+        DateOnly weekStart, List<TimetableSourceLesson> lessons,
+        Dictionary<DateOnly, string> holidays, List<string> warnings, int pageNumber)
     {
         var half = SlotWidth(slots) / 2 + 1;   // 칸 경계 — 이웃 칸으로 새지 않게
         var buckets = new string?[slots.Count];
+        var redBuckets = new string?[slots.Count];   // 빨간 글씨 = 공휴일·휴업일
+
+        // 그림자 글꼴이 찍은 안 보이는 흰 겹은 버린다 — 그대로 두면 같은 글자가 겹쳐 들어온다
+        rowGlyphs = rowGlyphs.Where(g => !g.IsInvisible).ToList();
+
+        // 공휴일 글씨는 <b>기준선을 따지지 않고</b> 먼저 걷는다.
+        // 수업 글자 위에 덧씌운 장식이라 기준선이 조금 달라, 아래 기준선 필터에 걸려 사라진다(실측).
+        foreach (var g in rowGlyphs.Where(g => g.IsRed))
+        {
+            var slot = NearestSlot(g.CenterX, slots, half, noteX);
+            if (slot >= 0) redBuckets[slot] = (redBuckets[slot] ?? "") + g.Text;
+        }
 
         // 한 행 안에서도 수업 토큰은 <b>모두 같은 기준선</b>에 있다. 비고 칸의 여러 줄이 같은 X 범위로
         // 삐져 들어오는 일이 있어, 글자가 가장 많이 모인 기준선만 남긴다.
@@ -200,19 +242,26 @@ public static partial class TimetableDocumentParser
         {
             if (Math.Abs(Math.Round(g.Y) - baseline) > 1) continue;   // 다른 기준선 = 비고 등
 
-            var x = g.CenterX;   // 왼쪽 좌표로 비교하면 한글·숫자 폭 차이 때문에 칸이 밀린다
-            // 비고 칸 글자가 마지막 교시 칸에 빨려 들어가는 일이 있어 오른쪽 경계를 비고 열로 막는다
-            if (x < slots[0].X - half || x > Math.Min(slots[^1].X + half, noteX)) continue;
+            if (g.IsRed) continue;   // 공휴일은 위에서 이미 걷었다
 
-            var best = -1; var bestDistance = double.MaxValue;
-            for (var i = 0; i < slots.Count; i++)
-            {
-                var d = Math.Abs(slots[i].X - x);
-                if (d < bestDistance) { bestDistance = d; best = i; }
-            }
-            if (best < 0 || bestDistance > half) continue;
+            var best = NearestSlot(g.CenterX, slots, half, noteX);
+            if (best < 0) continue;
 
             buckets[best] = (buckets[best] ?? "") + g.Text;
+        }
+
+        // 빨간 글씨가 있는 날은 통째로 공휴일이다.
+        // "재량휴업일" 다섯 글자가 그 날의 교시 칸에 한 자씩 걸쳐 쓰이므로 날짜별로 이어 붙인다.
+        var redDays = new HashSet<int>();
+        for (var i = 0; i < redBuckets.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(redBuckets[i])) continue;
+
+            var dayIndex = i / periodsPerDay;
+            var date = weekStart.AddDays(dayIndex - DayOffset(weekStart));
+            redDays.Add(dayIndex);
+
+            holidays[date] = (holidays.TryGetValue(date, out var had) ? had : "") + redBuckets[i]!.Trim();
         }
 
         for (var i = 0; i < buckets.Length; i++)
@@ -224,9 +273,12 @@ public static partial class TimetableDocumentParser
             var period = slots[i].Period;
             var date = weekStart.AddDays(dayIndex - DayOffset(weekStart));
 
+            // 공휴일인 날의 칸은 수업이 아니다 — 그림자 회색 겹이 남아 있어도 여기서 걸러진다
+            if (redDays.Contains(dayIndex)) continue;
+
             if (token.Length > 2)
             {
-                // 휴업일 표기("재량휴업일")처럼 칸을 가로지르는 글자다. 수업으로 넣지 않고 알려만 준다.
+                // 칸을 가로지르는 긴 글자. 수업으로 넣지 않고 알려만 준다.
                 warnings.Add($"{pageNumber}쪽 {date:MM-dd} {period}교시: 수업 표기가 아닌 글자 '{token}' — 수업으로 넣지 않았습니다.");
                 continue;
             }

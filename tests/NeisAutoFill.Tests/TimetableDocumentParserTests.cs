@@ -44,6 +44,22 @@ public class TimetableDocumentParserTests
         foreach (var ch in note) yield return G(ch.ToString(), nx += 6, y);
     }
 
+    /// <summary>빨간 글씨(공휴일)를 그 날의 교시 칸에 한 글자씩 깐다. 실제 문서가 그렇게 생겼다.</summary>
+    private static IEnumerable<TextGlyph> RedDay(double y, int dayIndex, string label)
+    {
+        for (var i = 0; i < label.Length && i < 3; i++)
+            yield return new TextGlyph(label[i].ToString(), 150 + (dayIndex * 3 + i) * 10, y, 6,
+                Red: 1, Green: 0, Blue: 0);
+    }
+
+    /// <summary>그림자 글꼴이 찍는 흰 겹 — 눈에 안 보이는 사본이다.</summary>
+    private static IEnumerable<TextGlyph> WhiteDay(double y, int dayIndex, string label)
+    {
+        for (var i = 0; i < label.Length && i < 3; i++)
+            yield return new TextGlyph(label[i].ToString(), 150 + (dayIndex * 3 + i) * 10, y, 6,
+                Red: 1, Green: 1, Blue: 1);
+    }
+
     private static TimetableSourcePackage Parse(params IEnumerable<TextGlyph>[] lines)
     {
         var glyphs = new List<TextGlyph>
@@ -156,4 +172,58 @@ public class TimetableDocumentParserTests
         all.AddRange(body);
         return all;
     }
+    // ── 공휴일 (빨간 글씨) ──────────────────────────────────
+
+    [Fact]
+    public void 빨간_글씨는_공휴일로_읽는다()
+    {
+        // 실측: 재량휴업일·어린이날·개천절·성탄절이 모두 빨강으로 찍혀 있었다
+        var p = Parse(
+            HeaderLine(400),
+            WeekLine(380, "3.2-3.6", new[] { "국수", "국수", "국수", "국수", "국수" }),
+            RedDay(380, 2, "휴업일"));
+
+        Assert.Single(p.HolidayNames);
+        Assert.Equal("휴업일", p.HolidayNames.Values.Single());
+    }
+
+    [Fact]
+    public void 공휴일인_날은_수업을_넣지_않는다()
+    {
+        var p = Parse(
+            HeaderLine(400),
+            WeekLine(380, "3.2-3.6", new[] { "국수", "국수", "국수", "국수", "국수" }),
+            RedDay(380, 2, "휴업일"));
+
+        var holiday = p.HolidayNames.Keys.Single();
+
+        Assert.DoesNotContain(p.Lessons, l => l.Cell.Date == holiday);
+        Assert.Equal(8, p.Lessons.Count);   // 5일 × 2교시 - 공휴일 하루(2칸)
+    }
+
+    [Fact]
+    public void 공휴일이_없으면_수업이_그대로다()
+    {
+        var p = Parse(
+            HeaderLine(400),
+            WeekLine(380, "3.2-3.6", new[] { "국수", "국수", "국수", "국수", "국수" }));
+
+        Assert.Empty(p.HolidayNames);
+        Assert.Equal(10, p.Lessons.Count);
+    }
+
+    [Fact]
+    public void 안_보이는_흰_글씨는_버린다()
+    {
+        // 한글 그림자 글꼴은 같은 글자를 흰색·빨강·회색 세 겹으로 찍는다.
+        // 흰 겹을 그대로 읽으면 "재재재"처럼 겹쳐 나와 경고만 쌓였다.
+        var p = Parse(
+            HeaderLine(400),
+            WeekLine(380, "3.2-3.6", new[] { "국수", "국수", "국수", "국수", "국수" }),
+            WhiteDay(380, 0, "휴업일"));
+
+        Assert.Empty(p.Warnings);
+        Assert.Equal(10, p.Lessons.Count);   // 흰 글씨가 수업 토큰을 오염시키지 않는다
+    }
+
 }

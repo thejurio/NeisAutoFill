@@ -8,10 +8,27 @@ namespace NeisAutoFill.Core.Timetable;
 /// <param name="X">왼쪽 좌표 (클수록 오른쪽)</param>
 /// <param name="Y">아래쪽 좌표 (<b>클수록 위</b> — PDF 좌표계 그대로)</param>
 /// <param name="Width">글자 폭 — 칸 배정은 <b>중심</b>으로 해야 맞는다(한글과 숫자는 폭이 다르다)</param>
-public readonly record struct TextGlyph(string Text, double X, double Y, double Width = 0)
+/// <param name="Red">글자색 R (0~1)</param>
+/// <param name="Green">글자색 G</param>
+/// <param name="Blue">글자색 B</param>
+public readonly record struct TextGlyph(
+    string Text, double X, double Y, double Width = 0,
+    double Red = 0, double Green = 0, double Blue = 0)
 {
     /// <summary>글자 중심의 가로 좌표.</summary>
     public double CenterX => X + Width / 2;
+
+    /// <summary>
+    /// 빨간 글씨. 이 문서들에서 빨강은 <b>공휴일·휴업일</b> 표시다 (실측 확인 2026-08-19) —
+    /// 재량휴업일·어린이날·개천절·한글날·추석·성탄절·신정이 모두 빨강으로 찍혀 있었다.
+    /// </summary>
+    public bool IsRed => Red > 0.6 && Green < 0.35 && Blue < 0.35;
+
+    /// <summary>
+    /// 흰 글씨. 한글 문서의 그림자 글꼴은 같은 글자를 <b>흰색·빨강·회색 세 겹</b>으로 찍는다 —
+    /// 흰 겹은 눈에 보이지 않는데 그대로 읽으면 "재재재"처럼 세 번 겹쳐 나온다.
+    /// </summary>
+    public bool IsInvisible => Red > 0.95 && Green > 0.95 && Blue > 0.95;
 }
 
 /// <summary>문서 한 쪽의 글자들. Core 는 이 값만 받고 PDF 라이브러리를 알지 못한다.</summary>
