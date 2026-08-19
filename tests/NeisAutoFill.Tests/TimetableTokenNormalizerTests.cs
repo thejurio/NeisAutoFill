@@ -92,4 +92,63 @@ public class TimetableTokenNormalizerTests
 
         Assert.Equal(new[] { "국어", "창의적 체험활동", "한자" }, list.Select(t => t.Standard));
     }
+    // ── 학년마다 다른 과목 ──────────────────────────────
+
+    [Theory]
+    [InlineData("바", "바른 생활")]
+    [InlineData("슬", "슬기로운 생활")]
+    [InlineData("즐", "즐거운 생활")]
+    [InlineData("바생", "바른 생활")]
+    [InlineData("즐거운생활", "즐거운 생활")]
+    public void 통합교과_표기를_안다(string raw, string expected)
+    {
+        // 1~2학년은 통합교과(바·슬·즐)를 쓴다. 전국 공통이라 사전에 둔다.
+        var token = TimetableTokenNormalizer.Normalize(raw);
+
+        Assert.Equal(expected, token.Standard);
+        Assert.True(token.IsKnownAlias);
+    }
+
+    [Theory]
+    [InlineData("학교자율시간")]
+    [InlineData("학교 자율 시간")]
+    [InlineData("자율시간")]
+    public void 학교자율시간의_정식_이름을_안다(string raw)
+    {
+        Assert.Equal("학교자율시간", TimetableTokenNormalizer.Normalize(raw).Standard);
+    }
+
+    [Fact]
+    public void 학교자율시간의_학교별_줄임말은_모르는_표기로_남는다()
+    {
+        // "융" 처럼 줄이는 글자는 학교마다 다르다. 임의로 짐작하면 엉뚱한 과목이 들어간다 —
+        // 표기를 그대로 남겨 두고 사용자가 한 번 이어 주게 한다(그 뒤로는 저장된다).
+        var token = TimetableTokenNormalizer.Normalize("융");
+
+        Assert.Equal("융", token.Standard);
+        Assert.False(token.IsKnownAlias);
+        Assert.False(token.IsCreative);
+    }
+
+    [Fact]
+    public void 자율시간과_자율자치활동을_섞지_않는다()
+    {
+        // "자" 는 창체의 자율·자치활동이고, "자율시간" 은 학교자율시간이다 — 다른 것이다.
+        Assert.Equal("자율·자치활동", TimetableTokenNormalizer.Normalize("자").Standard);
+        Assert.Equal("학교자율시간", TimetableTokenNormalizer.Normalize("자율시간").Standard);
+        Assert.True(TimetableTokenNormalizer.Normalize("자").IsCreative);
+        Assert.False(TimetableTokenNormalizer.Normalize("자율시간").IsCreative);
+    }
+
+    [Fact]
+    public void 실과가_없는_학년이어도_표기는_그대로_읽는다()
+    {
+        // 3~4학년에는 실과가 없다. 그래도 파서가 표기를 버리면 안 된다 —
+        // 넣을 수 있는지는 나이스 목록이 정한다(D-001).
+        var token = TimetableTokenNormalizer.Normalize("실");
+
+        Assert.Equal("실과", token.Standard);
+        Assert.True(token.IsKnownAlias);
+    }
+
 }

@@ -539,9 +539,14 @@
                                                                 <ColumnDefinition Width="30"/>
                                                             </Grid.ColumnDefinitions>
 
-                                                            <TextBlock Grid.Column="0" Text="{Binding Subject}" FontSize="11.5"
-                                                                       VerticalAlignment="Center" Foreground="{StaticResource Ink}"
-                                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Subject}"/>
+                                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Subject}" FontSize="11.5"
+                                                                           Foreground="{StaticResource Ink}"
+                                                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding Subject}"/>
+                                                                <TextBlock Text="모르는 표기" FontSize="9.5" Foreground="#B45309"
+                                                                           Visibility="{Binding IsKnown, Converter={StaticResource TrueToCollapsed}}"
+                                                                           ToolTip="{Binding TokenHint}"/>
+                                                            </StackPanel>
 
                                                             <ComboBox Grid.Column="1" ItemsSource="{Binding Candidates}"
                                                                       SelectedItem="{Binding Teacher, Mode=TwoWay}"

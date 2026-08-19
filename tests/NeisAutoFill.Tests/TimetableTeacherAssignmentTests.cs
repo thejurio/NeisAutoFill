@@ -186,4 +186,38 @@ public class TimetableTeacherAssignmentTests
         Assert.Equal("교사B", 교사(new TimetableCell(월, 4), rules, "정보"));
         Assert.Equal("교사A", 교사(new TimetableCell(월, 5), rules, "정보"));
     }
+    [Fact]
+    public void 모르는_표기도_한_번_이어_두면_그대로_쓰인다()
+    {
+        // "융"(학교자율시간)처럼 학교마다 다른 글자 — 사용자가 한 번 나이스 과목으로 이어 주면
+        // 규칙은 원본 표기로 저장되므로 다음에도 그대로 풀린다.
+        var rules = new[]
+        {
+            new TimetableMappingRule("융", 키("수학(교사A(a))"), MappingScope.Default, true),
+        };
+
+        var plan = TimetablePlanBuilder.Build(
+            new[]
+            {
+                new TimetableSourceLesson(new TimetableCell(월, 2), "융"),
+                new TimetableSourceLesson(new TimetableCell(다음월, 2), "융"),
+            },
+            rules, 카탈로그, TimetableScreenState.Empty);
+
+        Assert.All(plan.Assignments, a => Assert.Equal(AssignmentStatus.Pending, a.Status));
+        Assert.True(plan.CanRun);
+    }
+
+    [Fact]
+    public void 이어_주지_않은_표기는_실행을_막는다()
+    {
+        // 짐작해서 넣으면 엉뚱한 과목이 들어간다. 모르면 멈추는 것이 옳다.
+        var plan = TimetablePlanBuilder.Build(
+            new[] { new TimetableSourceLesson(new TimetableCell(월, 2), "융") },
+            Array.Empty<TimetableMappingRule>(), 카탈로그, TimetableScreenState.Empty);
+
+        Assert.Equal(AssignmentStatus.MappingUnresolved, plan.Assignments[0].Status);
+        Assert.False(plan.CanRun);
+    }
+
 }

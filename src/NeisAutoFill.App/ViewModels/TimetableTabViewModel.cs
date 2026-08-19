@@ -169,10 +169,11 @@ public sealed class SubjectAssignmentRow : ObservableObject
 
     public SubjectAssignmentRow(
         string subject, IReadOnlyList<string> tokens, IReadOnlyList<TeacherChoice> candidates,
-        int assigned, int? standard,
+        int assigned, int? standard, bool known,
         Action<SubjectAssignmentRow> onTeacherChanged, Action<string, int?> onStandardChanged)
     {
         Subject = subject;
+        IsKnown = known;
         Tokens = tokens;
         Candidates = candidates;
         Assigned = assigned;
@@ -186,6 +187,15 @@ public sealed class SubjectAssignmentRow : ObservableObject
 
     /// <summary>이 과목으로 정규화되는 원본 표기들 ("국", "국어"). 규칙은 원본 표기로 만든다.</summary>
     public IReadOnlyList<string> Tokens { get; }
+
+    /// <summary>
+    /// 사전에 있는 표기인가. 학교자율시간의 "융" 처럼 학교마다 다른 줄임 글자는 여기서 false 다 —
+    /// 그런 표기는 사용자가 무엇인지 한 번 이어 줘야 한다.
+    /// </summary>
+    public bool IsKnown { get; }
+
+    /// <summary>문서에 적힌 그대로 ("융"). 사전에 있는 표기면 빈 문자열 — 굳이 보여 줄 것이 없다.</summary>
+    public string TokenHint => IsKnown ? "" : $"문서 표기: {string.Join(", ", Tokens)}";
 
     /// <summary>고를 수 있는 항목 (같은 과목에 교사가 여럿일 수 있다) + "입력 안 함".</summary>
     public IReadOnlyList<TeacherChoice> Candidates { get; }
@@ -857,11 +867,16 @@ public sealed class TimetableTabViewModel : ObservableObject
         if (missing.Count == 0) return "";
 
         // 나이스에 아예 없는 활동은 "고르지 않은 것"이 아니라 "고를 수 없는 것"이다 — 다르게 안내한다
-        var noMatch = missing.Where(x => x.HasNoMatch).Select(x => x.Subject).ToList();
-        var unpicked = missing.Where(x => !x.HasNoMatch).Select(x => x.Subject).ToList();
+        // 셋을 갈라서 알린다 — 사용자가 할 일이 저마다 다르다
+        var unknown = missing.Where(x => !x.IsKnown).Select(x => x.Subject).ToList();
+        var noMatch = missing.Where(x => x.IsKnown && x.HasNoMatch).Select(x => x.Subject).ToList();
+        var unpicked = missing.Where(x => x.IsKnown && !x.HasNoMatch).Select(x => x.Subject).ToList();
 
         var parts = new List<string>();
         if (unpicked.Count > 0) parts.Add($"담당 교사를 정하지 않은 과목: {string.Join(", ", unpicked)}");
+        if (unknown.Count > 0)
+            parts.Add($"프로그램이 모르는 표기: {string.Join(", ", unknown)} — " +
+                      "학교자율시간처럼 학교마다 다른 표기입니다. 넣을 나이스 과목을 골라 주세요 (한 번 고르면 기억합니다).");
         if (noMatch.Count > 0)
             parts.Add($"나이스에 같은 이름이 없는 과목: {string.Join(", ", noMatch)} — " +
                       "드롭다운에서 넣을 나이스 과목을 고르거나 [입력 안 함]을 고르세요");
@@ -899,8 +914,11 @@ public sealed class TimetableTabViewModel : ObservableObject
                     ? null   // 창체는 아래 합계 줄에서 견준다
                     : standards.FirstOrDefault(s => s.Subject == group.Key)?.For(semester);
 
+            var known = TimetableTokenNormalizer.Normalize(tokens[0]).IsKnownAlias;
+
             var row = new SubjectAssignmentRow(
-                group.Key, tokens, candidates, group.Count(), standard, OnTeacherChanged, OnStandardEdited);
+                group.Key, tokens, candidates, group.Count(), standard, known,
+                OnTeacherChanged, OnStandardEdited);
 
             // 순서: ① 저장·기존 규칙 ② 화면에서 방금 고른 것 ③ 후보가 딱 하나면 자동.
             // 여러 명 중 하나를 임의로 고르지는 않는다(D-002).
