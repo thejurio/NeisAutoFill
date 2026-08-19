@@ -9,19 +9,42 @@ namespace NeisAutoFill.Core.Timetable;
 /// <param name="Events">비고 칸의 행사 (날짜와 함께)</param>
 /// <param name="Holidays">빨간 글씨로 적힌 공휴일·휴업일 (날짜 → 이름). 수업으로 넣지 않는다</param>
 /// <param name="Warnings">해석하지 못한 것 — 조용히 버리지 않는다</param>
+/// <param name="Parts">문서에 담긴 학기 구간. 한 파일에 1·2학기가 같이 들어 있는 경우가 흔하다</param>
+/// <param name="Hours">문서 끝 시수표의 과목별 기준 시수</param>
 public sealed record TimetableSourcePackage(
     int SchoolYear,
     int Semester,
     IReadOnlyList<TimetableSourceLesson> Lessons,
     IReadOnlyList<(DateOnly Date, string Text)> Events,
     IReadOnlyList<string> Warnings,
-    IReadOnlyDictionary<DateOnly, string>? Holidays = null)
+    IReadOnlyDictionary<DateOnly, string>? Holidays = null,
+    IReadOnlyList<TimetableSemesterPart>? Parts = null,
+    IReadOnlyList<SubjectHourStandard>? Hours = null)
 {
     public bool HasWarnings => Warnings.Count > 0;
 
     /// <summary>빨간 글씨로 적힌 공휴일·휴업일. 파서가 채운다.</summary>
     public IReadOnlyDictionary<DateOnly, string> HolidayNames =>
         Holidays ?? new Dictionary<DateOnly, string>();
+
+    /// <summary>문서에 담긴 학기 구간 (학기 번호 순).</summary>
+    public IReadOnlyList<TimetableSemesterPart> SemesterParts =>
+        Parts ?? Array.Empty<TimetableSemesterPart>();
+
+    /// <summary>과목별 기준 시수. 문서에 시수표가 없으면 빈 목록.</summary>
+    public IReadOnlyList<SubjectHourStandard> HourStandards =>
+        Hours ?? Array.Empty<SubjectHourStandard>();
+}
+
+/// <summary>문서 안의 학기 한 구간.</summary>
+/// <param name="Semester">1 또는 2</param>
+/// <param name="Start">그 학기 첫 수업일</param>
+/// <param name="End">마지막 수업일</param>
+public sealed record TimetableSemesterPart(int Semester, DateOnly Start, DateOnly End)
+{
+    public bool Contains(DateOnly date) => date >= Start && date <= End;
+
+    public string Describe() => $"{Semester}학기 ({Start:yyyy-MM-dd} ~ {End:yyyy-MM-dd})";
 }
 
 /// <summary>
@@ -59,6 +82,16 @@ public static partial class TimetableDocumentParser
     /// <summary>'기 간' 열의 반폭 — 이 범위 글자만 기간으로 읽는다.</summary>
     private const double RangeColumnHalfWidth = 26;
 
+    /// <summary>기간 한 건이 걸쳐 있을 수 있는 세로 범위 — 행 간격(17 이상)보다 작아야 한다.</summary>
+    private const double RangeRowHalfHeight = 5;
+
+    /// <summary>
+    /// 같은 수업 행으로 볼 기준선 오차.
+    /// 과목마다 글자가 조금씩 다른 높이에 찍힌다 — 도덕('도')은 다른 과목보다 1.5pt 위에 있어
+    /// 오차를 1pt 로 두었을 때 학기마다 6칸씩 사라졌다(실측). 행 간격(17 이상)보다는 훨씬 작다.
+    /// </summary>
+    private const double LessonBaselineTolerance = 2.5;
+
     /// <summary>문서 전체를 해석한다.</summary>
     public static TimetableSourcePackage Parse(DocumentLayout layout)
     {
@@ -66,6 +99,7 @@ public static partial class TimetableDocumentParser
         var lessons = new List<TimetableSourceLesson>();
         var events = new List<(DateOnly, string)>();
         var holidays = new Dictionary<DateOnly, string>();
+        var pageSemesters = new Dictionary<int, int>();   // 쪽 → 학기
 
         var (year, semester) = ReadHeader(layout, warnings);
 
@@ -81,23 +115,47 @@ public static partial class TimetableDocumentParser
 
             var (rangeX, noteX) = FindSideColumns(lines, slots);
 
-            // 표의 한 행은 여러 기준선에 걸쳐 있다 — 한글과 숫자의 baseline 이 다르고 비고는 여러 줄이다.
-            // 그래서 "줄"이 아니라 <b>기간이 적힌 Y 를 기준으로 한 행 범위</b>로 글자를 모은다.
-            var anchors = new List<(double Y, DateOnly Start)>();
+            // 이 쪽에 적힌 기간들 — 학기를 정하기 전에 월/일만 먼저 모은다.
+            //
+            // 기간 한 건이 <b>두 기준선에 걸쳐</b> 적히는 일이 있다 — "9.8" 과 "9.12" 는 아래 줄에,
+            // 사이의 "-" 는 위 줄에 찍혀 한 줄만 보면 "9.89.12" 가 되어 기간으로 인식되지 않는다.
+            // 그래서 줄이 아니라 <b>Y 창</b>으로 기간 열 글자를 모은다. 이걸 놓쳐 21주 중 13주만 읽혔다.
+            var raw = new List<(double Y, int Month, int Day)>();
+            var seenDates = new HashSet<(int, int)>();
             foreach (var line in lines)
             {
-                var rangeText = DocumentPage.TextOf(
-                    line.Where(g => Math.Abs(g.CenterX - rangeX) <= RangeColumnHalfWidth));
+                var lineY = line.Max(g => g.Y);
+
+                var rangeText = DocumentPage.TextOf(page.Glyphs
+                    .Where(g => Math.Abs(g.Y - lineY) <= RangeRowHalfHeight)
+                    .Where(g => Math.Abs(g.CenterX - rangeX) <= RangeColumnHalfWidth));
 
                 var m = PeriodRangePattern().Match(rangeText);
                 if (!m.Success) continue;
 
-                var start = ToDate(year, semester,
-                    int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value));
-                if (start is not null && InSemester(start.Value, semester))
-                    anchors.Add((line.Max(g => g.Y), start.Value));
+                var key = (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value));
+                if (!seenDates.Add(key)) continue;   // 위아래 줄에서 같은 기간이 두 번 잡힌다
+
+                raw.Add((lineY, key.Item1, key.Item2));
+            }
+            if (raw.Count == 0) continue;
+
+            // 학기는 <b>쪽마다 따로</b> 정한다. 한 파일에 1학기와 2학기가 같이 들어 있고
+            // 헤더에는 1학기만 적힌 문서가 실제로 있었다 — 헤더만 믿으면 2학기가 통째로 사라진다.
+            var pageSemester = SemesterOfPage(raw, semester);
+
+            // 표의 한 행은 여러 기준선에 걸쳐 있다 — 한글과 숫자의 baseline 이 다르고 비고는 여러 줄이다.
+            // 그래서 "줄"이 아니라 <b>기간이 적힌 Y 를 기준으로 한 행 범위</b>로 글자를 모은다.
+            var anchors = new List<(double Y, DateOnly Start)>();
+            foreach (var (y, month, day) in raw)
+            {
+                var start = ToDate(year, pageSemester, month, day);
+                if (start is not null && InSemester(start.Value, pageSemester))
+                    anchors.Add((y, start.Value));
             }
             if (anchors.Count == 0) continue;
+
+            pageSemesters[page.Number] = pageSemester;
 
             anchors.Sort((a, b) => b.Y.CompareTo(a.Y));
             var rowHeight = RowHeight(anchors);
@@ -116,11 +174,18 @@ public static partial class TimetableDocumentParser
 
                 ReadWeekRow(rowGlyphs, slots, periodsPerDay, noteX, weekStart,
                     lessons, holidays, warnings, page.Number);
-                ReadEvents(rowGlyphs, noteX, year, semester, events);
+                ReadEvents(rowGlyphs, noteX, year, pageSemester, events);
             }
         }
 
-        return new TimetableSourcePackage(year, semester, lessons, events, warnings, holidays);
+        var parts = lessons
+            .GroupBy(l => SemesterOfDate(l.Cell.Date, pageSemesters.Values))
+            .Select(g => new TimetableSemesterPart(g.Key, g.Min(l => l.Cell.Date), g.Max(l => l.Cell.Date)))
+            .OrderBy(p => p.Semester)
+            .ToList();
+
+        return new TimetableSourcePackage(year, semester, lessons, events, warnings, holidays,
+            parts, TimetableHoursParser.Parse(layout));
     }
 
     /// <summary>헤더에서 학년도·학기. 못 찾으면 경고하고 0 을 돌려준다 — 사용자가 화면에서 고칠 수 있다.</summary>
@@ -236,11 +301,11 @@ public static partial class TimetableDocumentParser
             .FirstOrDefault();
 
         if (lessonLine is null) return;
-        var baseline = lessonLine.Key;
+        var baseline = lessonLine.Average(g => g.Y);   // 반올림 값이 아니라 실제 평균으로 본다
 
         foreach (var g in rowGlyphs)
         {
-            if (Math.Abs(Math.Round(g.Y) - baseline) > 1) continue;   // 다른 기준선 = 비고 등
+            if (Math.Abs(g.Y - baseline) > LessonBaselineTolerance) continue;   // 다른 기준선 = 비고 등
 
             if (g.IsRed) continue;   // 공휴일은 위에서 이미 걷었다
 
@@ -321,9 +386,35 @@ public static partial class TimetableDocumentParser
     private static bool InSemester(DateOnly date, int semester) => semester switch
     {
         1 => date.Month is >= 3 and <= 8,
-        2 => date.Month is >= 9 or <= 2,
+        // 2학기는 8월 하순 개학이 흔하다 — 9월부터로 자르면 개학 주가 통째로 빠진다(실측)
+        2 => date.Month is >= 8 or <= 2,
         _ => true,   // 학기를 못 읽었으면 거르지 않는다
     };
+
+    /// <summary>
+    /// 이 쪽이 몇 학기인지. 쪽에 적힌 <b>가장 이른 달</b>로 정한다 —
+    /// 3~7월에 시작하면 1학기, 8월 이후에 시작하면 2학기(8월 하순 개학).
+    /// 판단이 안 서면 헤더에 적힌 학기를 쓴다.
+    /// </summary>
+    private static int SemesterOfPage(IReadOnlyList<(double Y, int Month, int Day)> weeks, int headerSemester)
+    {
+        if (weeks.Count == 0) return headerSemester;
+
+        // 표는 위에서 아래로 시간순이다 — 가장 위(Y 가 큰) 행이 그 쪽의 첫 주
+        var first = weeks.OrderByDescending(w => w.Y).First().Month;
+
+        return first is >= 3 and <= 7 ? 1 : 2;
+    }
+
+    /// <summary>날짜가 몇 학기인지 — 문서에서 실제로 본 학기들 중에서 고른다.</summary>
+    private static int SemesterOfDate(DateOnly date, IEnumerable<int> seen)
+    {
+        var known = seen.Distinct().ToList();
+        if (known.Count == 1) return known[0];
+
+        // 1·2학기가 섞여 있으면 3~7월은 1학기, 나머지는 2학기
+        return date.Month is >= 3 and <= 7 ? 1 : 2;
+    }
 
     /// <summary>기간이 적힌 Y 들의 간격 중앙값 = 표 한 행의 높이.</summary>
     private static double RowHeight(IReadOnlyList<(double Y, DateOnly Start)> anchors)
