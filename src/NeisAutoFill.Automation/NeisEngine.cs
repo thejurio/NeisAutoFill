@@ -112,6 +112,12 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         if (docTitle.Contains("로그인") || docTitle.Contains("로그아웃") || url.Contains("Logout"))
             return new NeisStatus(NeisScreenKind.LoggedOut, url);
 
+        // 세션이 중간에 끊기면 화면 안에 안내 상자만 뜨고 문서 제목은 그대로다 (2026-08-19 실측).
+        //   "로그아웃 되었습니다. 업무를 진행하시려면 다시 로그인 해 주세요."
+        // 이걸 놓치면 이동·조회가 조용히 실패해 원인을 알 수 없다.
+        if (await HasSessionExpiredNoticeAsync())
+            return new NeisStatus(NeisScreenKind.LoggedOut, url);
+
         // 화면 제목(app-tit)으로 판별 — 실측: 교과평가/학기말종합의견/교과학습발달상황 이 그대로 들어온다.
         // 교과별 평가(성적 등급) 화면이면 입력 준비. 그리드는 조회를 눌러야 뜨므로 판별에 요구하지 않는다
         // (조회 전에도 '교과평가' 화면이면 준비 상태로 본다 → 호출부가 조회를 누른다).
@@ -235,6 +241,23 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
     /// <summary>현재 화면 제목(app-tit 요소 텍스트). 실측: "교과평가"/"학기말종합의견"/"교과학습발달상황".
     /// 없으면 빈 문자열. 화면 종류 판별·도착 확인의 가장 확실한 신호 (F9 M10).</summary>
+    /// <summary>화면 안에 세션 만료 안내가 떠 있는지 (SPA 라 문서 제목은 그대로다).</summary>
+    private async Task<bool> HasSessionExpiredNoticeAsync()
+    {
+        if (_page is null) return false;
+        try
+        {
+            return await _page.EvaluateAsync<bool>(@"() => [...document.querySelectorAll('div')]
+                .some(e => {
+                    const r = e.getBoundingClientRect();
+                    if (!(r.width > 200 && r.height > 40)) return false;
+                    const t = e.innerText || '';
+                    return t.includes('로그아웃 되었습니다') || t.includes('다시 로그인');
+                })");
+        }
+        catch { return false; }
+    }
+
     private async Task<string> ReadScreenTitleAsync()
     {
         if (_page is null) return "";
