@@ -456,7 +456,7 @@
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding Teacher, Mode=TwoWay}"
-                                                                  DisplayMemberPath="TeacherName" FontSize="11.5" Margin="2,1"
+                                                                  DisplayMemberPath="Label" FontSize="11.5" Margin="2,1"
                                                                   BorderBrush="{StaticResource Line}"
                                                                   ToolTip="이 과목을 기본으로 맡을 교사입니다. 몇 시간만 다른 교사면 아래 [선택한 칸]에서 예외를 만드세요."/>
                                                     </DataTemplate>
@@ -507,7 +507,7 @@
 
                                                 <TextBlock Text="담당 교사" FontSize="11.5" Foreground="{StaticResource Sub}" Margin="0,10,0,3"/>
                                                 <ComboBox ItemsSource="{Binding SelectedCandidates}" SelectedItem="{Binding SelectedTeacher}"
-                                                          DisplayMemberPath="TeacherName" FontSize="12"
+                                                          DisplayMemberPath="Label" FontSize="12"
                                                           Style="{StaticResource Combo}"/>
                                                 <WrapPanel Margin="0,8,0,0">
                                                     <Button Style="{StaticResource GhostButton}" Content="이 칸만 바꾸기"
