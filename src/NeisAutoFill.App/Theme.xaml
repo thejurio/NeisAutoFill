@@ -324,6 +324,40 @@
         </Setter>
     </Style>
 
+    <!-- ==== 앱 상위 탭 (평가 / 시간표) ====
+         과목 탭(UnderlineTab)과 섞이지 않게 더 크고 진하게, 선택된 탭만 흰 배경으로 띄운다. -->
+    <Style x:Key="MainTab" TargetType="TabItem">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13.5"/>
+        <Setter Property="Foreground" Value="{StaticResource Sub}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border x:Name="b" Background="Transparent" BorderThickness="0,0,0,3"
+                            BorderBrush="Transparent" Padding="20,10">
+                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="White"/>
+                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Neis}"/>
+                            <Setter Property="Foreground" Value="{StaticResource Neis}"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsSelected" Value="False"/>
+                                <Condition Property="IsMouseOver" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="b" Property="Background" Value="#EEF2F7"/>
+                            <Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                        </MultiTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ==== DataGrid ==== -->
     <Style x:Key="CleanGrid" TargetType="DataGrid">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
