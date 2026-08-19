@@ -35,6 +35,12 @@
 
                 <TextBlock x:Name="SourceRangeText" Margin="0,10,0,0" FontSize="12" Foreground="{StaticResource Sub}"/>
 
+                <!-- 문서와 나이스 학기가 겹치지 않을 때만 -->
+                <Border x:Name="MismatchBox" Margin="0,12,0,0" Padding="12,10" Background="#FEF2F2"
+                        BorderBrush="#FCA5A5" BorderThickness="1" Visibility="Collapsed">
+                    <TextBlock x:Name="MismatchText" FontSize="12" TextWrapping="Wrap" Foreground="#991B1B"/>
+                </Border>
+
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>

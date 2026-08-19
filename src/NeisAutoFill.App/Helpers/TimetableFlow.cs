@@ -14,7 +14,7 @@ namespace NeisAutoFill.App.Helpers;
 /// 연간 시간표 자동입력의 전체 흐름을 한 곳에 모은다 (BatchUploadFlow 와 같은 역할).
 ///
 /// <code>
-/// 파일 고르기 → 문서 해석 → 검토 창 → 기간·덮어쓰기 선택 → 나이스 준비·카탈로그 → 매핑 창 → 실행 계획
+/// 파일 고르기 → 문서 해석 → 검토 창 → 나이스 준비·카탈로그 → 기간·덮어쓰기 선택 → 매핑 창 → 실행 계획
 ///   → 동의 창 → 주 단위 입력·저장·검증 → 결과 창
 /// </code>
 ///
@@ -85,20 +85,23 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
 
         log($"검토 완료 — {reviewed.Count}칸");
 
-        // ── ③-2 기간·덮어쓰기 선택 ──────────────────────────────
-        var range = TimetableRangeWindow.Ask(reviewed, owner);
-        if (range is null) return new(null, "취소했습니다.");
-
-        reviewed = range.Filter(reviewed);
-        log($"기간 {range.From:yyyy-MM-dd}~{range.To:yyyy-MM-dd} · {reviewed.Count}칸" +
-            (range.AllowOverwrite ? " · 기존 값 덮어씀" : " · 기존 값 유지"));
-
         // ── ④ 나이스 준비 (읽기 전용) ───────────────────────────
-        var target = reviewed.Min(l => l.Cell.Date);
-        var pre = await session.PreflightAsync(target, progress);
+        // 기간 선택보다 먼저 한다 — 나이스가 아는 학기를 알아야 고를 수 있는 기간을 제대로 보여 준다.
+        var pre = await session.PreflightAsync(reviewed.Min(l => l.Cell.Date), progress);
         if (!pre.Ok) return new(null, pre.Message);
 
         log(pre.Message);
+
+        // ── ④-2 기간·덮어쓰기 선택 ──────────────────────────────
+        var range = TimetableRangeWindow.Ask(reviewed, session.TermStart, session.TermEnd, owner);
+        if (range is null) return new(null, "취소했습니다.");
+
+        reviewed = range.Filter(reviewed);
+        if (reviewed.Count == 0)
+            return new(null, "고른 기간에 넣을 수업이 없습니다.");
+
+        log($"기간 {range.From:yyyy-MM-dd}~{range.To:yyyy-MM-dd} · {reviewed.Count}칸" +
+            (range.AllowOverwrite ? " · 기존 값 덮어씀" : " · 기존 값 유지"));
 
         // ── ⑤ 매핑 창 ──────────────────────────────────────────
         var rules = session.OpenMapping(reviewed, owner);

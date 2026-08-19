@@ -69,9 +69,13 @@ public sealed class TimetableSession(
             TermEnd = weeks.Max(w => w.End);
         }
 
-        var week = await reader.SelectWeekForDateAsync(targetDate);
+        // 문서 날짜가 이 학기에 없어도 여기서 멈추지 않는다 — 과목·교사 목록은 아무 주에서나 읽으면 되고,
+        // 기간이 안 맞는다는 사실은 다음 단계(기간 선택)에서 두 범위를 나란히 보여 주며 알린다.
+        var week = await reader.SelectWeekForDateAsync(targetDate)
+                   ?? await SelectReadableWeekAsync(reader, weeks);
+
         if (week is null)
-            return new TimetablePreflight(false, $"{targetDate:yyyy-MM-dd} 이 들어 있는 주차를 찾지 못했습니다.");
+            return new TimetablePreflight(false, "시간표를 읽을 주차를 찾지 못했습니다. 나이스에서 조회가 됐는지 확인하세요.");
 
         Snapshot = await reader.ReadCurrentWeekAsync();
 
@@ -188,6 +192,25 @@ public sealed class TimetableSession(
             .ToDictionary(c => c.Key, c => TimetableMenuParser.Parse(c.Value).StableKey);
 
         return new TimetableScreenState(current, Unavailable, TermStart, TermEnd);
+    }
+
+    /// <summary>
+    /// 문서 날짜가 이 학기에 없을 때 대신 띄울 주.
+    /// 오늘이 든 주를 먼저 보고, 없으면 두 번째 주를 쓴다 —
+    /// 첫 주는 개학식 등으로 수업이 없어 메뉴가 안 열리는 경우가 있다(실측).
+    /// </summary>
+    private static async Task<TimetableWeek?> SelectReadableWeekAsync(
+        TimetableReader reader, IReadOnlyList<TimetableWeek> weeks)
+    {
+        if (weeks.Count == 0) return null;
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var pick = weeks.FirstOrDefault(w => today >= w.Start && today <= w.End)
+                   ?? weeks.ElementAtOrDefault(1)
+                   ?? weeks[0];
+
+        await reader.SelectWeekAsync(pick.Index);
+        return pick;
     }
 
     /// <summary>메뉴가 열리는 평일 셀을 찾아 카탈로그를 읽는다. 열리지 않는 날은 사용 불가로 기록한다.</summary>
