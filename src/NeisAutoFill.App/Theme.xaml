@@ -374,6 +374,24 @@
         <Setter Property="Margin" Value="14,8,14,8"/>
     </Style>
 
+    <!-- ==== 시간표 탭의 단계 제목 ==== -->
+    <Style x:Key="StepTitle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Foreground" Value="{StaticResource Neis}"/>
+        <Setter Property="Margin" Value="0,16,0,7"/>
+    </Style>
+
+    <!-- 단계 아래 작은 설명·상태 줄 -->
+    <Style x:Key="StepNote" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="Foreground" Value="{StaticResource Sub}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+        <Setter Property="Margin" Value="2,4,0,0"/>
+    </Style>
+
     <!-- ==== 시간표 격자의 칸 ==== -->
     <Style x:Key="TimetableCellButton" TargetType="Button">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>

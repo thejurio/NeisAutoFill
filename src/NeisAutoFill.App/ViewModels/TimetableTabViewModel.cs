@@ -259,6 +259,8 @@ public sealed class TimetableTabViewModel : ObservableObject
     public ObservableCollection<TimetableGridRow> Grid { get; } = new();
     public ObservableCollection<SubjectAssignmentRow> Subjects { get; } = new();
     public ObservableCollection<ExceptionRow> Exceptions { get; } = new();
+
+    public bool HasExceptions => Exceptions.Count > 0;
     public ObservableCollection<TimetableSemesterPart> Semesters { get; } = new();
 
     private readonly List<DateOnly> Weeks = new();
@@ -622,6 +624,16 @@ public sealed class TimetableTabViewModel : ObservableObject
             }
         }
 
+        // 나이스에서 조회 중인 학기와 같은 구간을 골라 준다 —
+        // 문서에 1·2학기가 다 들어 있을 때 사용자가 다시 고르지 않아도 된다.
+        if (_session.Scope is { Semester: > 0 } scope &&
+            Semesters.FirstOrDefault(x => x.Semester == scope.Semester) is { } matched &&
+            !ReferenceEquals(SelectedSemester, matched))
+        {
+            SelectedSemester = matched;
+            _log($"나이스가 조회 중인 {scope.Semester}학기로 맞췄습니다.");
+        }
+
         OnPropertyChanged(nameof(HasCatalog));
         Rebuild();
     }
@@ -871,6 +883,8 @@ public sealed class TimetableTabViewModel : ObservableObject
 
             Exceptions.Add(new ExceptionRow(rule, $"{rule.Scope.Description} · {subject} → {target}"));
         }
+
+        OnPropertyChanged(nameof(HasExceptions));
     }
 
     // ── 교사 배정 ───────────────────────────────────────────
