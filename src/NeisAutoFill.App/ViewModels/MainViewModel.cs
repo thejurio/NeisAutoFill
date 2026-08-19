@@ -83,12 +83,13 @@ public sealed class MainViewModel : ObservableObject
         OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
         RunAllSubjectsCommand = new AsyncRelayCommand(RunAllSubjectsAsync);
         InspectCommand = new AsyncRelayCommand(InspectAsync);
-        TimetableCheckCommand = new AsyncRelayCommand(RunTimetableFlowAsync);
         ExportGradesCommand = new RelayCommand(ExportGrades);
         HelpCommand = new AsyncRelayCommand(OpenHelpAsync);
 
         _showCriteriaPanel = appState.State.ShowCriteriaPanel;
         _logExpanded = appState.State.LogExpanded;
+
+        Timetable = new TimetableTabViewModel(_timetable, Log, _progress, () => IsConnected);
 
         if (_profiles.IsSubjectMode)
             InitSubjectAxis();        // 전담: 등록된 반 목록·첫 조합 로드
@@ -103,7 +104,11 @@ public sealed class MainViewModel : ObservableObject
             if (e.PropertyName is nameof(IsConnected) or nameof(ConnectionHint))
             {
                 OnPropertyChanged(nameof(ShowConnectionHint));
-                if (e.PropertyName == nameof(IsConnected)) RefreshNextStep();
+                if (e.PropertyName == nameof(IsConnected))
+                {
+                    RefreshNextStep();
+                    Timetable.RefreshRunnable();   // 연결돼야 시간표 입력을 시작할 수 있다
+                }
                 else OnPropertyChanged(nameof(ShowNextStep));   // 연결 배너와 상호배타
             }
         };
@@ -441,6 +446,21 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>시간표 탭 — 문서 읽기부터 나이스 입력까지 그 탭 안에서 끝낸다.</summary>
+    public TimetableTabViewModel Timetable { get; }
+
+    // ── 본문 탭 (0 = 평가, 1 = 시간표) ──────────
+    private int _mainTabIndex;
+    public int MainTabIndex
+    {
+        get => _mainTabIndex;
+        set
+        {
+            if (!SetProperty(ref _mainTabIndex, value)) return;
+            OnPropertyChanged(nameof(ShowCriteriaColumn));
+        }
+    }
+
     // ── 성취기준 참조 패널 (토글) ──────────────
     private bool _showCriteriaPanel;
     public bool ShowCriteriaPanel
@@ -451,8 +471,15 @@ public sealed class MainViewModel : ObservableObject
             if (!SetProperty(ref _showCriteriaPanel, value)) return;
             _appState.State.ShowCriteriaPanel = value;
             _appState.Save();
+            OnPropertyChanged(nameof(ShowCriteriaColumn));
         }
     }
+
+    /// <summary>
+    /// 성취기준 패널을 지금 보여 줄지.
+    /// 평가와 상관없는 시간표 탭에서는 켜져 있어도 감춘다 — 화면을 좁힐 이유가 없다.
+    /// </summary>
+    public bool ShowCriteriaColumn => _showCriteriaPanel && _mainTabIndex == 0;
 
     private IReadOnlyList<CriteriaPanelBuilder.DomainView> _criteriaPanelItems =
         Array.Empty<CriteriaPanelBuilder.DomainView>();
@@ -1110,27 +1137,6 @@ public sealed class MainViewModel : ObservableObject
     public void ToggleDiagButton() => ShowDiagButton = !ShowDiagButton;
 
     /// <summary>연간 시간표 자동입력 (개발 중) — 문서 → 검토 → 매핑 → 계획까지.</summary>
-    public ICommand TimetableCheckCommand { get; }
-
-    /// <summary>
-    /// 연간 시간표 흐름을 처음부터 끝까지 태운다 (문서 → 검토 → 매핑 → 계획 → 동의 → 입력·저장).
-    /// 되돌릴 수 없는 첫 행동은 흐름 안의 동의 창에서 사용자가 직접 누른다.
-    /// </summary>
-    private async Task RunTimetableFlowAsync()
-    {
-        if (!_engine.Connected) { ShowError("나이스 연결 후 사용하세요. [🌐 NEIS 접속]으로 브라우저를 여세요."); return; }
-        try
-        {
-            var flow = new TimetableFlow(_timetable, Log);
-            var result = await flow.RunAsync(Application.Current.MainWindow, _progress);
-
-            Log(result.Message);
-            if (result.Plan is not null)
-                MessageBox.Show(result.Message, "연간 시간표",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex) { Log($"시간표 오류: {ex.Message}"); }
-    }
 
     private async Task InspectAsync()
     {

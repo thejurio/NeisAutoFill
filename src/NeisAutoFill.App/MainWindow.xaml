@@ -107,7 +107,8 @@
 
                 <!-- ===== 본문 탭 (평가 / 시간표) =====
                      기능이 늘어나도 탭만 추가하면 되도록 큰 축을 여기서 나눈다. -->
-                <TabControl Grid.Row="2" BorderThickness="0" Background="{StaticResource Panel2}" Padding="0">
+                <TabControl Grid.Row="2" BorderThickness="0" Background="{StaticResource Panel2}" Padding="0"
+                            SelectedIndex="{Binding MainTabIndex}">
                     <TabControl.ItemContainerStyle>
                         <Style TargetType="TabItem" BasedOn="{StaticResource MainTab}"/>
                     </TabControl.ItemContainerStyle>
@@ -257,79 +258,120 @@
 
                     <!-- ─────────── 시간표 탭 ─────────── -->
                     <TabItem Header="🗓 시간표">
-                        <ScrollViewer Background="White" VerticalScrollBarVisibility="Auto">
-                            <StackPanel MaxWidth="820" HorizontalAlignment="Center" Margin="24,26,24,26">
-                                <TextBlock Text="연간 시간표 자동입력" FontSize="19" FontWeight="Bold"
-                                           Foreground="{StaticResource Ink}"/>
-                                <TextBlock Margin="0,7,0,0" FontSize="13" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                           Text="학교에서 받은 연간 시간표 문서(PDF·HWP·HWPX)를 읽어 나이스 학급시간표에 주 단위로 넣습니다. 창의적 체험활동 계획을 함께 넣으면 자율·동아리·진로까지 연결합니다."/>
+                      <DockPanel Background="White" DataContext="{Binding Timetable}">
 
-                                <!-- 흐름 -->
-                                <UniformGrid Rows="1" Margin="0,22,0,0">
-                                    <Border Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}" BorderThickness="1"
-                                            CornerRadius="10" Padding="14,12" Margin="0,0,8,0">
-                                        <StackPanel>
-                                            <TextBlock Text="STEP 1" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Neis}"/>
-                                            <TextBlock Text="📄 문서 읽기" FontSize="14" FontWeight="Bold" Margin="0,3,0,4"
-                                                       Foreground="{StaticResource Ink}"/>
-                                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                                       Text="시간표와 창체 계획을 읽습니다. 빨간 글씨는 공휴일로 보고 넣지 않습니다."/>
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}" BorderThickness="1"
-                                            CornerRadius="10" Padding="14,12" Margin="0,0,8,0">
-                                        <StackPanel>
-                                            <TextBlock Text="STEP 2" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Neis}"/>
-                                            <TextBlock Text="👀 검토·기간" FontSize="14" FontWeight="Bold" Margin="0,3,0,4"
-                                                       Foreground="{StaticResource Ink}"/>
-                                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                                       Text="읽은 내용을 눈으로 확인하고, 넣을 기간을 고릅니다. 연간 전체를 한 번에 하지 않아도 됩니다."/>
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}" BorderThickness="1"
-                                            CornerRadius="10" Padding="14,12" Margin="0,0,8,0">
-                                        <StackPanel>
-                                            <TextBlock Text="STEP 3" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Neis}"/>
-                                            <TextBlock Text="🔗 과목·교사 연결" FontSize="14" FontWeight="Bold" Margin="0,3,0,4"
-                                                       Foreground="{StaticResource Ink}"/>
-                                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                                       Text="문서의 '국·수·창' 표기를 나이스 항목과 잇습니다. 한 번 정하면 다음부터 재사용합니다."/>
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource NeisSoft}" BorderBrush="{StaticResource Neis}" BorderThickness="1.5"
-                                            CornerRadius="10" Padding="14,12">
-                                        <StackPanel>
-                                            <TextBlock Text="STEP 4" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Neis}"/>
-                                            <TextBlock Text="✍ 입력·저장" FontSize="14" FontWeight="Bold" Margin="0,3,0,4"
-                                                       Foreground="{StaticResource Ink}"/>
-                                            <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                                       Text="주마다 넣고 저장하고 다시 조회해 확인합니다. 문제가 생기면 그 주에서 멈춥니다."/>
-                                        </StackPanel>
-                                    </Border>
-                                </UniformGrid>
+                        <!-- ① 자료 -->
+                        <Border DockPanel.Dock="Top" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                            <StackPanel Orientation="Horizontal" Margin="14,8">
+                                <Button Style="{StaticResource GhostButton}" Content="📄 시간표 파일" Command="{Binding LoadTimetableCommand}"
+                                        ToolTip="학교에서 받은 연간 시간표 문서 (PDF·HWP·HWPX)"/>
+                                <TextBlock Text="{Binding TimetableFileName}" VerticalAlignment="Center" Margin="8,0,16,0"
+                                           FontSize="12" Foreground="{StaticResource Sub}" MaxWidth="220" TextTrimming="CharacterEllipsis"/>
 
-                                <!-- 시작 -->
-                                <Button Style="{StaticResource PrimaryButton}" Content="🗓 시간표 자동입력 시작"
-                                        Command="{Binding TimetableCheckCommand}"
-                                        IsEnabled="{Binding IsConnected}" ToolTipService.ShowOnDisabled="True"
-                                        ToolTip="나이스에 연결된 후 사용할 수 있습니다."
-                                        HorizontalAlignment="Left" Padding="20,10" FontSize="14" Margin="0,24,0,0"/>
+                                <Button Style="{StaticResource GhostButton}" Content="📄 창체 계획" Command="{Binding LoadCreativeCommand}"
+                                        ToolTip="창의적 체험활동 계획 — 넣으면 자율·동아리·진로를 연결합니다 (선택)"/>
+                                <TextBlock Text="{Binding CreativeFileName}" VerticalAlignment="Center" Margin="8,0,16,0"
+                                           FontSize="12" Foreground="{StaticResource Sub}" MaxWidth="220" TextTrimming="CharacterEllipsis"/>
 
-                                <TextBlock Margin="0,10,0,0" FontSize="12" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                                           Visibility="{Binding IsConnected, Converter={StaticResource TrueToCollapsed}}"
-                                           Text="먼저 오른쪽 위 [🌐 NEIS 접속]으로 전용 브라우저를 열고, 나이스에서 [학급시간표관리] 화면까지 가 주세요."/>
-
-                                <!-- 안전 안내 -->
-                                <Border Margin="0,22,0,0" Padding="14,12" Background="#FFF7ED"
-                                        BorderBrush="#FDBA74" BorderThickness="1" CornerRadius="10">
-                                    <StackPanel>
-                                        <TextBlock Text="넣기 전에 알아 두실 것" FontWeight="Bold" FontSize="12.5" Foreground="#9A3412"/>
-                                        <TextBlock Margin="0,7,0,0" FontSize="12" TextWrapping="Wrap" Foreground="#9A3412" LineHeight="20"
-                                                   Text="· 동의 창에서 [입력 시작]을 누르기 전까지는 나이스를 읽기만 합니다.&#10;· 나이스에 이미 값이 있으면 기본으로 덮어씁니다. 기간 선택 창에서 끌 수 있습니다.&#10;· 저장한 것은 프로그램이 되돌리지 못합니다. 되돌리려면 나이스에서 해당 칸을 우클릭해 [수업삭제] 후 저장하세요.&#10;· 도중에 멈춰도 끝난 주까지는 기록해 두고, 다음에 이어서 진행합니다."/>
-                                    </StackPanel>
-                                </Border>
+                                <Button Style="{StaticResource GhostButton}" Content="👀 검토·수정" Command="{Binding ReviewCommand}"
+                                        ToolTip="읽어낸 수업을 표로 열어 직접 고칩니다"/>
                             </StackPanel>
-                        </ScrollViewer>
+                        </Border>
+
+                        <!-- ② 범위와 실행 -->
+                        <Border DockPanel.Dock="Top" Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1"
+                                Visibility="{Binding HasSource, Converter={StaticResource BoolToVis}}">
+                            <DockPanel Margin="14,8">
+                                <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="▶ 나이스에 입력"
+                                        Command="{Binding RunCommand}" Padding="16,6"
+                                        ToolTipService.ShowOnDisabled="True"
+                                        ToolTip="주 단위로 넣고 저장합니다. 시작 전에 동의 창에서 한 번 더 확인받습니다.&#10;나이스에 연결된 후 사용할 수 있습니다."/>
+                                <CheckBox DockPanel.Dock="Right" Content="기존 값 덮어쓰기" IsChecked="{Binding AllowOverwrite}"
+                                          VerticalAlignment="Center" Margin="0,0,14,0" FontSize="12"
+                                          ToolTip="나이스에 이미 값이 있는 칸도 계획대로 바꿉니다.&#10;끄면 값이 있는 칸에서 멈춥니다."/>
+
+                                <TextBlock Text="학기" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0"
+                                           Foreground="{StaticResource Sub}"/>
+                                <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Semesters}"
+                                          SelectedItem="{Binding SelectedSemester}" MinWidth="200" Margin="0,0,14,0">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate><TextBlock Text="{Binding Describe}"/></DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <TextBlock Text="기간" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0"
+                                           Foreground="{StaticResource Sub}"/>
+                                <DatePicker SelectedDate="{Binding FromDate}" Width="118" FontSize="12" VerticalAlignment="Center"/>
+                                <TextBlock Text="~" VerticalAlignment="Center" Margin="6,0" Foreground="{StaticResource Sub}"/>
+                                <DatePicker SelectedDate="{Binding ToDate}" Width="118" FontSize="12" VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- ③ 요약 -->
+                        <Border DockPanel.Dock="Top" Padding="14,7" Background="White">
+                            <TextBlock Text="{Binding Summary}" FontSize="12.5" Foreground="{StaticResource Ink}" TextWrapping="Wrap"/>
+                        </Border>
+
+                        <!-- ④ 주별 수업 (좌) + 과목별 시수 (우) -->
+                        <Grid Margin="14,0,14,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <DockPanel Grid.Column="0">
+                                <TextBlock DockPanel.Dock="Top" Text="주별 수업" FontWeight="Bold" FontSize="12.5"
+                                           Foreground="{StaticResource Ink}" Margin="0,0,0,6"/>
+                                <DataGrid ItemsSource="{Binding Weeks}" AutoGenerateColumns="False" IsReadOnly="True"
+                                          Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
+                                          CanUserSortColumns="False" CanUserAddRows="False" RowHeight="30"
+                                          BorderBrush="{StaticResource Line}" BorderThickness="1">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="주" Binding="{Binding Number}" Width="52"/>
+                                        <DataGridTextColumn Header="기간" Binding="{Binding Span}" Width="110"/>
+                                        <DataGridTextColumn Header="수업" Binding="{Binding Count}" Width="52"/>
+                                        <DataGridTextColumn Header="과목 구성" Binding="{Binding Subjects}" Width="*"/>
+                                        <DataGridTextColumn Header="공휴일" Binding="{Binding Holiday}" Width="150"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+
+                            <DockPanel Grid.Column="1" Width="300" Margin="14,0,0,0">
+                                <TextBlock DockPanel.Dock="Top" Text="과목별 시수" FontWeight="Bold" FontSize="12.5"
+                                           Foreground="{StaticResource Ink}" Margin="0,0,0,6"/>
+                                <TextBlock DockPanel.Dock="Bottom" Text="{Binding HourNote}" FontSize="11.5" TextWrapping="Wrap"
+                                           Foreground="{StaticResource Sub}" Margin="0,6,0,0"/>
+                                <DataGrid ItemsSource="{Binding Hours}" AutoGenerateColumns="False"
+                                          Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
+                                          CanUserSortColumns="False" CanUserAddRows="False" RowHeight="28"
+                                          BorderBrush="{StaticResource Line}" BorderThickness="1">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="과목" Binding="{Binding Subject}" Width="*" IsReadOnly="True"/>
+                                        <DataGridTextColumn Header="기준" Binding="{Binding Standard, UpdateSourceTrigger=LostFocus}" Width="58"
+                                                            ElementStyle="{StaticResource NumberCell}"/>
+                                        <DataGridTextColumn Header="배정" Binding="{Binding Assigned}" Width="58" IsReadOnly="True"
+                                                            ElementStyle="{StaticResource NumberCell}"/>
+                                        <DataGridTextColumn Header="차이" Binding="{Binding DifferenceText}" Width="58" IsReadOnly="True">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource NumberCell}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsShort}" Value="True">
+                                                            <Setter Property="Foreground" Value="#B91C1C"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsOver}" Value="True">
+                                                            <Setter Property="Foreground" Value="#1D4ED8"/>
+                                                            <Setter Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </Grid>
+                      </DockPanel>
                     </TabItem>
                 </TabControl>
 
@@ -374,7 +416,7 @@
             <!-- ===== 성취기준 참조 패널 (우측 전체 높이 — 토글 시 창이 옆으로 확장) ===== -->
             <Border Grid.Row="1" Grid.Column="1" Width="300" BorderBrush="{StaticResource Line}" BorderThickness="1,0,0,0"
                     Background="{StaticResource Panel2}"
-                    Visibility="{Binding ShowCriteriaPanel, Converter={StaticResource BoolToVis}}">
+                    Visibility="{Binding ShowCriteriaColumn, Converter={StaticResource BoolToVis}}">
                 <DockPanel Margin="12,10">
                     <TextBlock DockPanel.Dock="Top" Text="이 과목의 성취기준·평가기준" FontWeight="Bold" FontSize="12.5"
                                Foreground="{StaticResource Ink}" Margin="0,0,0,8"/>

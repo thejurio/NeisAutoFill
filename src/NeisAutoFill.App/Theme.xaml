@@ -324,6 +324,13 @@
         </Setter>
     </Style>
 
+    <!-- ==== 표 안의 숫자 칸 — 오른쪽 정렬 ==== -->
+    <Style x:Key="NumberCell" TargetType="TextBlock">
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,0,8,0"/>
+    </Style>
+
     <!-- ==== 앱 상위 탭 (평가 / 시간표) ====
          과목 탭(UnderlineTab)과 섞이지 않게 더 크고 진하게, 선택된 탭만 흰 배경으로 띄운다. -->
     <Style x:Key="MainTab" TargetType="TabItem">

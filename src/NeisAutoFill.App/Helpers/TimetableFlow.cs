@@ -1,12 +1,9 @@
-using System.IO;
 using System.Windows;
-using Microsoft.Win32;
 using NeisAutoFill.App.Services;
 using NeisAutoFill.App.ViewModels;
 using NeisAutoFill.Automation;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Timetable;
-using NeisAutoFill.Generator;
 
 namespace NeisAutoFill.App.Helpers;
 
@@ -14,7 +11,7 @@ namespace NeisAutoFill.App.Helpers;
 /// 연간 시간표 자동입력의 전체 흐름을 한 곳에 모은다 (BatchUploadFlow 와 같은 역할).
 ///
 /// <code>
-/// 파일 고르기 → 문서 해석 → 검토 창 → 나이스 준비·카탈로그 → 기간·덮어쓰기 선택 → 매핑 창 → 실행 계획
+/// (시간표 탭에서 문서·기간을 정한 뒤) 나이스 준비·카탈로그 → 매핑 창 → 실행 계획
 ///   → 동의 창 → 주 단위 입력·저장·검증 → 결과 창
 /// </code>
 ///
@@ -27,98 +24,53 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
     /// <param name="Message">사용자에게 보여 줄 마무리 문구</param>
     public sealed record Result(TimetablePlan? Plan, string Message);
 
-    /// <param name="timetableFile">비워 두면 파일 선택 창을 띄운다 (재현·시험할 때 경로를 직접 준다)</param>
-    /// <param name="creativeFile">창체 계획 — 없어도 된다</param>
-    public async Task<Result> RunAsync(
-        Window? owner, IProgress<ProgressInfo>? progress = null,
-        string? timetableFile = null, string? creativeFile = null)
+    /// <summary>
+    /// 이미 읽어 둔 수업과 기간으로 <b>나이스 준비부터</b> 진행한다 (시간표 탭에서 쓴다).
+    ///
+    /// 파일 고르기·검토·기간 선택은 탭 화면이 이미 담당하므로 여기서 다시 묻지 않는다.
+    /// </summary>
+    public async Task<Result> RunLessonsAsync(
+        IReadOnlyList<TimetableSourceLesson> lessons,
+        TimetableRangeChoice range,
+        Window? owner,
+        IProgress<ProgressInfo>? progress = null)
     {
-        // ── ① 원본 문서 ─────────────────────────────────────────
-        var timetablePath = timetableFile ?? AskFile("연간 시간표 파일 선택");
-        if (timetablePath is null) return new(null, "취소했습니다.");
+        if (lessons.Count == 0) return new(null, "넣을 수업이 없습니다.");
 
-        var creativePath = creativeFile ?? (timetableFile is null
-            ? AskFile("창의적 체험활동 계획 (없으면 취소)")
-            : null);
-
-        log($"문서를 읽는 중… {Path.GetFileName(timetablePath)}");
-
-        TimetableSourcePackage source;
-        CreativeSourcePackage? creative = null;
-        try
-        {
-            source = await Task.Run(() =>
-                TimetableDocumentParser.Parse(PdfLayoutExtractor.ExtractAny(timetablePath)));
-
-            if (creativePath is not null)
-                creative = await Task.Run(() =>
-                    CreativeDocumentParser.Parse(PdfLayoutExtractor.ExtractAny(creativePath)));
-        }
-        catch (Exception ex)
-        {
-            return new(null, $"문서를 읽지 못했습니다.\n{ex.Message}");
-        }
-
-        if (source.Lessons.Count == 0)
-            return new(null, "문서에서 수업을 하나도 찾지 못했습니다. 다른 형식(PDF)으로 저장해 넣어 보세요.");
-
-        log($"수업 {source.Lessons.Count}칸 · 경고 {source.Warnings.Count}건");
-
-        // ── ② 창체 병합·연결 ────────────────────────────────────
-        IReadOnlyList<CreativeLink> links = Array.Empty<CreativeLink>();
-        IReadOnlyList<string> pairProblems = Array.Empty<string>();
-
-        if (creative is not null)
-        {
-            var merged = CreativeActivityMerger.Merge(creative.Events);
-            links = CreativeActivityLinker.Link(source.Lessons, merged.Merged);
-            pairProblems = CreativeActivityLinker.CheckPair(source, creative);
-
-            log($"창체 {creative.Events.Count}건 → 병합 {merged.Merged.Count}건 · " +
-                $"충돌 {merged.Conflicts.Count}건 · 연결 {links.Count(l => l.IsResolved)}/{links.Count}칸");
-        }
-
-        // ── ③ 검토 창 — 사람이 확인하고 고친다 ───────────────────
-        var reviewed = TimetableReviewWindow.Ask(
-            new TimetableReviewViewModel(source, links, pairProblems), owner);
-        if (reviewed is null) return new(null, "검토를 취소했습니다.");
-
-        log($"검토 완료 — {reviewed.Count}칸");
-
-        // ── ④ 나이스 준비 (읽기 전용) ───────────────────────────
-        // 기간 선택보다 먼저 한다 — 나이스가 아는 학기를 알아야 고를 수 있는 기간을 제대로 보여 준다.
-        var pre = await session.PreflightAsync(reviewed.Min(l => l.Cell.Date), progress);
+        // ── 나이스 준비 (읽기 전용) ─────────────────────────────
+        var pre = await session.PreflightAsync(lessons.Min(l => l.Cell.Date), progress);
         if (!pre.Ok) return new(null, pre.Message);
 
         log(pre.Message);
 
-        // ── ④-2 기간·덮어쓰기 선택 ──────────────────────────────
-        var range = TimetableRangeWindow.Ask(reviewed, session.TermStart, session.TermEnd, owner);
-        if (range is null) return new(null, "취소했습니다.");
+        // 나이스가 아는 학기 밖이면 한 칸도 넣을 수 없다 — 매핑까지 가기 전에 멈춘다
+        var inTerm = lessons.Where(l =>
+            (session.TermStart is null || l.Cell.Date >= session.TermStart) &&
+            (session.TermEnd is null || l.Cell.Date <= session.TermEnd)).ToList();
 
-        reviewed = range.Filter(reviewed);
-        if (reviewed.Count == 0)
-            return new(null, "고른 기간에 넣을 수업이 없습니다.");
+        if (inTerm.Count == 0)
+            return new(null,
+                $"고른 기간({range.From:yyyy-MM-dd}~{range.To:yyyy-MM-dd})이 나이스에서 조회한 학기" +
+                $"({session.TermStart:yyyy-MM-dd}~{session.TermEnd:yyyy-MM-dd})와 겹치지 않습니다.\n" +
+                "문서의 학년도·학기와 나이스에서 고른 학년도·학기를 확인해 주세요.");
 
-        log($"기간 {range.From:yyyy-MM-dd}~{range.To:yyyy-MM-dd} · {reviewed.Count}칸" +
-            (range.AllowOverwrite ? " · 기존 값 덮어씀" : " · 기존 값 유지"));
+        if (inTerm.Count < lessons.Count)
+            log($"나이스 학기 밖 {lessons.Count - inTerm.Count}칸은 제외합니다.");
 
-        // ── ⑤ 매핑 창 ──────────────────────────────────────────
-        var rules = session.OpenMapping(reviewed, owner);
+        // ── 매핑 ───────────────────────────────────────────────
+        var rules = session.OpenMapping(inTerm, owner);
         if (rules is null) return new(null, "매핑을 취소했습니다.");
 
         log($"매핑 규칙 {rules.Count}건 확정");
 
-        // ── ⑥ 실행 계획 ────────────────────────────────────────
+        // ── 실행 계획 ──────────────────────────────────────────
         var plan = TimetablePlanBuilder.Build(
-            reviewed, rules, session.Catalog!, session.ScreenState(), range.AllowOverwrite);
+            inTerm, rules, session.Catalog!, session.ScreenState(), range.AllowOverwrite);
         log(Describe(plan));
 
-        if (!plan.CanRun)
-            return new(plan, Describe(plan));
+        if (!plan.CanRun) return new(plan, Describe(plan));
 
-        // ── ⑦ 동의 → 입력·저장 → 결과 ──────────────────────────
-        return await RunPlanAsync(plan, reviewed, rules, range, owner, progress);
+        return await RunPlanAsync(plan, inTerm, rules, range, owner, progress);
     }
 
     /// <summary>
@@ -192,14 +144,4 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
         AssignmentStatus.DuplicateTarget => "중복 목표",
         _ => s.ToString(),
     };
-
-    private static string? AskFile(string title)
-    {
-        var dlg = new OpenFileDialog
-        {
-            Title = title,
-            Filter = "시간표 문서|*.pdf;*.hwp;*.hwpx|PDF|*.pdf|한글|*.hwp;*.hwpx|모든 파일|*.*",
-        };
-        return dlg.ShowDialog() == true ? dlg.FileName : null;
-    }
 }
