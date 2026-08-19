@@ -78,6 +78,45 @@ public sealed class TimetableCellVm : ObservableObject
     }
 }
 
+/// <summary>
+/// 격자의 요일 머리 한 칸.
+/// <b>못 넣는 날은 왜 못 넣는지</b>를 여기 한 번만 적는다 —
+/// 원본 문서에 적힌 말을 그대로 가져오므로 사용자가 자기 시간표와 대조할 수 있다.
+/// </summary>
+public sealed class DayHeaderVm
+{
+    public DayHeaderVm(DateOnly date, string reason, bool blocked, string note)
+    {
+        Title = $"{Korean(date.DayOfWeek)} {date:M/d}";
+        Reason = reason;
+        Blocked = blocked;
+        Note = note;
+    }
+
+    public string Title { get; }
+
+    /// <summary>못 넣는 이유 ("추석연휴", "재량휴업일"). 넣을 수 있으면 빈 문자열.</summary>
+    public string Reason { get; }
+
+    public bool Blocked { get; }
+
+    /// <summary>원본 비고 칸의 행사 ("보건10 심폐소생술"). 없으면 빈 문자열.</summary>
+    public string Note { get; }
+
+    public bool HasNote => Note.Length > 0;
+
+    private static string Korean(DayOfWeek d) => d switch
+    {
+        DayOfWeek.Monday => "월",
+        DayOfWeek.Tuesday => "화",
+        DayOfWeek.Wednesday => "수",
+        DayOfWeek.Thursday => "목",
+        DayOfWeek.Friday => "금",
+        DayOfWeek.Saturday => "토",
+        _ => "일",
+    };
+}
+
 /// <summary>격자의 한 행 = 한 교시.</summary>
 public sealed class TimetableGridRow
 {
@@ -264,6 +303,7 @@ public sealed class TimetableTabViewModel : ObservableObject
     public AsyncRelayCommand RunCommand { get; }
 
     public ObservableCollection<TimetableGridRow> Grid { get; } = new();
+    public ObservableCollection<DayHeaderVm> DayHeaders { get; } = new();
     public ObservableCollection<SubjectAssignmentRow> Subjects { get; } = new();
     public ObservableCollection<ExceptionRow> Exceptions { get; } = new();
 
@@ -555,8 +595,28 @@ public sealed class TimetableTabViewModel : ObservableObject
             ? Array.Empty<TimetableSourceLesson>()
             : _lessons
                 .Where(l => l.Cell.Date >= _from && l.Cell.Date <= _to)
-                .Where(l => !IsHoliday(l.Cell.Date))
+                .Where(l => !IsBlocked(l.Cell.Date))
                 .ToList();
+
+    /// <summary>
+    /// 이 날은 넣을 수 없다 — 쉬는 날이거나 나이스 학기 밖이다.
+    /// </summary>
+    private bool IsBlocked(DateOnly date) => IsHoliday(date) || !InNeisTerm(date);
+
+    /// <summary>못 넣는 이유를 사람 말로. 넣을 수 있으면 빈 문자열.</summary>
+    private string BlockReason(DateOnly date)
+    {
+        var name = HolidayNameOf(date);
+        if (name.Length > 0) return name;
+        if (IsHoliday(date)) return "쉬는 날";
+        if (!InNeisTerm(date)) return "나이스 학기 밖";
+        return "";
+    }
+
+    /// <summary>나이스가 아는 학기 안인가. 목록을 아직 안 읽었으면 따지지 않는다.</summary>
+    private bool InNeisTerm(DateOnly date) =>
+        (_session.TermStart is null || date >= _session.TermStart) &&
+        (_session.TermEnd is null || date <= _session.TermEnd);
 
     private bool IsHoliday(DateOnly date) =>
         _extraHolidays.ContainsKey(date) || (_source?.HolidayNames.ContainsKey(date) ?? false);
@@ -916,11 +976,21 @@ public sealed class TimetableTabViewModel : ObservableObject
     private void BuildGrid()
     {
         Grid.Clear();
+        DayHeaders.Clear();
         if (_source is null || Weeks.Count == 0 || WeekIndex >= Weeks.Count) return;
 
         var start = Weeks[WeekIndex];
         var inWeek = _lessons.Where(l => l.Cell.WeekStart == start).ToList();
         var periods = inWeek.Select(l => l.Cell.Period).DefaultIfEmpty(6).Max();
+
+        // 요일 머리 — 못 넣는 날은 왜 못 넣는지 여기 한 번만 적는다
+        for (var d = 0; d < 5; d++)
+        {
+            var date = start.AddDays(d);
+            var note = string.Join(" · ", _source.Events.Where(e => e.Date == date).Select(e => e.Text));
+
+            DayHeaders.Add(new DayHeaderVm(date, BlockReason(date), IsBlocked(date), note));
+        }
 
         for (var period = 1; period <= periods; period++)
         {
@@ -930,10 +1000,10 @@ public sealed class TimetableTabViewModel : ObservableObject
                 var date = start.AddDays(d);
                 var cell = new TimetableCellVm(new TimetableCell(date, period), this);
 
-                if (IsHoliday(date))
+                if (IsBlocked(date))
                 {
+                    // 이유는 요일 머리에 한 번만 적는다 — 칸마다 되풀이하면 표가 시끄럽다
                     cell.IsHoliday = true;
-                    cell.HolidayName = HolidayNameOf(date);
                 }
                 else
                 {

@@ -423,13 +423,18 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
+    <!-- ==== 단계 한 덩어리 — 사이를 띄워 눈이 순서를 따라가게 한다 ==== -->
+    <Style x:Key="StepBlock" TargetType="StackPanel">
+        <Setter Property="Margin" Value="0,0,0,18"/>
+    </Style>
+
     <!-- ==== 시간표 탭의 단계 제목 ==== -->
     <Style x:Key="StepTitle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontWeight" Value="Bold"/>
         <Setter Property="Foreground" Value="{StaticResource Neis}"/>
-        <Setter Property="Margin" Value="0,16,0,7"/>
+        <Setter Property="Margin" Value="0,0,0,7"/>
     </Style>
 
     <!-- 단계 아래 작은 설명·상태 줄 -->
