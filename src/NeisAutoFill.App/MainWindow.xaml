@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:NeisAutoFill.App.ViewModels"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="NEIS 교과평가 자동입력기" Height="780" Width="1200" MinWidth="1020" MinHeight="640"
+        Title="NEIS 교과평가 자동입력기" Height="840" Width="1280" MinWidth="1060" MinHeight="700"
         Icon="app.ico" WindowStyle="None" ResizeMode="CanResize"
         AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver" Closing="Window_Closing"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
@@ -18,10 +18,10 @@
              교사가 안 정해진 수업은 테두리를 주황으로 — 이대로면 실행이 막힌다. -->
         <DataTemplate x:Key="TimetableCellTemplate">
           <Grid>
-            <Button Style="{StaticResource TimetableCellButton}" MinHeight="32"
+            <Button Style="{StaticResource TimetableCellButton}" MinHeight="30"
                     Command="{Binding DataContext.Timetable.SelectCellCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                     CommandParameter="{Binding}">
-                <Border x:Name="cell" BorderBrush="#EEF2F7" BorderThickness="0,0,1,1" Padding="6,4" Background="Transparent">
+                <Border x:Name="cell" BorderBrush="#EEF2F7" BorderThickness="0,0,1,1" Padding="5,2" Background="Transparent">
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="{Binding Subject}" FontSize="11.5" Foreground="{StaticResource Ink}"
                                    TextTrimming="CharacterEllipsis"/>
@@ -501,6 +501,9 @@
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,7">
                                     <TextBlock Text="과목별 담당 교사와 시수" FontWeight="Bold" FontSize="13"
                                                Foreground="{StaticResource Ink}" VerticalAlignment="Center"/>
+                                    <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" FontSize="11"
+                                               Foreground="#94A3B8" Margin="10,0,0,0"
+                                               Text="과목 · 담당 교사 · 배정 / 기준 / 차이"/>
                                     <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" FontSize="11.5"
                                                Foreground="{StaticResource Sub}" TextTrimming="CharacterEllipsis"
                                                Text="과목마다 기본 교사를 하나 고릅니다. 몇 시간만 다르면 아래 시간표에서 그 칸을 누르세요."/>
@@ -512,46 +515,77 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <DataGrid Grid.Column="0" ItemsSource="{Binding Subjects}" AutoGenerateColumns="False"
-                                              Style="{StaticResource CleanGrid}" ColumnHeaderStyle="{StaticResource CleanGridHeader}"
-                                              CanUserSortColumns="False" CanUserAddRows="False" RowHeight="32"
-                                              BorderBrush="{StaticResource Line}" BorderThickness="1" MaxHeight="272">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="과목" Binding="{Binding Subject}" Width="150" IsReadOnly="True"/>
-                                            <DataGridTemplateColumn Header="담당 교사" Width="*">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding Teacher, Mode=TwoWay}"
-                                                                  DisplayMemberPath="Label" FontSize="12" Margin="3,2"
-                                                                  BorderBrush="{StaticResource Line}"/>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="배정" Binding="{Binding Assigned}" Width="58" IsReadOnly="True"
-                                                                ElementStyle="{StaticResource NumberCell}"/>
-                                            <DataGridTextColumn Header="기준" Binding="{Binding Standard, UpdateSourceTrigger=LostFocus}" Width="58"
-                                                                ElementStyle="{StaticResource NumberCell}"/>
-                                            <DataGridTextColumn Header="차이" Binding="{Binding DifferenceText}" Width="58" IsReadOnly="True">
-                                                <DataGridTextColumn.ElementStyle>
-                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource NumberCell}">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsShort}" Value="True">
-                                                                <Setter Property="Foreground" Value="#B91C1C"/>
-                                                                <Setter Property="FontWeight" Value="Bold"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding IsOver}" Value="True">
-                                                                <Setter Property="Foreground" Value="#1D4ED8"/>
-                                                                <Setter Property="FontWeight" Value="Bold"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </DataGridTextColumn.ElementStyle>
-                                            </DataGridTextColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
+                                    <!-- 과목 카드를 여러 단으로 흘린다 —
+                                         한 과목이 가로로 길게 늘어나면 눈이 따라가기 힘들고,
+                                         세로로 쌓으면 스크롤이 생겨 한눈에 안 들어온다. -->
+                                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding Subjects}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel ItemWidth="286" Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border x:Name="card" Background="White" BorderBrush="{StaticResource Line}"
+                                                            BorderThickness="1" CornerRadius="6" Padding="8,4"
+                                                            Margin="0,0,8,5">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="58"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="30"/>
+                                                                <ColumnDefinition Width="36"/>
+                                                                <ColumnDefinition Width="30"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <TextBlock Grid.Column="0" Text="{Binding Subject}" FontSize="11.5"
+                                                                       VerticalAlignment="Center" Foreground="{StaticResource Ink}"
+                                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Subject}"/>
+
+                                                            <ComboBox Grid.Column="1" ItemsSource="{Binding Candidates}"
+                                                                      SelectedItem="{Binding Teacher, Mode=TwoWay}"
+                                                                      DisplayMemberPath="Label" FontSize="11.5" Margin="4,0"
+                                                                      BorderBrush="{StaticResource Line}"
+                                                                      ToolTip="이 과목 전체의 기본 교사입니다.&#10;몇 시간만 다르면 아래 시간표에서 그 칸을 누르세요."/>
+
+                                                            <TextBlock Grid.Column="2" Text="{Binding Assigned}" FontSize="11.5"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                                       Foreground="{StaticResource Sub}" ToolTip="배정된 시수"/>
+
+                                                            <TextBox Grid.Column="3" Text="{Binding StandardText, UpdateSourceTrigger=LostFocus}"
+                                                                     FontSize="11.5" Margin="4,0,2,0" Padding="2,1"
+                                                                     TextAlignment="Right" BorderBrush="{StaticResource Line}"
+                                                                     VerticalContentAlignment="Center"
+                                                                     ToolTip="기준 시수 — 문서에서 읽어 오고, 직접 고칠 수 있습니다"/>
+
+                                                            <TextBlock x:Name="diff" Grid.Column="4" Text="{Binding DifferenceText}"
+                                                                       FontSize="11.5" HorizontalAlignment="Right"
+                                                                       VerticalAlignment="Center" Foreground="{StaticResource Sub}"
+                                                                       ToolTip="배정 − 기준"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <DataTemplate.Triggers>
+                                                        <DataTrigger Binding="{Binding NeedsTeacher}" Value="True">
+                                                            <Setter TargetName="card" Property="Background" Value="#FFFBEB"/>
+                                                            <Setter TargetName="card" Property="BorderBrush" Value="#FCD34D"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsShort}" Value="True">
+                                                            <Setter TargetName="diff" Property="Foreground" Value="#B91C1C"/>
+                                                            <Setter TargetName="diff" Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsOver}" Value="True">
+                                                            <Setter TargetName="diff" Property="Foreground" Value="#1D4ED8"/>
+                                                            <Setter TargetName="diff" Property="FontWeight" Value="Bold"/>
+                                                        </DataTrigger>
+                                                    </DataTemplate.Triggers>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
 
                                     <!-- 예외 — 있을 때만 오른쪽에 붙는다 -->
-                                    <DockPanel Grid.Column="1" Width="290" Margin="12,0,0,0"
+                                    <DockPanel Grid.Column="1" Width="248" Margin="10,0,0,0"
                                                Visibility="{Binding HasExceptions, Converter={StaticResource BoolToVis}}">
                                         <TextBlock DockPanel.Dock="Top" Text="예외" FontSize="12" FontWeight="Bold"
                                                    Margin="0,0,0,5" Foreground="{StaticResource Ink}"/>
@@ -614,7 +648,7 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border x:Name="dh" BorderBrush="#EEF2F7" BorderThickness="0,0,1,1" Padding="4,5"
+                                                    <Border x:Name="dh" BorderBrush="#EEF2F7" BorderThickness="0,0,1,1" Padding="4,4"
                                                             Background="Transparent">
                                                         <StackPanel>
                                                             <TextBlock Text="{Binding Title}" HorizontalAlignment="Center"

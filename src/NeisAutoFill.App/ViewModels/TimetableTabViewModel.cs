@@ -218,12 +218,31 @@ public sealed class SubjectAssignmentRow : ObservableObject
         {
             if (!SetProperty(ref _standard, value)) return;
             _onStandardChanged(Subject, value);
+            OnPropertyChanged(nameof(StandardText));
             OnPropertyChanged(nameof(DifferenceText));
             OnPropertyChanged(nameof(IsShort));
             OnPropertyChanged(nameof(IsOver));
         }
     }
     private int? _standard;
+
+    /// <summary>
+    /// 기준 시수를 글자로 주고받는다.
+    /// 숫자 칸에 int? 를 그대로 묶으면 빈칸으로 지울 때 변환이 깨진다 —
+    /// 빈칸은 "기준 없음"이고, 숫자가 아니면 이전 값을 지킨다.
+    /// </summary>
+    public string StandardText
+    {
+        get => _standard?.ToString() ?? "";
+        set
+        {
+            var text = (value ?? "").Trim();
+            Standard = text.Length == 0 ? null
+                     : int.TryParse(text, out var parsed) && parsed >= 0 ? parsed
+                     : _standard;
+            OnPropertyChanged();
+        }
+    }
 
     public string DifferenceText => _standard is null ? "" : (Assigned - _standard.Value).ToString("+#;-#;0");
     public bool IsShort => _standard is not null && Assigned < _standard;
@@ -311,6 +330,9 @@ public sealed class TimetableTabViewModel : ObservableObject
     public ObservableCollection<TimetableSemesterPart> Semesters { get; } = new();
 
     private readonly List<DateOnly> Weeks = new();
+
+    /// <summary>격자에 늘 그려 둘 교시 수 — 학교에 따라 7~8교시까지 있다.</summary>
+    private const int MaxPeriods = 8;
 
     // ── 자료 ────────────────────────────────────────────────
 
@@ -981,7 +1003,9 @@ public sealed class TimetableTabViewModel : ObservableObject
 
         var start = Weeks[WeekIndex];
         var inWeek = _lessons.Where(l => l.Cell.WeekStart == start).ToList();
-        var periods = inWeek.Select(l => l.Cell.Period).DefaultIfEmpty(6).Max();
+        // 8교시까지 자리를 잡아 둔다 — 주마다 행 수가 달라지면 표가 들썩이고,
+        // 스크롤이 생기면 한 주를 한눈에 볼 수 없다.
+        var periods = Math.Max(MaxPeriods, inWeek.Select(l => l.Cell.Period).DefaultIfEmpty(0).Max());
 
         // 요일 머리 — 못 넣는 날은 왜 못 넣는지 여기 한 번만 적는다
         for (var d = 0; d < 5; d++)
