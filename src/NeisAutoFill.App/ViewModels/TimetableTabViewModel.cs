@@ -94,12 +94,19 @@ public sealed class TimetableGridRow
 /// <b>"입력 안 함"도 선택지여야 한다</b> — 나이스에 없는 활동(봉사활동 등)은
 /// 교사를 정할 방법이 없어, 이 선택지가 없으면 실행이 영영 막힌다(실측 확인).
 /// </summary>
-public sealed record TeacherChoice(NeisTimetableOption? Option, string Label)
+public sealed record TeacherChoice(NeisTimetableOption? Option, string Label, bool IsMatch = false)
 {
     public static TeacherChoice Skip { get; } = new(null, "— 입력 안 함 —");
 
+    /// <summary>이름이 맞는 항목 — 교사 이름만 보여 준다.</summary>
     public static TeacherChoice Of(NeisTimetableOption option) =>
-        new(option, option.TeacherName.Length > 0 ? option.TeacherName : option.Subject);
+        new(option, option.TeacherName.Length > 0 ? option.TeacherName : option.Subject, IsMatch: true);
+
+    /// <summary>이름이 다른 항목 — 어느 과목인지 함께 보여 줘야 잘못 고르지 않는다.</summary>
+    public static TeacherChoice Other(NeisTimetableOption option) =>
+        new(option, option.TeacherName.Length > 0
+            ? $"{option.Subject} · {option.TeacherName}"
+            : option.Subject);
 
     public bool IsSkip => Option is null;
 
@@ -151,8 +158,8 @@ public sealed class SubjectAssignmentRow : ObservableObject
     }
     private TeacherChoice? _teacher;
 
-    /// <summary>나이스 목록에 이 과목이 아예 없다 — "입력 안 함"밖에 고를 것이 없다(예: 봉사활동).</summary>
-    public bool HasNoTeacher => Candidates.All(c => c.IsSkip);
+    /// <summary>나이스에 같은 이름의 과목이 없다 — 다른 과목으로 잇거나 [입력 안 함]을 골라야 한다.</summary>
+    public bool HasNoMatch => !Candidates.Any(c => c.IsMatch);
 
     /// <summary>아직 아무것도 안 골랐다. "입력 안 함"을 골랐으면 정한 것이다.</summary>
     public bool NeedsTeacher => _teacher is null;
@@ -512,8 +519,8 @@ public sealed class TimetableTabViewModel : ObservableObject
         _lessons.AddRange(parsed.Lessons);
         _standardEdits.Clear();
         _extraHolidays.Clear();
-        _rules.Clear();
         TimetableFileName = Path.GetFileName(path);
+        // 교사 배정(_rules)은 지우지 않는다 — 같은 학급이면 문서를 다시 넣어도 그대로 쓴다
 
         Semesters.Clear();
         foreach (var part in parsed.SemesterParts) Semesters.Add(part);
@@ -602,6 +609,19 @@ public sealed class TimetableTabViewModel : ObservableObject
         CatalogState = _catalog is null ? "실패" : $"과목·교사 {_catalog.Assignable.Count}개";
         _log(pre.Message);
 
+        // 지난번에 정해 둔 배정을 되살린다 — 매번 다시 고르게 하면 쓸 수가 없다
+        if (_catalog is not null && _rules.Count == 0)
+        {
+            var saved = _session.LoadRules(out var catalogChanged);
+            if (saved.Count > 0)
+            {
+                _rules.AddRange(saved);
+                _log(catalogChanged
+                    ? $"저장된 배정 {saved.Count}건을 되살렸습니다 — 나이스 목록이 바뀌어 일부는 다시 정해야 합니다."
+                    : $"저장된 배정 {saved.Count}건을 되살렸습니다.");
+            }
+        }
+
         OnPropertyChanged(nameof(HasCatalog));
         Rebuild();
     }
@@ -661,13 +681,14 @@ public sealed class TimetableTabViewModel : ObservableObject
         if (missing.Count == 0) return "";
 
         // 나이스에 아예 없는 활동은 "고르지 않은 것"이 아니라 "고를 수 없는 것"이다 — 다르게 안내한다
-        var noTeacher = missing.Where(x => x.HasNoTeacher).Select(x => x.Subject).ToList();
-        var unpicked = missing.Where(x => !x.HasNoTeacher).Select(x => x.Subject).ToList();
+        var noMatch = missing.Where(x => x.HasNoMatch).Select(x => x.Subject).ToList();
+        var unpicked = missing.Where(x => !x.HasNoMatch).Select(x => x.Subject).ToList();
 
         var parts = new List<string>();
         if (unpicked.Count > 0) parts.Add($"담당 교사를 정하지 않은 과목: {string.Join(", ", unpicked)}");
-        if (noTeacher.Count > 0)
-            parts.Add($"나이스 목록에 없는 활동: {string.Join(", ", noTeacher)} — [— 입력 안 함 —]을 고르면 넘어갑니다");
+        if (noMatch.Count > 0)
+            parts.Add($"나이스에 같은 이름이 없는 과목: {string.Join(", ", noMatch)} — " +
+                      "드롭다운에서 넣을 나이스 과목을 고르거나 [입력 안 함]을 고르세요");
 
         return string.Join("\n", parts);
     }
@@ -705,14 +726,20 @@ public sealed class TimetableTabViewModel : ObservableObject
             var row = new SubjectAssignmentRow(
                 group.Key, tokens, candidates, group.Count(), standard, OnTeacherChanged, OnStandardEdited);
 
-            // 앞서 고른 것이 있으면 유지한다. 없으면 교사가 딱 한 명일 때만 자동으로 정한다 —
-            // 여러 명 중 하나를 임의로 고르지 않는다(D-002).
-            var teachers = candidates.Where(c => !c.IsSkip).ToList();
+            // 순서: ① 저장·기존 규칙 ② 화면에서 방금 고른 것 ③ 후보가 딱 하나면 자동.
+            // 여러 명 중 하나를 임의로 고르지는 않는다(D-002).
+            var fromRule = _rules
+                .FirstOrDefault(r => r.Scope.Kind == MappingScopeKind.Default && tokens.Contains(r.SourceToken));
 
-            row.Teacher = previous.TryGetValue(group.Key, out var kept) && kept is not null
-                          && candidates.FirstOrDefault(c => c.TargetKey == kept.TargetKey) is { } same
-                ? same
-                : teachers.Count == 1 ? teachers[0] : null;
+            var matched = candidates.Where(c => c.IsMatch).ToList();
+
+            row.Teacher =
+                fromRule is not null && candidates.FirstOrDefault(c => c.TargetKey == fromRule.TargetStableKey) is { } saved
+                    ? saved
+                : previous.TryGetValue(group.Key, out var kept) && kept is not null
+                  && candidates.FirstOrDefault(c => c.TargetKey == kept.TargetKey) is { } same
+                    ? same
+                : matched.Count == 1 ? matched[0] : null;
 
             Subjects.Add(row);
         }
@@ -742,16 +769,36 @@ public sealed class TimetableTabViewModel : ObservableObject
     {
         if (_catalog is null) return new[] { TeacherChoice.Skip };
 
+        var matched = MatchingOptions(token);
+
+        var choices = new List<TeacherChoice>();
+        choices.AddRange(matched.Select(TeacherChoice.Of));
+        choices.Add(TeacherChoice.Skip);
+
+        // 이름이 같은 항목 말고 <b>나이스의 다른 과목</b>도 고를 수 있어야 한다.
+        // 문서는 "정보"인데 나이스는 "실과"처럼 이름이 어긋나는 일이 흔하고,
+        // 그때 [입력 안 함]밖에 없으면 진짜 수업이 조용히 빠진다.
+        var rest = _catalog.Assignable.Except(matched)
+            .OrderBy(o => o.Subject, StringComparer.CurrentCulture)
+            .ThenBy(o => o.TeacherName, StringComparer.CurrentCulture);
+
+        choices.AddRange(rest.Select(TeacherChoice.Other));
+        return choices;
+    }
+
+    /// <summary>이름(또는 창체 종류)이 맞는 나이스 항목들.</summary>
+    private IReadOnlyList<NeisTimetableOption> MatchingOptions(string token)
+    {
+        if (_catalog is null) return Array.Empty<NeisTimetableOption>();
+
         var norm = TimetableTokenNormalizer.Normalize(token);
 
-        // 창체는 종류(자율·동아리·진로)가 같은 것만 후보다 — 자율 자리에 동아리를 넣으면 안 된다
-        var options = norm.CreativeKind != CreativeActivityKind.Unresolved
-            ? _catalog.Assignable.Where(o => o.CreativeKind == norm.CreativeKind).ToList()
-            : _catalog.FindBySubject(norm.Standard) is { Count: > 0 } byName
-                ? byName
-                : _catalog.FindBySubject(norm.Raw);
+        // 창체는 종류(자율·동아리·진로)가 같은 것만 맞는 것으로 본다 — 자율 자리에 동아리를 넣으면 안 된다
+        if (norm.CreativeKind != CreativeActivityKind.Unresolved)
+            return _catalog.Assignable.Where(o => o.CreativeKind == norm.CreativeKind).ToList();
 
-        return options.Select(TeacherChoice.Of).Append(TeacherChoice.Skip).ToList();
+        var byName = _catalog.FindBySubject(norm.Standard);
+        return byName.Count > 0 ? byName : _catalog.FindBySubject(norm.Raw);
     }
 
     private void BuildGrid()
@@ -840,6 +887,7 @@ public sealed class TimetableTabViewModel : ObservableObject
 
         BuildGrid();
         Warning = BuildWarning();
+        _session.SaveRules(_rules);
         RefreshRunnable();
     }
 
@@ -868,6 +916,7 @@ public sealed class TimetableTabViewModel : ObservableObject
 
         _log($"예외 추가 — {scope.Description} · {_selectedCell.Subject}");
 
+        _session.SaveRules(_rules);
         BuildGrid();
         BuildExceptions();
     }
@@ -875,7 +924,9 @@ public sealed class TimetableTabViewModel : ObservableObject
     private void RemoveException(ExceptionRow? row)
     {
         if (row is null) return;
+
         _rules.Remove(row.Rule);
+        _session.SaveRules(_rules);
         BuildGrid();
         BuildExceptions();
     }

@@ -152,4 +152,38 @@ public class TimetableTeacherAssignmentTests
         Assert.Equal("교사B", 교사(new TimetableCell(월, 3), rules));
         Assert.Equal(nameof(MappingResolutionKind.Unresolved), 교사(new TimetableCell(월, 1), rules));
     }
+
+    [Fact]
+    public void 나이스에_없는_과목도_다른_과목으로_이을_수_있다()
+    {
+        // 문서는 "정보"인데 나이스에는 "실과"만 있는 경우가 흔하다.
+        // [입력 안 함]밖에 못 고르면 진짜 수업이 조용히 빠진다 — 다른 과목으로 이어야 한다.
+        var rules = new[]
+        {
+            new TimetableMappingRule("정보", 키("수학(교사A(a))"), MappingScope.Default, true),
+        };
+
+        var plan = TimetablePlanBuilder.Build(
+            new[] { new TimetableSourceLesson(new TimetableCell(월, 4), "정보") },
+            rules, 카탈로그, TimetableScreenState.Empty);
+
+        Assert.Equal(AssignmentStatus.Pending, plan.Assignments[0].Status);
+        Assert.True(plan.CanRun);
+        Assert.Equal("수학", 카탈로그.Find(plan.Assignments[0].TargetStableKey)!.Subject);
+    }
+
+    [Fact]
+    public void 이은_과목에도_예외를_걸_수_있다()
+    {
+        // "정보"를 실과로 이어 두고, 그중 월요일 4교시만 다른 교사로
+        var rules = new[]
+        {
+            new TimetableMappingRule("정보", 키("국어(교사A(a))"), MappingScope.Default, true),
+            new TimetableMappingRule("정보", 키("국어(교사B(b))"),
+                MappingScope.ForDayPeriod(DayOfWeek.Monday, 4), true),
+        };
+
+        Assert.Equal("교사B", 교사(new TimetableCell(월, 4), rules, "정보"));
+        Assert.Equal("교사A", 교사(new TimetableCell(월, 5), rules, "정보"));
+    }
 }

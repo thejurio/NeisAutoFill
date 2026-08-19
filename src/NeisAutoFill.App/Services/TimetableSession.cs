@@ -107,29 +107,27 @@ public sealed class TimetableSession(
     }
 
     /// <summary>
-    /// 매핑 화면을 열어 규칙을 확정하고 프로필에 저장한다.
-    /// <see cref="PreflightAsync"/> 를 먼저 통과해야 한다. 취소하면 null.
+    /// 이 학급·학기에 저장해 둔 매핑 규칙 (기술설계 §13).
+    /// 나이스 목록이 바뀌었으면 <b>살아남은 규칙만</b> 돌려준다 — 사라진 교사를 가리키는 규칙은 버린다.
     /// </summary>
-    public IReadOnlyList<TimetableMappingRule>? OpenMapping(
-        IReadOnlyList<TimetableSourceLesson> lessons, System.Windows.Window? owner)
+    /// <param name="catalogChanged">목록이 바뀌어 일부가 버려졌는지 — 사용자에게 알려야 한다</param>
+    public IReadOnlyList<TimetableMappingRule> LoadRules(out bool catalogChanged)
     {
-        if (Catalog is null) return null;
+        catalogChanged = false;
+        if (Scope is null || Catalog is null) return Array.Empty<TimetableMappingRule>();
 
-        var saved = Scope is null ? null : profiles.Find(Scope);
-        var changed = saved is not null && saved.NeedsRecheck(Catalog.Fingerprint);
+        var saved = profiles.Find(Scope);
+        if (saved is null) return Array.Empty<TimetableMappingRule>();
 
-        // 목록이 바뀌었으면 살아남은 규칙만 초기값으로 — 확정 표시는 지워져 다시 확인받는다
-        var seed = saved is null ? null
-            : changed ? saved.RulesStillValid(Catalog) : saved.Rules;
+        catalogChanged = saved.NeedsRecheck(Catalog.Fingerprint);
+        return catalogChanged ? saved.RulesStillValid(Catalog) : saved.Rules;
+    }
 
-        var vm = new TimetableMappingViewModel(lessons, Catalog, seed, changed);
-        var rules = TimetableMappingWindow.Ask(vm, owner);
-        if (rules is null) return null;
-
-        if (Scope is not null)
-            profiles.Save(new TimetableMappingProfile(Scope, Catalog.Fingerprint, rules, DateTimeOffset.Now));
-
-        return rules;
+    /// <summary>규칙을 이 학급·학기 앞으로 저장한다. 다음에 열면 그대로 되살아난다.</summary>
+    public void SaveRules(IReadOnlyList<TimetableMappingRule> rules)
+    {
+        if (Scope is null || Catalog is null) return;
+        profiles.Save(new TimetableMappingProfile(Scope, Catalog.Fingerprint, rules, DateTimeOffset.Now));
     }
 
     /// <summary>
