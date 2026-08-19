@@ -45,7 +45,8 @@ public partial class App : Application
         services.AddSingleton<GenerationQueue>();
         services.AddSingleton<NarrativeMirror>();
         services.AddSingleton<NeisSessionController>();   // 연결 루프·상태칩·사전점검 게이트 (R9)
-        services.AddSingleton<TimetableProfileStore>();   // 시간표 매핑 프로필
+        services.AddSingleton<TimetableProfileStore>();      // 시간표 매핑 프로필
+        services.AddSingleton<TimetableCheckpointStore>();   // 연간 입력 재개 기록
         services.AddSingleton<TimetableSession>();        // 시간표 읽기 흐름 (이동→조회→주차→카탈로그)
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();

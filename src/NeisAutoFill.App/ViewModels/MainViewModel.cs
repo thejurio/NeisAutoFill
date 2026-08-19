@@ -1113,8 +1113,8 @@ public sealed class MainViewModel : ObservableObject
     public ICommand TimetableCheckCommand { get; }
 
     /// <summary>
-    /// 연간 시간표 흐름을 처음부터 끝까지 태운다.
-    /// <b>아직 실제 입력은 하지 않는다</b> — 계획을 만들어 보여 주고 멈춘다.
+    /// 연간 시간표 흐름을 처음부터 끝까지 태운다 (문서 → 검토 → 매핑 → 계획 → 동의 → 입력·저장).
+    /// 되돌릴 수 없는 첫 행동은 흐름 안의 동의 창에서 사용자가 직접 누른다.
     /// </summary>
     private async Task RunTimetableFlowAsync()
     {
@@ -1126,7 +1126,7 @@ public sealed class MainViewModel : ObservableObject
 
             Log(result.Message);
             if (result.Plan is not null)
-                MessageBox.Show(result.Message, "시간표 실행 계획",
+                MessageBox.Show(result.Message, "연간 시간표",
                     MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex) { Log($"시간표 오류: {ex.Message}"); }

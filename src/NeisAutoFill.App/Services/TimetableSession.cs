@@ -15,7 +15,11 @@ public sealed record TimetablePreflight(bool Ok, string Message);
 ///
 /// 나이스를 <b>읽기만</b> 한다. 셀 입력·저장은 이 클래스가 하지 않는다(T7 에서 별도로 승급).
 /// </summary>
-public sealed class TimetableSession(INeisEngine engine, NeisSessionController session, TimetableProfileStore profiles)
+public sealed class TimetableSession(
+    INeisEngine engine,
+    NeisSessionController session,
+    TimetableProfileStore profiles,
+    TimetableCheckpointStore checkpoints)
 {
     /// <summary>마지막으로 읽은 카탈로그 — 매핑·계획에서 재사용한다.</summary>
     public TimetableCatalog? Catalog { get; private set; }
@@ -122,6 +126,55 @@ public sealed class TimetableSession(INeisEngine engine, NeisSessionController s
             profiles.Save(new TimetableMappingProfile(Scope, Catalog.Fingerprint, rules, DateTimeOffset.Now));
 
         return rules;
+    }
+
+    /// <summary>
+    /// 이 계획을 이어서 할 기록을 가져온다 (로드맵 T8).
+    /// 원본이나 나이스 목록이 바뀌었으면 이어서 쓰지 않고 처음부터 시작한다.
+    /// </summary>
+    /// <param name="blocker">이어서 못 쓰는 이유 — 사용자에게 그대로 보여 준다. 이어서 쓸 수 있으면 null</param>
+    public TimetableRunCheckpoint ResumePoint(TimetablePlan plan, out string? blocker)
+    {
+        // 범위를 못 읽었으면 기록을 남길 자리가 없다 — 이번 실행에서만 쓰는 임시 기록으로 진행한다
+        var scope = Scope ?? TimetableProfileScope.Create("", "", "", 0, 0, 0, "");
+        var catalogFingerprint = Catalog?.Fingerprint ?? "";
+
+        return checkpoints.Resume(scope, plan.Fingerprint, catalogFingerprint, out blocker);
+    }
+
+    /// <summary>
+    /// 계획을 실제로 입력·저장한다 (로드맵 T8). <b>동의를 이미 받은 뒤에만</b> 부른다.
+    ///
+    /// 한 주가 끝날 때마다 기록을 즉시 파일에 남긴다 — 도중에 앱이 꺼져도 그 주까지는 지켜진다.
+    /// </summary>
+    public async Task<BatchRunResult> RunBatchAsync(
+        TimetablePlan plan,
+        IReadOnlyList<TimetableSourceLesson> lessons,
+        IReadOnlyList<TimetableMappingRule> rules,
+        TimetableRunCheckpoint checkpoint,
+        IProgress<ProgressInfo>? progress = null,
+        CancellationToken ct = default)
+    {
+        var tools = engine.Timetable
+            ?? throw new InvalidOperationException("브라우저에 연결되어 있지 않습니다.");
+
+        var request = new TimetableRunRequest(
+            lessons, rules, Catalog!,
+            plan.ByWeek.Select(w => w.Key).ToList(),
+            TermStart, TermEnd);
+
+        var canPersist = Scope is not null;
+
+        return await tools.Batch.RunAsync(
+            request, checkpoint,
+            onCheckpoint: c => { if (canPersist) checkpoints.Save(c); },
+            progress, ct);
+    }
+
+    /// <summary>이 범위의 재개 기록을 지운다 — 처음부터 다시 하고 싶을 때.</summary>
+    public void ClearCheckpoint()
+    {
+        if (Scope is not null) checkpoints.Delete(Scope);
     }
 
     /// <summary>지금 읽은 화면 상태 — 실행 계획을 만들 때 넘긴다.</summary>

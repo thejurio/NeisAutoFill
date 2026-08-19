@@ -3,6 +3,7 @@ using System.Windows;
 using Microsoft.Win32;
 using NeisAutoFill.App.Services;
 using NeisAutoFill.App.ViewModels;
+using NeisAutoFill.Automation;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Timetable;
 using NeisAutoFill.Generator;
@@ -14,10 +15,10 @@ namespace NeisAutoFill.App.Helpers;
 ///
 /// <code>
 /// 파일 고르기 → 문서 해석 → 검토 창 → 나이스 준비·카탈로그 → 매핑 창 → 실행 계획
+///   → 동의 창 → 주 단위 입력·저장·검증 → 결과 창
 /// </code>
 ///
-/// <b>아직 실제 입력은 하지 않는다.</b> 계획까지 만들어 보여 주고 멈춘다 —
-/// 한 주 전체 입력(W6)과 저장(S1)이 실기기에서 승급된 뒤에 이어 붙인다.
+/// 계획까지는 나이스를 <b>읽기만</b> 한다. 되돌릴 수 없는 첫 행동은 동의 창의 [입력 시작]이다.
 /// </summary>
 public sealed class TimetableFlow(TimetableSession session, Action<string> log)
 {
@@ -99,8 +100,50 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
 
         // ── ⑥ 실행 계획 ────────────────────────────────────────
         var plan = TimetablePlanBuilder.Build(reviewed, rules, session.Catalog!, session.ScreenState());
-        return new(plan, Describe(plan));
+        log(Describe(plan));
+
+        if (!plan.CanRun)
+            return new(plan, Describe(plan));
+
+        // ── ⑦ 동의 → 입력·저장 → 결과 ──────────────────────────
+        return await RunPlanAsync(plan, reviewed, rules, owner, progress);
     }
+
+    /// <summary>
+    /// 동의를 받고 실제로 입력·저장한다. 멈추면 결과 창에서 이어서 다시 시도할 수 있다.
+    /// </summary>
+    private async Task<Result> RunPlanAsync(
+        TimetablePlan plan,
+        IReadOnlyList<TimetableSourceLesson> lessons,
+        IReadOnlyList<TimetableMappingRule> rules,
+        Window? owner,
+        IProgress<ProgressInfo>? progress)
+    {
+        var checkpoint = session.ResumePoint(plan, out var blocker);
+        if (blocker is not null) log($"이전 기록을 이어서 쓰지 않습니다 — {blocker}");
+
+        if (!TimetableRunConsentWindow.Ask(plan, checkpoint, blocker, owner))
+            return new(plan, "입력을 취소했습니다. 나이스는 그대로입니다.");
+
+        while (true)
+        {
+            var result = await session.RunBatchAsync(plan, lessons, rules, checkpoint, progress);
+            checkpoint = result.Checkpoint;
+
+            foreach (var week in result.Weeks) log(week.Describe());
+
+            // 멈췄으면 사용자가 문제를 해결하고 [이어서 다시 시도]를 누를 수 있다
+            if (!TimetableResultWindow.AskRetry(result, owner))
+                return new(plan, Summarize(result));
+
+            log("이어서 다시 시도합니다…");
+        }
+    }
+
+    private static string Summarize(BatchRunResult result) =>
+        result.Completed
+            ? $"연간 입력을 마쳤습니다 — {result.TotalWritten}칸 입력·저장"
+            : $"{result.StoppedReason}\n여기까지 저장된 것은 그대로 남아 있습니다 ({result.Checkpoint.Describe()}).";
 
     /// <summary>계획을 사람 말로 요약한다. 막힌 것이 있으면 그것부터 알린다.</summary>
     private static string Describe(TimetablePlan plan)

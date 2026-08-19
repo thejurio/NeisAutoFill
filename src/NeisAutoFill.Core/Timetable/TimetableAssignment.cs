@@ -84,6 +84,9 @@ public sealed record TimetablePlan(IReadOnlyList<TimetableAssignment> Assignment
     public IReadOnlyDictionary<AssignmentStatus, int> CountByStatus =>
         Assignments.GroupBy(a => a.Status).ToDictionary(g => g.Key, g => g.Count());
 
+    /// <summary>정렬에 독립적인 계획 지문 — 체크포인트를 이어서 써도 되는지 판단한다(T8).</summary>
+    public string Fingerprint => TimetableRunCheckpoint.FingerprintOf(Assignments);
+
     /// <summary>주 단위 실행·체크포인트를 위해 주별로 나눈다(기술설계 §12).</summary>
     public IReadOnlyList<IGrouping<DateOnly, TimetableAssignment>> ByWeek =>
         Assignments.GroupBy(a => a.Cell.WeekStart).OrderBy(g => g.Key).ToList();

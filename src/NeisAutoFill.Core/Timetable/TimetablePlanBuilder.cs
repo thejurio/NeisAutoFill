@@ -65,7 +65,7 @@ public static class TimetablePlanBuilder
     /// 계정이 빈 키는 <see cref="NeisTimetableOption.LooseKey"/> 로 비교하되,
     /// 그 키가 카탈로그에서 유일할 때만 인정한다(동명이인 방지, D-006).
     /// </summary>
-    private static bool SameValue(string current, NeisTimetableOption target, TimetableCatalog catalog)
+    public static bool SameValue(string current, NeisTimetableOption target, TimetableCatalog catalog)
     {
         if (current == target.StableKey) return true;
 
