@@ -44,7 +44,8 @@ public sealed record TimetableSemesterPart(int Semester, DateOnly Start, DateOnl
 {
     public bool Contains(DateOnly date) => date >= Start && date <= End;
 
-    public string Describe() => $"{Semester}학기 ({Start:yyyy-MM-dd} ~ {End:yyyy-MM-dd})";
+    /// <summary>화면에 그대로 보여 줄 이름. <b>메서드가 아니라 속성</b>이어야 한다 — XAML 은 메서드에 못 붙는다.</summary>
+    public string Description => $"{Semester}학기 ({Start:yyyy-MM-dd} ~ {End:yyyy-MM-dd})";
 }
 
 /// <summary>

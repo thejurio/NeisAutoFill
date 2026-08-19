@@ -295,7 +295,7 @@
                                 <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Semesters}"
                                           SelectedItem="{Binding SelectedSemester}" MinWidth="200" Margin="0,0,14,0">
                                     <ComboBox.ItemTemplate>
-                                        <DataTemplate><TextBlock Text="{Binding Describe}"/></DataTemplate>
+                                        <DataTemplate><TextBlock Text="{Binding Description}"/></DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
 
