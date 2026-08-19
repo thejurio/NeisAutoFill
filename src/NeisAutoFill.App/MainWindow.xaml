@@ -149,7 +149,15 @@
                     </TabControl.ItemContainerStyle>
 
                     <!-- ─────────── 평가 탭 ─────────── -->
-                    <TabItem Header="✅ 평가">
+                    <TabItem>
+                        <TabItem.Header>
+                            <!-- 이모지는 대체 폰트로 그려진다 — 문자열 헤더로 두면 오른쪽이 잘린다.
+                                 폰트를 지정하고 Ideal 측정으로 그린다. -->
+                            <StackPanel Orientation="Horizontal" TextOptions.TextFormattingMode="Ideal">
+                                <TextBlock Text="✅" FontFamily="Segoe UI Emoji" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="평가" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </TabItem.Header>
                       <DockPanel Background="White">
                         <!-- 평가 전용 도구 -->
                         <Border DockPanel.Dock="Top" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
@@ -294,7 +302,13 @@
                     <!-- ─────────── 시간표 탭 ───────────
                          왼쪽에 번호 붙은 단계를 세로로 쌓고, 오른쪽은 시간표 격자 한 장.
                          단계 칸은 스크롤되므로 창을 줄여도 버튼이 잘리지 않는다. -->
-                    <TabItem Header="🗓 시간표">
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal" TextOptions.TextFormattingMode="Ideal">
+                                <TextBlock Text="🗓" FontFamily="Segoe UI Emoji" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="시간표" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </TabItem.Header>
                       <Grid Background="White" DataContext="{Binding Timetable}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="330"/>
@@ -404,6 +418,9 @@
                                         </DataGrid.Columns>
                                     </DataGrid>
                                     <TextBlock Text="{Binding CreativeSummary}" Style="{StaticResource StepNote}"/>
+                                    <TextBlock Text="{Binding MultiTeacherNote}" Style="{StaticResource StepNote}"
+                                               Foreground="{StaticResource Neis}"
+                                               Visibility="{Binding MultiTeacherNote, Converter={StaticResource StringToVis}}"/>
 
                                     <!-- 예외 -->
                                     <TextBlock Text="예외" FontSize="11.5" FontWeight="SemiBold" Margin="0,10,0,4"
@@ -419,6 +436,12 @@
                                                                 Padding="6,1" FontSize="11"
                                                                 Command="{Binding DataContext.RemoveExceptionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                                                 CommandParameter="{Binding}"/>
+                                                        <!-- 매주(정기)인지 하루(비정기)인지 한눈에 -->
+                                                        <Border DockPanel.Dock="Left" Background="{StaticResource NeisSoft}" CornerRadius="4"
+                                                                Padding="5,1" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Kind}" FontSize="10.5" FontWeight="Bold"
+                                                                       Foreground="{StaticResource Neis}"/>
+                                                        </Border>
                                                         <TextBlock Text="{Binding Text}" FontSize="11.5" VerticalAlignment="Center"
                                                                    TextWrapping="Wrap" Foreground="{StaticResource Ink}"/>
                                                     </DockPanel>
@@ -489,43 +512,65 @@
                                 </StackPanel>
                             </StackPanel>
 
-                            <!-- 선택한 칸 — 격자 바로 아래 가로 막대 -->
-                            <Border DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="12,9"
+                            <!-- 선택한 칸 — 격자 바로 아래.
+                                 한 과목에 교사가 여럿일 때 "이 날만"인지 "매주"인지를
+                                 라디오로 먼저 고르게 해서 무슨 일이 일어날지 드러낸다. -->
+                            <Border DockPanel.Dock="Bottom" Margin="0,10,0,0" Padding="12,10"
                                     Background="{StaticResource Panel2}" BorderBrush="{StaticResource Line}"
                                     BorderThickness="1" CornerRadius="8"
                                     Visibility="{Binding HasSource, Converter={StaticResource BoolToVis}}">
                                 <StackPanel>
-                                    <TextBlock Text="{Binding SelectedCellLabel}" FontWeight="Bold" FontSize="12.5"
-                                               Foreground="{StaticResource Ink}"/>
-                                    <WrapPanel Margin="0,8,0,0"
-                                               Visibility="{Binding HasSelectedCell, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock Text="과목" VerticalAlignment="Center" FontSize="11.5" Margin="0,0,5,6"
-                                                   Foreground="{StaticResource Sub}"/>
-                                        <ComboBox ItemsSource="{Binding SubjectChoices}" SelectedItem="{Binding SelectedSubject}"
-                                                  Style="{StaticResource Combo}" MinWidth="120" Margin="0,0,4,6" FontSize="12"
-                                                  ToolTip="나이스의 정식 과목 이름만 고를 수 있습니다"/>
-                                        <Button Style="{StaticResource GhostButton}" Content="바꾸기"
-                                                Command="{Binding ChangeSubjectCommand}" Padding="10,4" Margin="0,0,14,6" FontSize="11.5"/>
+                                    <DockPanel>
+                                        <TextBlock Text="{Binding SelectedCellLabel}" FontWeight="Bold" FontSize="12.5"
+                                                   Foreground="{StaticResource Ink}"/>
+                                        <TextBlock Text="{Binding CurrentTeacherText}" Margin="12,0,0,0"
+                                                   VerticalAlignment="Center" FontSize="11.5"
+                                                   Foreground="{StaticResource Neis}" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
 
-                                        <TextBlock Text="교사" VerticalAlignment="Center" FontSize="11.5" Margin="0,0,5,6"
+                                    <!-- 교사 바꾸기 — 범위를 골라야 적용된다 -->
+                                    <WrapPanel Margin="0,9,0,0"
+                                               Visibility="{Binding HasSelectedLesson, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="교사를" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,6"
                                                    Foreground="{StaticResource Sub}"/>
                                         <ComboBox ItemsSource="{Binding SelectedCandidates}" SelectedItem="{Binding SelectedTeacher}"
-                                                  DisplayMemberPath="Label" Style="{StaticResource Combo}" MinWidth="140"
-                                                  Margin="0,0,4,6" FontSize="12"/>
-                                        <Button Style="{StaticResource GhostButton}" Content="이 칸만"
-                                                Command="{Binding ApplyOnceCommand}" Padding="10,4" Margin="0,0,4,6" FontSize="11.5"
-                                                ToolTip="그 날짜 그 교시에만 적용 (1년에 몇 번 있는 예외)"/>
-                                        <Button Style="{StaticResource GhostButton}" Content="{Binding RegularLabel}"
-                                                Command="{Binding ApplyRegularCommand}" Padding="10,4" Margin="0,0,14,6" FontSize="11.5"
-                                                ToolTip="매주 같은 요일·교시에 모두 적용 (정기 예외)"/>
+                                                  DisplayMemberPath="Label" Style="{StaticResource Combo}" MinWidth="150"
+                                                  Margin="0,0,6,6" FontSize="12"/>
+                                        <TextBlock Text="(으)로" VerticalAlignment="Center" FontSize="12" Margin="0,0,12,6"
+                                                   Foreground="{StaticResource Sub}"/>
+
+                                        <RadioButton GroupName="scope" IsChecked="{Binding ScopeOnce}"
+                                                     Content="{Binding OnceLabel}" VerticalAlignment="Center"
+                                                     FontSize="12" Margin="0,0,12,6"
+                                                     ToolTip="1년에 몇 번 있는 예외 — 그 날짜 그 교시에만 바뀝니다"/>
+                                        <RadioButton GroupName="scope" IsChecked="{Binding ScopeRegular}"
+                                                     Content="{Binding RegularLabel}" VerticalAlignment="Center"
+                                                     FontSize="12" Margin="0,0,12,6"
+                                                     ToolTip="정기 예외 — 학기 내내 그 요일 그 교시가 모두 바뀝니다"/>
+
+                                        <Button Style="{StaticResource PrimaryButton}" Content="바꾸기"
+                                                Command="{Binding ApplyTeacherCommand}" Padding="14,4" Margin="0,0,0,6"
+                                                FontSize="12"/>
+                                    </WrapPanel>
+
+                                    <!-- 그 밖의 손질 -->
+                                    <WrapPanel Margin="0,4,0,0"
+                                               Visibility="{Binding HasSelectedCell, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="과목" VerticalAlignment="Center" FontSize="11.5" Margin="0,0,5,0"
+                                                   Foreground="{StaticResource Sub}"/>
+                                        <ComboBox ItemsSource="{Binding SubjectChoices}" SelectedItem="{Binding SelectedSubject}"
+                                                  Style="{StaticResource Combo}" MinWidth="110" Margin="0,0,4,0" FontSize="11.5"
+                                                  ToolTip="나이스의 정식 과목 이름만 고를 수 있습니다"/>
+                                        <Button Style="{StaticResource GhostButton}" Content="바꾸기"
+                                                Command="{Binding ChangeSubjectCommand}" Padding="10,3" Margin="0,0,14,0" FontSize="11.5"/>
 
                                         <Button Style="{StaticResource GhostButton}" Content="🚫 쉬는 날로"
-                                                Command="{Binding MakeHolidayCommand}" Padding="10,4" Margin="0,0,4,6" FontSize="11.5"
+                                                Command="{Binding MakeHolidayCommand}" Padding="10,3" Margin="0,0,4,0" FontSize="11.5"
                                                 ToolTip="갑자기 생긴 휴업일. 그 날 수업이 모두 빠집니다."/>
                                         <Button Style="{StaticResource GhostButton}" Content="되돌리기"
-                                                Command="{Binding ClearHolidayCommand}" Padding="10,4" Margin="0,0,4,6" FontSize="11.5"/>
+                                                Command="{Binding ClearHolidayCommand}" Padding="10,3" Margin="0,0,4,0" FontSize="11.5"/>
                                         <Button Style="{StaticResource GhostButton}" Content="수업 빼기"
-                                                Command="{Binding ClearLessonCommand}" Padding="10,4" Margin="0,0,0,6" FontSize="11.5"
+                                                Command="{Binding ClearLessonCommand}" Padding="10,3" FontSize="11.5"
                                                 ToolTip="이 칸만 비웁니다 (쉬는 날은 아님)"/>
                                     </WrapPanel>
                                 </StackPanel>

@@ -183,8 +183,9 @@ public sealed class SubjectAssignmentRow : ObservableObject
     public bool IsOver => _standard is not null && Assigned > _standard;
 }
 
-/// <summary>예외 규칙 한 줄 (정기·비정기 공통).</summary>
-public sealed record ExceptionRow(TimetableMappingRule Rule, string Text);
+/// <summary>예외 규칙 한 줄.</summary>
+/// <param name="Kind">"매주" (정기) 또는 "하루" (비정기) — 무엇이 다른지 한눈에 보여야 한다</param>
+public sealed record ExceptionRow(TimetableMappingRule Rule, string Kind, string Text);
 
 /// <summary>
 /// 시간표 탭 — 문서 읽기부터 나이스 입력까지 <b>이 탭 안에서</b> 끝낸다.
@@ -231,8 +232,7 @@ public sealed class TimetableTabViewModel : ObservableObject
         PreviousWeekCommand = new RelayCommand(() => MoveWeek(-1), () => WeekIndex > 0);
         NextWeekCommand = new RelayCommand(() => MoveWeek(1), () => WeekIndex < Weeks.Count - 1);
         SelectCellCommand = new RelayCommand<TimetableCellVm>(SelectCell);
-        ApplyOnceCommand = new RelayCommand(() => ApplyTeacher(regular: false), () => CanApplyTeacher);
-        ApplyRegularCommand = new RelayCommand(() => ApplyTeacher(regular: true), () => CanApplyTeacher);
+        ApplyTeacherCommand = new RelayCommand(() => ApplyTeacher(_scopeRegular), () => CanApplyTeacher);
         MakeHolidayCommand = new RelayCommand(MakeHoliday, () => SelectedCell is not null);
         ClearHolidayCommand = new RelayCommand(ClearHoliday, () => SelectedCell?.IsHoliday == true);
         RemoveExceptionCommand = new RelayCommand<ExceptionRow>(RemoveException);
@@ -247,8 +247,7 @@ public sealed class TimetableTabViewModel : ObservableObject
     public RelayCommand PreviousWeekCommand { get; }
     public RelayCommand NextWeekCommand { get; }
     public RelayCommand<TimetableCellVm> SelectCellCommand { get; }
-    public RelayCommand ApplyOnceCommand { get; }
-    public RelayCommand ApplyRegularCommand { get; }
+    public RelayCommand ApplyTeacherCommand { get; }
     public RelayCommand MakeHolidayCommand { get; }
     public RelayCommand ClearHolidayCommand { get; }
     public RelayCommand<ExceptionRow> RemoveExceptionCommand { get; }
@@ -376,7 +375,10 @@ public sealed class TimetableTabViewModel : ObservableObject
 
             OnPropertyChanged(nameof(SelectedCellLabel));
             OnPropertyChanged(nameof(HasSelectedCell));
+            OnPropertyChanged(nameof(HasSelectedLesson));
             OnPropertyChanged(nameof(SelectedCandidates));
+            OnPropertyChanged(nameof(CurrentTeacherText));
+            OnPropertyChanged(nameof(OnceLabel));
             OnPropertyChanged(nameof(RegularLabel));
             SelectedTeacher = null;
             _selectedSubject = value?.Subject;
@@ -399,10 +401,54 @@ public sealed class TimetableTabViewModel : ObservableObject
           (_selectedCell.IsHoliday ? $" · {_selectedCell.HolidayName}"
            : _selectedCell.Subject.Length > 0 ? $" · {_selectedCell.Subject}" : " · 수업 없음");
 
-    /// <summary>"월요일 3교시 전부" — 정기 예외 버튼에 그대로 쓴다.</summary>
+    /// <summary>비정기 예외 선택지 문구 — "이 날만 (09-01 3교시)".</summary>
+    public string OnceLabel => _selectedCell is null
+        ? "이 날만"
+        : $"이 날만 ({_selectedCell.Cell.Date:MM-dd} {_selectedCell.Cell.Period}교시)";
+
+    /// <summary>정기 예외 선택지 문구 — "매주 월요일 3교시".</summary>
     public string RegularLabel => _selectedCell is null
-        ? "이 요일·교시 전부"
-        : $"{Korean(_selectedCell.Cell.DayOfWeek)}요일 {_selectedCell.Cell.Period}교시 전부";
+        ? "매주 이 요일·교시"
+        : $"매주 {Korean(_selectedCell.Cell.DayOfWeek)}요일 {_selectedCell.Cell.Period}교시";
+
+    /// <summary>수업이 있는 칸을 골랐는가 (쉬는 날·빈 칸이면 교사를 정할 일이 없다).</summary>
+    public bool HasSelectedLesson => _selectedCell?.HasLesson == true;
+
+    /// <summary>
+    /// 지금 이 칸에 무엇이 들어가고 <b>왜 그런지</b>.
+    /// "김○○ · 과목 전체 기본" / "박○○ · 매주 월요일 3교시" 처럼 근거까지 보여 준다.
+    /// </summary>
+    public string CurrentTeacherText
+    {
+        get
+        {
+            if (_selectedCell is null || !_selectedCell.HasLesson) return "";
+
+            var (teacher, source) = ResolveCell(_selectedCell.Cell, _selectedCell.Token);
+            return teacher.Length == 0
+                ? "지금: 교사 미정 — 왼쪽 4번에서 이 과목의 기본 교사를 정하세요"
+                : $"지금: {teacher} · {source}";
+        }
+    }
+
+    /// <summary>바꿀 범위 — 이 날만(비정기).</summary>
+    public bool ScopeOnce
+    {
+        get => !_scopeRegular;
+        set { if (value) ScopeRegular = false; }
+    }
+
+    /// <summary>바꿀 범위 — 매주 같은 요일·교시(정기).</summary>
+    public bool ScopeRegular
+    {
+        get => _scopeRegular;
+        set
+        {
+            if (!SetProperty(ref _scopeRegular, value)) return;
+            OnPropertyChanged(nameof(ScopeOnce));
+        }
+    }
+    private bool _scopeRegular;
 
     /// <summary>선택한 칸의 과목으로 고를 수 있는 교사들.</summary>
     public IReadOnlyList<TeacherChoice> SelectedCandidates =>
@@ -438,8 +484,7 @@ public sealed class TimetableTabViewModel : ObservableObject
         {
             if (!SetProperty(ref _selectedTeacher, value)) return;
             OnPropertyChanged(nameof(CanApplyTeacher));
-            ApplyOnceCommand.RaiseCanExecuteChanged();
-            ApplyRegularCommand.RaiseCanExecuteChanged();
+            ApplyTeacherCommand.RaiseCanExecuteChanged();
         }
     }
     private TeacherChoice? _selectedTeacher;
@@ -760,11 +805,29 @@ public sealed class TimetableTabViewModel : ObservableObject
         var creative = lessons.Count(l => TimetableHourSummary.RowNameOf(l.SourceToken) == TimetableHourSummary.CreativeRow);
         var creativeStandard = standards.FirstOrDefault(s => s.Subject == TimetableHourSummary.CreativeRow)?.For(semester);
 
+        var many = Subjects.Where(x => x.Candidates.Count(c => c.IsMatch) > 1).Select(x => x.Subject).ToList();
+        MultiTeacherNote = many.Count == 0
+            ? ""
+            : $"교사가 여러 명인 과목: {string.Join(", ", many)}\n" +
+              "여기서 고른 교사가 그 과목 전체의 기본입니다. 몇 시간만 다르면 오른쪽 격자에서 그 칸을 누르세요.";
+
         CreativeSummary = creative == 0 ? ""
             : creativeStandard is null
                 ? $"창체 합계 배정 {creative}시간"
                 : $"창체 합계 배정 {creative} · 기준 {creativeStandard} · 차이 {(creative - creativeStandard.Value):+#;-#;0}";
     }
+
+    /// <summary>
+    /// 교사가 둘 이상인 과목 안내.
+    /// 한 과목에 교사가 여럿이면 "기본 하나 + 예외"로 다룬다는 것을 여기서 알려 준다 —
+    /// 모르면 격자에서 칸을 눌러 볼 생각을 하지 못한다.
+    /// </summary>
+    public string MultiTeacherNote
+    {
+        get => _multiTeacherNote;
+        private set => SetProperty(ref _multiTeacherNote, value);
+    }
+    private string _multiTeacherNote = "";
 
     public string CreativeSummary
     {
@@ -856,16 +919,40 @@ public sealed class TimetableTabViewModel : ObservableObject
     }
 
     /// <summary>이 칸에 실제로 들어갈 교사 — 규칙을 풀어서 얻는다(가장 구체적인 규칙이 이긴다).</summary>
-    private string TeacherNameFor(TimetableCell cell, string token)
+    private string TeacherNameFor(TimetableCell cell, string token) => ResolveCell(cell, token).Teacher;
+
+    /// <summary>
+    /// 이 칸이 어떻게 정해졌는지. <b>교사만이 아니라 근거까지</b> 돌려준다 —
+    /// "왜 이 교사인가"를 화면에서 설명할 수 있어야 사용자가 예외를 믿고 쓴다.
+    /// </summary>
+    private (string Teacher, string Source) ResolveCell(TimetableCell cell, string token)
     {
-        if (_catalog is null) return "";
+        if (_catalog is null) return ("", "");
 
         var resolution = TimetableMappingResolver.Resolve(token, cell, _rules);
 
-        if (resolution.Kind == MappingResolutionKind.Skip) return "입력 안 함";
-        if (resolution.Kind != MappingResolutionKind.Resolved) return "";
+        if (resolution.Kind == MappingResolutionKind.Skip) return ("입력 안 함", "입력하지 않음");
+        if (resolution.Kind != MappingResolutionKind.Resolved) return ("", "아직 안 정함");
 
-        return _catalog.Find(resolution.TargetStableKey)?.TeacherName ?? "";
+        var teacher = _catalog.Find(resolution.TargetStableKey)?.TeacherName ?? "";
+
+        // 어느 규칙이 이겼는지 되짚는다 — 가장 구체적인 것이 이긴다
+        var winner = _rules
+            .Where(r => TimetableTokenNormalizer.Normalize(r.SourceToken).Standard
+                        == TimetableTokenNormalizer.Normalize(token).Standard)
+            .Where(r => r.Scope.Matches(cell) && r.TargetStableKey == resolution.TargetStableKey)
+            .OrderByDescending(r => r.Scope.Priority)
+            .FirstOrDefault();
+
+        var source = winner?.Scope.Kind switch
+        {
+            MappingScopeKind.SpecificDate => $"이 날만 ({winner.Scope.Description})",
+            MappingScopeKind.DayAndPeriod => $"매주 {winner.Scope.Description}",
+            MappingScopeKind.DayOfWeek => $"매주 {winner.Scope.Description}",
+            _ => "과목 전체 기본",
+        };
+
+        return (teacher, source);
     }
 
     private void BuildExceptions()
@@ -881,7 +968,8 @@ public sealed class TimetableTabViewModel : ObservableObject
                 ? "입력 안 함"
                 : _catalog.Find(rule.TargetStableKey)?.TeacherName ?? "?";
 
-            Exceptions.Add(new ExceptionRow(rule, $"{rule.Scope.Description} · {subject} → {target}"));
+            var kind = rule.Scope.Kind == MappingScopeKind.SpecificDate ? "하루" : "매주";
+            Exceptions.Add(new ExceptionRow(rule, kind, $"{rule.Scope.Description} · {subject} → {target}"));
         }
 
         OnPropertyChanged(nameof(HasExceptions));
@@ -933,6 +1021,7 @@ public sealed class TimetableTabViewModel : ObservableObject
         _session.SaveRules(_rules);
         BuildGrid();
         BuildExceptions();
+        OnPropertyChanged(nameof(CurrentTeacherText));
     }
 
     private void RemoveException(ExceptionRow? row)
