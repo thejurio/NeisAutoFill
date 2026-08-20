@@ -70,8 +70,12 @@ public static partial class TimetableDocumentParser
     [GeneratedRegex(@"([12])\s*학기")]
     private static partial Regex SemesterPattern();
 
-    /// <summary>"3. 4- 3. 7" · "3.10- 3.14" — 공백이 섞여 들어온다.</summary>
-    [GeneratedRegex(@"(\d{1,2})\s*\.\s*(\d{1,2})\s*-\s*(\d{1,2})\s*\.\s*(\d{1,2})")]
+    /// <summary>
+    /// "3. 4- 3. 7" · "3.10- 3.14" · "3.2~3.7" — 공백이 섞여 들어오고,
+    /// <b>구분자가 양식마다 다르다</b>. 이지에듀는 붙임표, 스쿨마스터는 물결표를 쓴다(실측 2026-08-20).
+    /// 물결표를 빠뜨려 스쿨마스터 문서에서 수업을 한 칸도 못 읽었다.
+    /// </summary>
+    [GeneratedRegex(@"(\d{1,2})\s*\.\s*(\d{1,2})\s*[-–—~∼～]\s*(\d{1,2})\s*\.\s*(\d{1,2})")]
     private static partial Regex PeriodRangePattern();
 
     /// <summary>비고의 "3.4(화) 시업식".</summary>
@@ -93,6 +97,14 @@ public static partial class TimetableDocumentParser
     /// </summary>
     private const double LessonBaselineTolerance = 2.5;
 
+    /// <summary>
+    /// 수업이 없는 칸을 메우는 무늬 글자.
+    /// 스쿨마스터는 학기 시작 전·종업 뒤 칸을 ▒(U+2592)로 채운다 —
+    /// 이걸 과목으로 읽으면 있지도 않은 수업 40칸이 생긴다(실측 2026-08-20).
+    /// </summary>
+    private static bool IsFiller(string text) =>
+        text.Length == 1 && text[0] is '░' or '▒' or '▓' or '█' or '■' or '□' or '▨' or '▩';
+
     /// <summary>문서 전체를 해석한다.</summary>
     public static TimetableSourcePackage Parse(DocumentLayout layout)
     {
@@ -100,7 +112,9 @@ public static partial class TimetableDocumentParser
         var lessons = new List<TimetableSourceLesson>();
         var events = new List<(DateOnly, string)>();
         var holidays = new Dictionary<DateOnly, string>();
-        var pageSemesters = new Dictionary<int, int>();   // 쪽 → 학기
+        // 셀 → 학기. <b>날짜로 다시 따지지 않는다</b> — 문서가 어느 쪽(=어느 학기)에 적었는지가 답이다.
+        // 8월 중순 주가 1학기 마지막 주인 문서가 있다(스쿨마스터 8.17~8.18) — 달로 가르면 2학기로 넘어간다.
+        var lessonSemester = new Dictionary<TimetableCell, int>();
 
         var (year, semester) = ReadHeader(layout, warnings);
 
@@ -156,7 +170,7 @@ public static partial class TimetableDocumentParser
             }
             if (anchors.Count == 0) continue;
 
-            pageSemesters[page.Number] = pageSemester;
+
 
             anchors.Sort((a, b) => b.Y.CompareTo(a.Y));
             var rowHeight = RowHeight(anchors);
@@ -173,14 +187,18 @@ public static partial class TimetableDocumentParser
                     .Where(g => g.Y <= top && g.Y > bottom && g.Y < headerY - 1)
                     .ToList();
 
+                var before = lessons.Count;
                 ReadWeekRow(rowGlyphs, slots, periodsPerDay, noteX, weekStart,
                     lessons, holidays, warnings, page.Number);
+
+                for (var k = before; k < lessons.Count; k++)
+                    lessonSemester[lessons[k].Cell] = pageSemester;
                 ReadEvents(rowGlyphs, noteX, year, pageSemester, events);
             }
         }
 
         var parts = lessons
-            .GroupBy(l => SemesterOfDate(l.Cell.Date, pageSemesters.Values))
+            .GroupBy(l => lessonSemester.TryGetValue(l.Cell, out var sem) ? sem : semester)
             .Select(g => new TimetableSemesterPart(g.Key, g.Min(l => l.Cell.Date), g.Max(l => l.Cell.Date)))
             .OrderBy(p => p.Semester)
             .ToList();
@@ -282,8 +300,9 @@ public static partial class TimetableDocumentParser
         var buckets = new string?[slots.Count];
         var redBuckets = new string?[slots.Count];   // 빨간 글씨 = 공휴일·휴업일
 
-        // 그림자 글꼴이 찍은 안 보이는 흰 겹은 버린다 — 그대로 두면 같은 글자가 겹쳐 들어온다
-        rowGlyphs = rowGlyphs.Where(g => !g.IsInvisible).ToList();
+        // 그림자 글꼴이 찍은 안 보이는 흰 겹은 버린다 — 그대로 두면 같은 글자가 겹쳐 들어온다.
+        // 빗금 무늬(▒)는 수업이 없는 칸을 메운 표시다 — 과목으로 읽으면 안 된다(스쿨마스터 실측).
+        rowGlyphs = rowGlyphs.Where(g => !g.IsInvisible && !IsFiller(g.Text)).ToList();
 
         // 공휴일 글씨는 <b>기준선을 따지지 않고</b> 먼저 걷는다.
         // 수업 글자 위에 덧씌운 장식이라 기준선이 조금 달라, 아래 기준선 필터에 걸려 사라진다(실측).
@@ -407,15 +426,6 @@ public static partial class TimetableDocumentParser
         return first is >= 3 and <= 7 ? 1 : 2;
     }
 
-    /// <summary>날짜가 몇 학기인지 — 문서에서 실제로 본 학기들 중에서 고른다.</summary>
-    private static int SemesterOfDate(DateOnly date, IEnumerable<int> seen)
-    {
-        var known = seen.Distinct().ToList();
-        if (known.Count == 1) return known[0];
-
-        // 1·2학기가 섞여 있으면 3~7월은 1학기, 나머지는 2학기
-        return date.Month is >= 3 and <= 7 ? 1 : 2;
-    }
 
     /// <summary>기간이 적힌 Y 들의 간격 중앙값 = 표 한 행의 높이.</summary>
     private static double RowHeight(IReadOnlyList<(double Y, DateOnly Start)> anchors)
