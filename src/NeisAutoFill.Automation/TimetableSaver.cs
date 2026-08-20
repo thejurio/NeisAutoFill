@@ -43,7 +43,7 @@ public sealed class TimetableSaver(IPage page)
         if (state == "disabled") return new(SaveOutcome.NothingToSave, "바뀐 내용이 없습니다.", seen);
 
         await ClickByTextAsync("저장");
-        await page.WaitForTimeoutAsync((float)Timings.TimetableMenuOpen.TotalMilliseconds);
+        await WaitDialogAsync(appear: true);
 
         // 확인창 → 완료창 순으로 최대 두 번까지만 처리한다. 그 뒤에도 뭔가 남으면 사람이 본다.
         for (var step = 0; step < 2; step++)
@@ -61,7 +61,9 @@ public sealed class TimetableSaver(IPage page)
             if (!await ClickDialogButtonAsync("확인"))
                 return new(SaveOutcome.UnknownDialog, $"[확인]을 찾지 못했습니다: {Trim(text)}", seen);
 
-            await page.WaitForTimeoutAsync((float)Timings.TimetableWeekChange.TotalMilliseconds);
+            // 다음 상자(완료 알림)가 뜨거나, 아무것도 안 남을 때까지만 기다린다.
+            // 고정 1500ms 를 쓰면 주마다 3초씩 버린다.
+            await WaitDialogAsync(appear: true);
         }
 
         var leftover = await DialogTextAsync();
@@ -75,6 +77,28 @@ public sealed class TimetableSaver(IPage page)
     }
 
     private static string Trim(string s) => s.Length > 80 ? s[..80] + "…" : s;
+
+    /// <summary>폴링 간격.</summary>
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(30);
+
+    /// <summary>대화상자를 기다리는 최대 시간. 저장은 서버를 다녀오므로 넉넉히 둔다.</summary>
+    private static readonly TimeSpan DialogWait = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// 대화상자가 뜨기를(또는 사라지기를) 기다린다.
+    /// <b>고정 대기를 쓰지 않는다</b> — 실측 메뉴·화면 반응은 100~300ms 인데
+    /// 1200~1500ms 를 기다리고 있었다(2026-08-20).
+    /// </summary>
+    private async Task WaitDialogAsync(bool appear)
+    {
+        var deadline = DateTime.UtcNow + DialogWait;
+        while (DateTime.UtcNow < deadline)
+        {
+            var text = await DialogTextAsync();
+            if (appear ? text is not null : text is null) return;
+            await Task.Delay(PollInterval);
+        }
+    }
 
     private async Task<string> ButtonStateAsync(string label) =>
         await page.EvaluateAsync<string>(@"(label) => {

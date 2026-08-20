@@ -46,6 +46,12 @@ public sealed class TimetableCellWriter(IPage page)
 {
     private readonly TimetableReader _reader = new(page);
 
+    /// <summary>값이 바뀌기를 기다리는 폴링 간격.</summary>
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(30);
+
+    /// <summary>값이 안 바뀌면 이만큼까지만 기다린다.</summary>
+    private static readonly TimeSpan ValueWait = TimeSpan.FromSeconds(3);
+
     /// <summary>
     /// 셀 하나에 목표 항목을 넣는다. 화면에 지금 떠 있는 주에 그 셀이 있어야 한다.
     /// </summary>
@@ -107,16 +113,27 @@ public sealed class TimetableCellWriter(IPage page)
             return new(CellWriteOutcome.OptionNotFound, "메뉴에서 목표 항목을 누르지 못했습니다.");
         }
 
-        await page.WaitForTimeoutAsync((float)Timings.TimetableMenuOpen.TotalMilliseconds);
+        // ⑦ 셀 값이 바뀔 때까지 <b>기다리며 확인한다</b>. 클릭 성공은 입력 성공이 아니다.
+        //
+        // 고정 대기(1200ms)를 쓰면 칸마다 1초 넘게 버린다 — 실제로는 대개 100~200ms 면 바뀐다.
+        // 값이 바뀐 순간 넘어가고, 안 바뀌면 그때 실패로 본다.
+        var afterText = "";
+        var deadline = DateTime.UtcNow + ValueWait;
 
-        // ⑦ 셀을 다시 읽어 확인 — 클릭 성공은 입력 성공이 아니다
-        var after = await _reader.ReadCurrentWeekAsync();
-        after.Cells.TryGetValue(cell, out var afterText);
-        afterText ??= "";
-        return Verify(afterText, target, catalog)
-            ? new(CellWriteOutcome.Written, "입력하고 값을 확인했습니다.", afterText)
-            : new(CellWriteOutcome.VerificationFailed,
-                "입력 후 값이 목표와 다릅니다. 저장하지 마세요.", afterText);
+        while (DateTime.UtcNow < deadline)
+        {
+            var after = await _reader.ReadCurrentWeekAsync();
+            after.Cells.TryGetValue(cell, out afterText);
+            afterText ??= "";
+
+            if (Verify(afterText, target, catalog))
+                return new(CellWriteOutcome.Written, "입력하고 값을 확인했습니다.", afterText);
+
+            await Task.Delay(PollInterval);
+        }
+
+        return new(CellWriteOutcome.VerificationFailed,
+            "입력 후 값이 목표와 다릅니다. 저장하지 마세요.", afterText);
     }
 
     /// <summary>

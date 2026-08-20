@@ -93,6 +93,45 @@ public sealed class TimetableReader(IPage page)
                          return r.width > 0 && r.height > 0 && (t.innerText || '').includes('학급시간표'); })");
 
     /// <summary>
+    /// 지금 열려 있는 우클릭 메뉴의 항목 수. 안 열렸으면 0.
+    /// <b>고정 대기 대신 이것을 폴링한다</b> — 실측 메뉴는 90ms 남짓에 뜨는데
+    /// 1200ms 를 기다리고 있었다(2026-08-20). 칸마다 1초 넘게 버리는 셈이었다.
+    /// </summary>
+    private const string MenuCountJs = @"() => {
+  const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const cancel = [...document.querySelectorAll('[role=button], button, .cl-button')]
+    .filter(b => (b.innerText || '').trim() === '취소' && vis(b)).pop();
+  if (!cancel) return 0;
+  let host = cancel.parentElement;
+  while (host && host.querySelectorAll('[role=button], button, .cl-button').length < 5) host = host.parentElement;
+  return host ? host.querySelectorAll('[role=button], button, .cl-button').length : 0;
+}";
+
+    /// <summary>폴링 간격 — 너무 촘촘하면 왕복 비용이 커진다.</summary>
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(30);
+
+    /// <summary>메뉴가 열리거나 닫히기를 기다리는 최대 시간.</summary>
+    private static readonly TimeSpan MenuWait = TimeSpan.FromSeconds(3);
+
+    /// <summary>주차를 옮긴 뒤 화면이 바뀌기를 기다리는 최대 시간.</summary>
+    private static readonly TimeSpan WeekChangeWait = TimeSpan.FromSeconds(4);
+
+    /// <summary>
+    /// 메뉴가 열릴(열림=true) 또는 닫힐(false) 때까지 기다린다. 시간 안에 안 되면 false.
+    /// </summary>
+    private async Task<bool> WaitMenuAsync(bool open)
+    {
+        var deadline = DateTime.UtcNow + MenuWait;
+        while (DateTime.UtcNow < deadline)
+        {
+            var n = await page.EvaluateAsync<int>(MenuCountJs);
+            if (open ? n >= 5 : n == 0) return true;
+            await Task.Delay(PollInterval);
+        }
+        return false;
+    }
+
+    /// <summary>
     /// 셀을 우클릭할 때 기다릴 시간.
     /// 없는 셀을 30초씩 기다리면 요일마다 멈춰 프로그램이 멎은 것처럼 보인다.
     /// </summary>
@@ -142,10 +181,22 @@ public sealed class TimetableReader(IPage page)
             throw new InvalidOperationException(
                 $"주차 목록에서 {weekRowIndex + 1}번째 주를 화면에 띄우지 못했습니다.");
 
+        // 바뀌기 전 날짜를 기억해 두고 클릭한다 — 언제 바뀌었는지 알아야 기다림을 끊는다
+        var before = (await ReadCurrentWeekAsync()).Dates.FirstOrDefault();
+
         await page.Locator($"div.cl-grid[role=grid] >> nth={weekGrid} >> " +
                            $"div.cl-grid-row[data-rowindex='{weekRowIndex}'] div[role=gridcell] >> nth=0")
                   .ClickAsync(new LocatorClickOptions { Timeout = 5000 });
-        await page.WaitForTimeoutAsync((float)Timings.TimetableWeekChange.TotalMilliseconds);
+
+        // 화면이 실제로 바뀔 때까지만 기다린다.
+        // 고정 1500ms 를 쓰고 있었는데 실측은 220ms 남짓이다(2026-08-20).
+        // 같은 주를 다시 고르면 날짜가 안 바뀌므로, 못 기다려도 그냥 넘어간다.
+        var deadline = DateTime.UtcNow + WeekChangeWait;
+        while (DateTime.UtcNow < deadline)
+        {
+            if ((await ReadCurrentWeekAsync()).Dates.FirstOrDefault() != before) break;
+            await Task.Delay(PollInterval);
+        }
 
         // 미저장 변경이 있으면 여기서 저장 확인 대화상자가 뜬다 — 누르지 않고 알린다
         if (await HasSaveDialogAsync())
@@ -255,7 +306,7 @@ public sealed class TimetableReader(IPage page)
             return null;
         }
 
-        await page.WaitForTimeoutAsync((float)Timings.TimetableMenuOpen.TotalMilliseconds);
+        if (!await WaitMenuAsync(open: true)) return null;   // 안 열리면 = 수업 없는 날
 
         // 열린 메뉴 안에서만 수집 — 같은 텍스트의 다른 버튼을 잡지 않기 위해(D-005)
         var texts = await page.EvaluateAsync<string[]>(@"() => {
@@ -345,7 +396,7 @@ public sealed class TimetableReader(IPage page)
           c.click(); return true;
         }");
         if (!closed) await page.Keyboard.PressAsync("Escape");
-        await page.WaitForTimeoutAsync((float)Timings.AfterOptionClick.TotalMilliseconds);
+        await WaitMenuAsync(open: false);   // 실측 5~7ms 면 닫힌다 — 고정 대기할 이유가 없다
     }
 
     /// <summary>CLX 그리드의 데이터 행을 필드명→값 사전으로 읽는다.</summary>
