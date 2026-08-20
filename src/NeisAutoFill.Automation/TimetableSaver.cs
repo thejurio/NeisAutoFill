@@ -36,6 +36,13 @@ public sealed class TimetableSaver(IPage page)
     /// <summary>저장이 끝났다는 알림 — 확인만 누르면 된다.</summary>
     private static readonly string[] CompletePhrases = { "저장되었습니다", "저장하였습니다", "처리되었습니다", "완료되었습니다" };
 
+    /// <summary>
+    /// 바뀐 것이 없을 때 나이스가 띄우는 알림 — <c>"저장할 내역이 없습니다."</c>
+    /// 실패가 아니다. 확인만 누르고 <see cref="SaveOutcome.NothingToSave"/> 로 끝낸다.
+    /// 이걸 모르면 "모르는 대화상자"로 멈추고, 그 알림이 남아 다음 클릭까지 막는다(실측 2026-08-21).
+    /// </summary>
+    private static readonly string[] NothingPhrases = { "저장할 내역이 없습니다", "변경된 내역이 없습니다" };
+
     public async Task<SaveResult> SaveAsync(CancellationToken ct = default)
     {
         var seen = new List<string>();
@@ -62,6 +69,12 @@ public sealed class TimetableSaver(IPage page)
             return await AcknowledgeAsync(first, seen);
         }
 
+        if (NothingPhrases.Any(first.Contains))
+        {
+            await AcknowledgeAsync(first, seen);
+            return new(SaveOutcome.NothingToSave, "바뀐 것이 없어 저장하지 않았습니다.", seen);
+        }
+
         if (!ConfirmPhrases.Any(first.Contains))
             return new(SaveOutcome.UnknownDialog, $"모르는 대화상자라 멈췄습니다: {Trim(first)}", seen);
 
@@ -80,6 +93,12 @@ public sealed class TimetableSaver(IPage page)
                 "저장 완료 알림을 확인하지 못했습니다. 나이스 화면을 확인하세요.", seen);
 
         seen.Add(done);
+
+        if (NothingPhrases.Any(done.Contains))
+        {
+            await AcknowledgeAsync(done, seen);
+            return new(SaveOutcome.NothingToSave, "바뀐 것이 없어 저장하지 않았습니다.", seen);
+        }
 
         if (!CompletePhrases.Any(done.Contains))
             return new(SaveOutcome.UnknownDialog, $"모르는 대화상자라 멈췄습니다: {Trim(done)}", seen);
