@@ -18,7 +18,7 @@ public sealed record TimetableWeek(int Index, DateOnly Start, DateOnly End, stri
 ///
 /// 2026-08-18 실측으로 확정한 것:
 /// <list type="bullet">
-/// <item>DOM 에 grdWeekByClsByTi id 는 없다 → <b>구조</b>로 찾는다(셀 8개 + 첫 셀이 "N교시")</item>
+/// <item>DOM 에 grdWeekByClsByTi id 는 없다 → <b>구조</b>로 찾는다(첫 셀이 "N교시")</item>
 /// <item>aria-colcount/rowcount 는 논리 수(8×8)와 다르다 → 세는 데 쓰지 않는다</item>
 /// <item>메뉴 항목 id(uuid-*)는 매번 바뀐다 → 텍스트 구조와 안정 키만 쓴다(D-004)</item>
 /// <item>메뉴는 반드시 [취소]로 닫는다 — 다른 항목을 누르면 데이터가 바뀐다</item>
@@ -26,14 +26,20 @@ public sealed record TimetableWeek(int Index, DateOnly Start, DateOnly End, stri
 /// </summary>
 public sealed class TimetableReader(IPage page)
 {
-    /// <summary>시간표 그리드를 구조로 찾는다. 못 찾으면 -1.</summary>
+    /// <summary>
+    /// 주별 학급시간표 그리드를 구조로 찾는다. 못 찾으면 -1.
+    ///
+    /// <b>요일 칸 수를 못 박지 않는다</b> — 학교·설정에 따라 월~금(6칸)일 수도 월~일(8칸)일 수도 있다.
+    /// 8칸으로 고정했다가 월~금만 나오는 학교에서 "그리드를 찾지 못했습니다"로 막혔다(실측 2026-08-20).
+    /// 첫 칸이 "N교시"인 것이 이 표를 알아보는 진짜 표식이다.
+    /// </summary>
     private const string FindGridJs = @"() => {
   const grids = [...document.querySelectorAll('div.cl-grid[role=grid]')];
   for (let i = 0; i < grids.length; i++) {
     const row = grids[i].querySelector('div.cl-grid-row[data-rowindex]');
     if (!row) continue;
     const cells = row.querySelectorAll('div[role=gridcell]');
-    if (cells.length !== 8) continue;                                   // 교시 + 월~일
+    if (cells.length < 6 || cells.length > 9) continue;                 // 교시 + 월~금(5) ~ 월~일(7)
     if (!/^\d+\s*교시$/.test((cells[0].innerText || '').trim())) continue;
     return i;
   }
