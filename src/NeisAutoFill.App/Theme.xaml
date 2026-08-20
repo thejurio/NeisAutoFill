@@ -423,6 +423,18 @@
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
+    <!-- ==== 단계 카드 ====
+         지금 차례인 단계만 파란 테두리로 감싼다. 번호만으로는 어디부터 손대야 할지 안 보인다.
+         끝난 단계는 흐리게 두어 눈이 자연히 다음으로 넘어가게 한다. -->
+    <Style x:Key="StepCard" TargetType="Border">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="2"/>
+        <Setter Property="CornerRadius" Value="10"/>
+        <Setter Property="Padding" Value="10,8"/>
+        <Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+
     <!-- ==== 단계 한 덩어리 — 사이를 띄워 눈이 순서를 따라가게 한다 ==== -->
     <Style x:Key="StepBlock" TargetType="StackPanel">
         <Setter Property="Margin" Value="0,0,0,18"/>

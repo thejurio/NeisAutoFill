@@ -394,83 +394,136 @@
                                 <StackPanel>
 
                                     <!-- ① 문서 -->
-                                    <StackPanel Style="{StaticResource StepBlock}">
-                                        <TextBlock Style="{StaticResource StepTitle}">
-                                            <Run Text="①"/><Run Text="  시간표 문서"/>
-                                        </TextBlock>
-                                        <Button Style="{StaticResource GhostButton}" Content="📄 파일 고르기"
-                                                Command="{Binding LoadTimetableCommand}" HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left" Padding="10,6"
-                                                ToolTip="학교에서 받은 연간 시간표 (PDF · HWP · HWPX)"/>
-                                        <TextBlock Text="{Binding Step1Text}" Style="{StaticResource StepNote}"/>
-
-                                        <Button Style="{StaticResource GhostButton}" Content="📄 창의적 체험활동 (선택)"
-                                                Command="{Binding LoadCreativeCommand}" HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left" Padding="10,6" Margin="0,6,0,0"
-                                                FontSize="12"
-                                                ToolTip="넣으면 '창' 칸의 종류(자율·동아리·진로)를 정해 줍니다"/>
-                                        <TextBlock Text="{Binding CreativeFileName}" Style="{StaticResource StepNote}"/>
-                                    </StackPanel>
+                                    <Border>
+                                        <Border.Style>
+                                            <Style TargetType="Border" BasedOn="{StaticResource StepCard}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsStep1}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource Neis}"/>
+                                                        <Setter Property="Background" Value="White"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,7">
+                                                <TextBlock DockPanel.Dock="Right" Text="✓" FontSize="13" FontWeight="Bold"
+                                                           Foreground="#047857" VerticalAlignment="Center"
+                                                           Visibility="{Binding Done1, Converter={StaticResource BoolToVis}}"/>
+                                                <TextBlock Text="① 시간표 문서" Style="{StaticResource StepTitle}" Margin="0"/>
+                                            </DockPanel>
+                                            <Button Style="{StaticResource GhostButton}" Content="📄 파일 고르기"
+                                                    Command="{Binding LoadTimetableCommand}" HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left" Padding="10,6"
+                                                    ToolTip="학교에서 받은 연간 시간표 (PDF · HWP · HWPX)"/>
+                                            <TextBlock Text="{Binding Step1Text}" Style="{StaticResource StepNote}"/>
+                                        </StackPanel>
+                                    </Border>
 
                                     <!-- ② 나이스 -->
-                                    <StackPanel Style="{StaticResource StepBlock}">
-                                        <TextBlock Style="{StaticResource StepTitle}">
-                                            <Run Text="②"/><Run Text="  나이스 과목·교사"/>
-                                        </TextBlock>
-                                        <Button Style="{StaticResource AccentGhostButton}" Content="🔗 나이스에서 불러오기"
-                                                Command="{Binding LoadCatalogCommand}" HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left" Padding="10,6"
-                                                ToolTipService.ShowOnDisabled="True"
-                                                ToolTip="교사를 배정하려면 나이스의 과목·교사 목록이 필요합니다.&#10;학급시간표관리 화면에 연결돼 있어야 합니다."/>
-                                        <TextBlock Text="{Binding Step2Text}" Style="{StaticResource StepNote}"/>
-                                    </StackPanel>
+                                    <Border>
+                                        <Border.Style>
+                                            <Style TargetType="Border" BasedOn="{StaticResource StepCard}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsStep2}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource Neis}"/>
+                                                        <Setter Property="Background" Value="White"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,7">
+                                                <TextBlock DockPanel.Dock="Right" Text="✓" FontSize="13" FontWeight="Bold"
+                                                           Foreground="#047857" VerticalAlignment="Center"
+                                                           Visibility="{Binding Done2, Converter={StaticResource BoolToVis}}"/>
+                                                <TextBlock Text="② 나이스 과목·교사" Style="{StaticResource StepTitle}" Margin="0"/>
+                                            </DockPanel>
+                                            <Button Style="{StaticResource AccentGhostButton}" Content="🔗 나이스에서 불러오기"
+                                                    Command="{Binding LoadCatalogCommand}" HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left" Padding="10,6"
+                                                    ToolTipService.ShowOnDisabled="True"
+                                                    ToolTip="교사를 배정하려면 나이스의 과목·교사 목록이 필요합니다.&#10;학급시간표관리 화면에 연결돼 있어야 합니다."/>
+                                            <TextBlock Text="{Binding Step2Text}" Style="{StaticResource StepNote}"/>
+                                        </StackPanel>
+                                    </Border>
 
-                                    <!-- ③ 범위 -->
-                                    <StackPanel Style="{StaticResource StepBlock}" IsEnabled="{Binding HasSource}">
-                                        <TextBlock Style="{StaticResource StepTitle}">
-                                            <Run Text="③"/><Run Text="  넣을 범위"/>
-                                        </TextBlock>
-                                        <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Semesters}"
-                                                  SelectedItem="{Binding SelectedSemester}" HorizontalAlignment="Stretch">
-                                            <ComboBox.ItemTemplate>
-                                                <DataTemplate><TextBlock Text="{Binding Description}"/></DataTemplate>
-                                            </ComboBox.ItemTemplate>
-                                        </ComboBox>
-                                        <Grid Margin="0,6,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <DatePicker Grid.Column="0" SelectedDate="{Binding FromDate}" FontSize="12"/>
-                                            <TextBlock Grid.Column="1" Text="~" VerticalAlignment="Center" Margin="5,0"
-                                                       Foreground="{StaticResource Sub}"/>
-                                            <DatePicker Grid.Column="2" SelectedDate="{Binding ToDate}" FontSize="12"/>
-                                        </Grid>
-                                        <CheckBox Content="이미 값이 있는 칸도 덮어쓰기" IsChecked="{Binding AllowOverwrite}"
-                                                  FontSize="12" Margin="0,8,0,0"
-                                                  ToolTip="끄면 값이 있는 칸에서 멈춥니다.&#10;나이스 시간표는 기준시간표로 이미 채워져 있는 경우가 많습니다."/>
-                                        <TextBlock Text="{Binding Summary}" Style="{StaticResource StepNote}"/>
-                                    </StackPanel>
+                                    <!-- ③ 교사 배정 (오른쪽 표에서 한다) -->
+                                    <Border>
+                                        <Border.Style>
+                                            <Style TargetType="Border" BasedOn="{StaticResource StepCard}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsStep3}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource Neis}"/>
+                                                        <Setter Property="Background" Value="White"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,7">
+                                                <TextBlock DockPanel.Dock="Right" Text="✓" FontSize="13" FontWeight="Bold"
+                                                           Foreground="#047857" VerticalAlignment="Center"
+                                                           Visibility="{Binding Done3, Converter={StaticResource BoolToVis}}"/>
+                                                <TextBlock Text="③ 과목별 담당 교사" Style="{StaticResource StepTitle}" Margin="0"/>
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Step4Text}" Style="{StaticResource StepNote}" Margin="2,0,0,0"/>
+                                            <TextBlock Text="오른쪽 위 표에서 과목마다 교사를 고릅니다."
+                                                       Style="{StaticResource StepNote}"/>
+                                        </StackPanel>
+                                    </Border>
 
-                                    <!-- ④ 실행 -->
-                                    <StackPanel Style="{StaticResource StepBlock}">
-                                        <TextBlock Style="{StaticResource StepTitle}">
-                                            <Run Text="④"/><Run Text="  나이스에 입력"/>
-                                        </TextBlock>
-                                        <Border Padding="10,8" Background="#FFF7ED" BorderBrush="#FDBA74"
-                                                BorderThickness="1" CornerRadius="6" Margin="0,0,0,8"
-                                                Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="{Binding Warning}" FontSize="11.5" Foreground="#9A3412"
-                                                       TextWrapping="Wrap"/>
-                                        </Border>
-                                        <Button Style="{StaticResource PrimaryButton}" Content="▶ 입력 시작"
-                                                Command="{Binding RunCommand}" HorizontalAlignment="Stretch"
-                                                Padding="10,9" FontSize="13.5" ToolTipService.ShowOnDisabled="True"
-                                                ToolTip="주 단위로 넣고 저장하고 다시 조회해 확인합니다.&#10;시작 전에 동의 창이 한 번 더 뜹니다."/>
-                                        <TextBlock Text="입력 중에는 나이스 창을 건드리지 마세요."
-                                                   Style="{StaticResource StepNote}"/>
-                                    </StackPanel>
+                                    <!-- ④ 범위와 실행 -->
+                                    <Border>
+                                        <Border.Style>
+                                            <Style TargetType="Border" BasedOn="{StaticResource StepCard}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsStep4}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{StaticResource Neis}"/>
+                                                        <Setter Property="Background" Value="White"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel IsEnabled="{Binding HasSource}">
+                                            <TextBlock Text="④ 범위와 입력" Style="{StaticResource StepTitle}" Margin="0,0,0,7"/>
+
+                                            <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Semesters}"
+                                                      SelectedItem="{Binding SelectedSemester}" HorizontalAlignment="Stretch">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate><TextBlock Text="{Binding Description}"/></DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <Grid Margin="0,6,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <DatePicker Grid.Column="0" SelectedDate="{Binding FromDate}" FontSize="12"/>
+                                                <TextBlock Grid.Column="1" Text="~" VerticalAlignment="Center" Margin="5,0"
+                                                           Foreground="{StaticResource Sub}"/>
+                                                <DatePicker Grid.Column="2" SelectedDate="{Binding ToDate}" FontSize="12"/>
+                                            </Grid>
+                                            <CheckBox Content="이미 값이 있는 칸도 덮어쓰기" IsChecked="{Binding AllowOverwrite}"
+                                                      FontSize="12" Margin="0,8,0,0"
+                                                      ToolTip="끄면 값이 있는 칸에서 멈춥니다.&#10;나이스 시간표는 기준시간표로 이미 채워져 있는 경우가 많습니다."/>
+                                            <TextBlock Text="{Binding Summary}" Style="{StaticResource StepNote}"/>
+
+                                            <Border Padding="10,8" Background="#FFF7ED" BorderBrush="#FDBA74"
+                                                    BorderThickness="1" CornerRadius="6" Margin="0,10,0,8"
+                                                    Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="{Binding Warning}" FontSize="11.5" Foreground="#9A3412"
+                                                           TextWrapping="Wrap"/>
+                                            </Border>
+                                            <Button Style="{StaticResource PrimaryButton}" Content="▶ 입력 시작"
+                                                    Command="{Binding RunCommand}" HorizontalAlignment="Stretch"
+                                                    Padding="10,9" FontSize="13.5" ToolTipService.ShowOnDisabled="True"
+                                                    ToolTip="주 단위로 넣고 저장하고 다시 조회해 확인합니다.&#10;시작 전에 동의 창이 한 번 더 뜹니다."/>
+                                            <TextBlock Text="입력 중에는 나이스 창을 건드리지 마세요."
+                                                       Style="{StaticResource StepNote}"/>
+                                        </StackPanel>
+                                    </Border>
                                 </StackPanel>
                             </ScrollViewer>
                         </Border>
@@ -505,13 +558,34 @@
                                             Command="{Binding ResetTeachersCommand}" Padding="10,3" Margin="10,0,0,0"
                                             FontSize="11.5"
                                             ToolTip="저장해 둔 교사 배정을 버리고 담임 기준으로 다시 배정합니다.&#10;예전에 잘못 고른 값이 되살아날 때 쓰세요."/>
-                                    <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" FontSize="11"
-                                               Foreground="#94A3B8" Margin="10,0,0,0"
-                                               Text="과목 · 담당 교사 · 배정 / 기준 / 차이"/>
                                     <TextBlock Margin="10,0,0,0" VerticalAlignment="Center" FontSize="11.5"
                                                Foreground="{StaticResource Sub}" TextTrimming="CharacterEllipsis"
                                                Text="과목마다 기본 교사를 하나 고릅니다. 몇 시간만 다르면 아래 시간표에서 그 칸을 누르세요."/>
                                 </DockPanel>
+
+                                <!-- 카드에는 열 머리가 없다. 숫자 셋이 무엇인지 카드와 같은 자리에 적어 준다. -->
+                                <Grid DockPanel.Dock="Top" Width="286" HorizontalAlignment="Left" Margin="0,0,0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="58"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="30"/>
+                                        <ColumnDefinition Width="36"/>
+                                        <ColumnDefinition Width="30"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="과목" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="#475569" Margin="9,0,0,0"/>
+                                    <TextBlock Grid.Column="1" Text="담당 교사" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="#475569" Margin="13,0,0,0"/>
+                                    <TextBlock Grid.Column="2" Text="배정" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="#475569" HorizontalAlignment="Right"
+                                               ToolTip="시간표에 실제로 들어 있는 시간 수"/>
+                                    <TextBlock Grid.Column="3" Text="기준" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="#475569" HorizontalAlignment="Right" Margin="0,0,2,0"
+                                               ToolTip="문서 시수표의 기준 시수 — 직접 고칠 수 있습니다"/>
+                                    <TextBlock Grid.Column="4" Text="차이" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="#475569" HorizontalAlignment="Right"
+                                               ToolTip="배정 − 기준. 모자라면 빨강, 넘치면 파랑"/>
+                                </Grid>
 
                                 <Grid>
                                     <Grid.ColumnDefinitions>

@@ -409,8 +409,36 @@ public sealed class TimetableTabViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 지금 해야 할 단계 (1~4). 끝난 단계는 지나가고, 지금 차례인 것 하나만 강조된다 —
+    /// 번호만으로는 어디부터 손대야 하는지 눈에 안 들어온다.
+    /// </summary>
+    public int CurrentStep =>
+        _source is null ? 1
+        : _catalog is null ? 2
+        : !TeachersReady ? 3
+        : 4;
+
+    public bool IsStep1 => CurrentStep == 1;
+    public bool IsStep2 => CurrentStep == 2;
+    public bool IsStep3 => CurrentStep == 3;
+    public bool IsStep4 => CurrentStep == 4;
+
+    /// <summary>끝난 단계 — 체크 표시를 붙인다.</summary>
+    public bool Done1 => _source is not null;
+    public bool Done2 => _catalog is not null;
+    public bool Done3 => _catalog is not null && TeachersReady;
+
     private void RefreshSteps()
     {
+        OnPropertyChanged(nameof(CurrentStep));
+        OnPropertyChanged(nameof(IsStep1));
+        OnPropertyChanged(nameof(IsStep2));
+        OnPropertyChanged(nameof(IsStep3));
+        OnPropertyChanged(nameof(IsStep4));
+        OnPropertyChanged(nameof(Done1));
+        OnPropertyChanged(nameof(Done2));
+        OnPropertyChanged(nameof(Done3));
         OnPropertyChanged(nameof(HasSource));
         OnPropertyChanged(nameof(HasCatalog));
         OnPropertyChanged(nameof(TeachersReady));
@@ -928,9 +956,12 @@ public sealed class TimetableTabViewModel : ObservableObject
         var semester = SelectedSemester?.Semester ?? 0;
         var standards = _source?.HourStandards ?? Array.Empty<SubjectHourStandard>();
 
+        // 교과를 먼저, 창체(자율·동아리·봉사·진로)를 <b>뒤에 몰아서</b> 보여 준다 —
+        // 성격이 다른 것이 섞여 있으면 눈이 자꾸 되짚어야 한다.
         var groups = lessons
             .GroupBy(l => TimetableTokenNormalizer.Normalize(l.SourceToken).Standard)
-            .OrderByDescending(g => g.Count())
+            .OrderBy(g => TimetableTokenNormalizer.Normalize(g.First().SourceToken).IsCreative ? 1 : 0)
+            .ThenByDescending(g => g.Count())
             .ToList();
 
         foreach (var group in groups)
