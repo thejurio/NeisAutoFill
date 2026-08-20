@@ -16,6 +16,10 @@ public partial class TimetableRunConsentWindow : Window
         InitializeComponent();
         SummaryText.Text = summary;
 
+        // 동의 칸이 화면 밖으로 밀리면 체크할 길이 없어 [입력 시작]이 영영 안 열린다(실측 2026-08-20).
+        // 창을 내용에 맞추고, 그래도 넘치면 스크롤로 닿을 수 있게 한다.
+        Loaded += (_, _) => ConsentCheck.BringIntoView();
+
         if (!string.IsNullOrWhiteSpace(resumeNote))
         {
             ResumeText.Text = resumeNote;
