@@ -200,7 +200,7 @@ public sealed class TimetableReader(IPage page)
         }");
         if (weekGrid < 0) throw new InvalidOperationException("주차 목록 그리드를 찾지 못했습니다.");
 
-        if (!await ScrollWeekRowIntoViewAsync(weekGrid, weekRowIndex))
+        if (!await ScrollRowIntoViewAsync(weekGrid, weekRowIndex))
             throw new InvalidOperationException(
                 $"주차 목록에서 {weekRowIndex + 1}번째 주를 화면에 띄우지 못했습니다.");
 
@@ -232,12 +232,18 @@ public sealed class TimetableReader(IPage page)
     }
 
     /// <summary>
-    /// 주차 목록에서 그 행이 실제로 그려지도록 스크롤한다.
+    /// 그 행이 실제로 DOM 에 그려지도록 스크롤한다. <b>주차 목록과 시간표 그리드 둘 다</b> 쓴다.
     ///
-    /// <b>주차 목록은 가상 스크롤이다</b> — 28주짜리 학기여도 DOM 에는 18행 정도만 있고,
-    /// 나머지는 스크롤해야 생긴다. 이걸 모르면 12월 이후 주차에서 클릭이 통째로 실패한다(실측 2026-08-19).
+    /// <b>eXBuilder6 그리드는 세로 가상 스크롤이다</b> — 보이는 만큼만 DOM 에 있고 나머지는 없다.
+    /// <list type="bullet">
+    /// <item>주차 목록: 28주짜리 학기여도 18행 남짓만 있다. 모르면 12월 주차 클릭이 통째로 실패한다(2026-08-19)</item>
+    /// <item>시간표: 8교시짜리인데 <b>1~5교시만 있다</b>(scrollH 453 · clientH 279).
+    ///       모르면 6교시 이하가 "메뉴가 안 열린다"로 오인돼 <b>조용히 건너뛴다</b>(2026-08-20)</item>
+    /// </list>
+    /// Playwright 의 자동 스크롤에 맡기면 안 된다 — 클릭을 기다리는 동안 컨테이너를 밀어
+    /// <b>다음 칸이 도리어 사라지는</b> 연쇄 실패를 만든다(실측).
     /// </summary>
-    private async Task<bool> ScrollWeekRowIntoViewAsync(int gridIndex, int rowIndex)
+    private async Task<bool> ScrollRowIntoViewAsync(int gridIndex, int rowIndex)
     {
         const string ScrollJs = @"(a) => {
           const grid = [...document.querySelectorAll('div.cl-grid[role=grid]')][a.gridIndex];
@@ -313,6 +319,10 @@ public sealed class TimetableReader(IPage page)
     {
         var gridIdx = await page.EvaluateAsync<int>(FindGridJs);
         if (gridIdx < 0) throw new InvalidOperationException("시간표 그리드를 찾지 못했습니다.");
+
+        // 그 교시 줄이 DOM 에 없으면 먼저 스크롤해 올린다 — 없는 줄을 4초 기다리다 포기하면
+        // "수업 없는 날"로 오인돼 그 칸이 조용히 빠진다(6교시 실측 2026-08-20).
+        await ScrollRowIntoViewAsync(gridIdx, rowIndex);
 
         // 셀이 없으면 <b>빨리 포기한다</b>. 기본 타임아웃(30초)을 그대로 두면
         // 학기 시작 전 요일 하나에서 30초씩 멈췄다가 오류창이 뜬다 — 다섯 요일이면 2분 반이다(실측).

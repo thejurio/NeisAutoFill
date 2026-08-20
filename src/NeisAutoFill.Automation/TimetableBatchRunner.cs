@@ -178,6 +178,19 @@ public sealed class TimetableBatchRunner(
                 return Stop($"{a.Cell} — {r.Detail}", records);
         }
 
+        // <b>"수업 없는 날"을 그냥 넘기지 않는다.</b>
+        // 문서가 수업이라고 적은 칸이다 — 쉬는 날에는 애초에 수업이 없다(실측: 공휴일 10일 모두 0칸).
+        // 그러니 여기서 나오는 CellUnavailable 은 휴업일이 아니라 <b>화면을 못 짚은 것</b>이다.
+        // 실제로 6교시 이후가 가상 스크롤 밖이라 이렇게 조용히 빠졌다(2026-08-20).
+        var unavailable = records.Where(r => r.Outcome == CellWriteOutcome.CellUnavailable).ToList();
+        if (unavailable.Count > 0)
+            return Stop(
+                $"{unavailable.Count}칸에서 메뉴가 열리지 않았습니다 — " +
+                string.Join(", ", unavailable.Take(4).Select(r => $"{r.Cell}")) +
+                (unavailable.Count > 4 ? " 외" : "") +
+                ". 문서에 수업이 있는 칸이라 건너뛰지 않고 멈춥니다.",
+                records);
+
         var written = records.Count(r => r.Outcome == CellWriteOutcome.Written);
         if (written == 0)
             return new(weekStart, WeekPhase.NothingToDo, 0, skipped + records.Count, "바뀐 칸이 없습니다.", records);
@@ -195,7 +208,8 @@ public sealed class TimetableBatchRunner(
         var mismatch = await VerifyAsync(weekStart, targets, request, ct);
         if (mismatch is not null) return Stop($"저장 후 값이 다릅니다 — {mismatch}", records);
 
-        return new(weekStart, WeekPhase.Completed, written, skipped, "저장·검증 완료", records);
+        var alsoSkipped = records.Count(r => r.Outcome == CellWriteOutcome.AlreadyMatches);
+        return new(weekStart, WeekPhase.Completed, written, skipped + alsoSkipped, "저장·검증 완료", records);
     }
 
     /// <summary>지금 화면의 값으로 이 주의 계획을 다시 만든다.</summary>
