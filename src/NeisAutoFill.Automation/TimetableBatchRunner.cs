@@ -170,10 +170,11 @@ public sealed class TimetableBatchRunner(
 
             progress?.Report(new($"{a.Cell} 입력 중…", ++cellDone, targets.Count));
 
-            var r = await writer.WriteAsync(a.Cell, a.TargetStableKey, a.Overwrite, ct);
+            var r = await AttemptAsync(a, ct);
             records.Add(new(a.Cell, r.Outcome, r.Detail));
 
             if (r.Outcome is not (CellWriteOutcome.Written or CellWriteOutcome.AlreadyMatches
+                                  or CellWriteOutcome.Cleared or CellWriteOutcome.AlreadyEmpty
                                   or CellWriteOutcome.CellUnavailable))
                 return Stop($"{a.Cell} — {r.Detail}", records);
         }
@@ -191,7 +192,7 @@ public sealed class TimetableBatchRunner(
                 ". 문서에 수업이 있는 칸이라 건너뛰지 않고 멈춥니다.",
                 records);
 
-        var written = records.Count(r => r.Outcome == CellWriteOutcome.Written);
+        var written = records.Count(r => r.Outcome is CellWriteOutcome.Written or CellWriteOutcome.Cleared);
         if (written == 0)
             return new(weekStart, WeekPhase.NothingToDo, 0, skipped + records.Count, "바뀐 칸이 없습니다.", records);
 
@@ -208,8 +209,42 @@ public sealed class TimetableBatchRunner(
         var mismatch = await VerifyAsync(weekStart, targets, request, ct);
         if (mismatch is not null) return Stop($"저장 후 값이 다릅니다 — {mismatch}", records);
 
-        var alsoSkipped = records.Count(r => r.Outcome == CellWriteOutcome.AlreadyMatches);
+        var alsoSkipped = records.Count(r => r.Outcome
+            is CellWriteOutcome.AlreadyMatches or CellWriteOutcome.AlreadyEmpty);
         return new(weekStart, WeekPhase.Completed, written, skipped + alsoSkipped, "저장·검증 완료", records);
+    }
+
+    /// <summary>한 칸을 몇 번까지 다시 시도할지. 화면이 흔들려 한 번 어긋나는 것은 흔하다.</summary>
+    private const int MaxAttempts = 3;
+
+    /// <summary>
+    /// 칸 하나를 처리한다 — 문서에 없는 수업은 넣는 게 아니라 <b>지운다</b>.
+    ///
+    /// <b>결과가 문서와 어긋나면 그 자리에서 다시 시도한다.</b> 주를 통째로 멈추기 전에
+    /// 화면을 다시 읽고 다시 짚는 편이 낫다 — 가상 스크롤 그리드는 한 번씩 미끄러진다.
+    /// 매 시도가 화면을 새로 읽으므로, 앞 시도가 절반만 먹었어도 다음 시도가 알아서 바로잡는다.
+    ///
+    /// 단 <see cref="CellWriteOutcome.CollateralDamage"/> 는 <b>절대 다시 시도하지 않는다.</b>
+    /// 목표는 고쳐지지만 잘못 건드린 칸은 그대로 남기 때문이다.
+    /// </summary>
+    private async Task<CellWriteResult> AttemptAsync(TimetableAssignment a, CancellationToken ct)
+    {
+        CellWriteResult result;
+
+        for (var attempt = 1; ; attempt++)
+        {
+            result = a.WillClear
+                ? await writer.ClearAsync(a.Cell, ct)
+                : await writer.WriteAsync(a.Cell, a.TargetStableKey, a.Overwrite, ct);
+
+            if (result.Outcome is not (CellWriteOutcome.VerificationFailed
+                                       or CellWriteOutcome.CellUnavailable
+                                       or CellWriteOutcome.OptionNotFound)) return result;
+
+            if (attempt >= MaxAttempts || ct.IsCancellationRequested) break;
+        }
+
+        return result with { Detail = $"{result.Detail} ({MaxAttempts}번 시도)" };
     }
 
     /// <summary>지금 화면의 값으로 이 주의 계획을 다시 만든다.</summary>
@@ -253,6 +288,14 @@ public sealed class TimetableBatchRunner(
         foreach (var a in targets)
         {
             snapshot.Cells.TryGetValue(a.Cell, out var raw);
+
+            // 지운 칸은 반대로 <b>비어 있어야</b> 맞다
+            if (a.WillClear)
+            {
+                if (!string.IsNullOrEmpty(raw)) return $"{a.Cell} 이 지워지지 않았습니다.";
+                continue;
+            }
+
             if (string.IsNullOrEmpty(raw)) return $"{a.Cell} 이 비어 있습니다.";
 
             var target = request.Catalog.Find(a.TargetStableKey);

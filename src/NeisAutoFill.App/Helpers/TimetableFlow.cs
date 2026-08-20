@@ -83,7 +83,8 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
         if (blocker is not null) log($"이전 기록을 이어서 쓰지 않습니다 — {blocker}");
 
         log($"입력을 시작합니다 — {range.From:yyyy-MM-dd}~{range.To:yyyy-MM-dd} · 주 {plan.ByWeek.Count}개" +
-            (range.AllowOverwrite ? " · 기존 값 덮어씀" : ""));
+            (range.AllowOverwrite ? " · 기존 값 덮어씀" : "") +
+            (plan.Clearing.Count > 0 ? $" · 문서에 없는 {plan.Clearing.Count}칸 지움" : ""));
 
         while (true)
         {
@@ -114,7 +115,9 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
     {
         var lines = new List<string>
         {
-            $"전체 {plan.Assignments.Count}칸 · 입력 예정 {plan.Writable.Count}칸 · 주 {plan.ByWeek.Count}개",
+            $"전체 {plan.Assignments.Count}칸 · 입력 예정 {plan.Writable.Count - plan.Clearing.Count}칸" +
+            (plan.Clearing.Count > 0 ? $" · 지울 칸 {plan.Clearing.Count}개" : "") +
+            $" · 주 {plan.ByWeek.Count}개",
         };
 
         foreach (var kv in plan.CountByStatus.OrderByDescending(k => k.Value))
@@ -140,6 +143,7 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
         AssignmentStatus.ExistingValueConflict => "기존 값 충돌",
         AssignmentStatus.CellUnavailable => "수업 없는 날",
         AssignmentStatus.DuplicateTarget => "중복 목표",
+        AssignmentStatus.ExtraToClear => "문서에 없어 지움",
         _ => s.ToString(),
     };
 }

@@ -65,7 +65,55 @@ public static class TimetablePlanBuilder
         foreach (var lesson in lessonList)
             result.Add(Classify(lesson, ruleList, catalog, screen, duplicated, allowOverwrite));
 
+        if (allowOverwrite)
+            result.AddRange(FindExtras(lessonList, catalog, screen));
+
         return new TimetablePlan(result);
+    }
+
+    /// <summary>
+    /// 문서에는 없는데 나이스에만 남아 있는 수업을 찾아 <b>지울 대상</b>으로 만든다.
+    ///
+    /// 나이스 학급시간표는 기준시간표로 일괄 생성되므로, 문서보다 교시가 많은 날이 흔하다
+    /// (예: 나이스는 6교시까지, 문서는 4교시까지). 그냥 두면 문서와 영영 달라진다.
+    ///
+    /// <b>두 겹의 안전장치를 둔다:</b>
+    /// <list type="number">
+    /// <item><b>문서에 수업이 한 칸이라도 있는 날만</b> 본다. 문서가 아예 다루지 않는 날
+    ///       (주말·공휴일·문서 범위 밖, 그리고 <b>파싱이 어긋난 날</b>)은 통째로 건드리지 않는다.
+    ///       실측상 공휴일 10일은 모두 문서 수업이 0칸이라 이 규칙만으로 걸러진다.</item>
+    /// <item><b>지금 값이 카탈로그에 있는 수업일 때만</b> 지운다. 즉 <b>우리가 넣을 수 있었던 것만</b> 되돌린다.
+    ///       행사·현장체험학습·휴업일 표시처럼 학교가 따로 넣은 것은 남긴다.</item>
+    /// </list>
+    /// 덮어쓰기를 켰을 때만 동작한다 — "문서대로 맞춘다"는 뜻이 이미 그 선택에 들어 있다.
+    /// </summary>
+    private static IEnumerable<TimetableAssignment> FindExtras(
+        IReadOnlyList<TimetableSourceLesson> lessons,
+        TimetableCatalog catalog,
+        TimetableScreenState screen)
+    {
+        var planned = lessons.Select(l => l.Cell).ToHashSet();
+        var coveredDays = lessons.Select(l => l.Cell.Date).ToHashSet();
+
+        foreach (var (cell, current) in screen.CurrentValues.OrderBy(c => c.Key.Date).ThenBy(c => c.Key.Period))
+        {
+            if (planned.Contains(cell)) continue;              // 문서가 쓸 칸이다
+            if (!coveredDays.Contains(cell.Date)) continue;    // ① 문서가 안 다루는 날
+            if (!screen.IsInTerm(cell.Date)) continue;
+            if (screen.UnavailableCells.Contains(cell)) continue;
+            if (string.IsNullOrEmpty(current)) continue;
+
+            // ② 우리가 넣을 수 있었던 수업만 되돌린다
+            if (catalog.Find(current) is null &&
+                (!current.EndsWith('|') || catalog.FindLoose(current[..^1]) is null))
+                continue;
+
+            yield return new TimetableAssignment(
+                cell, "", AssignmentStatus.ExtraToClear,
+                CurrentStableKey: current,
+                Reason: "문서에 없는 수업이라 지웁니다.",
+                Overwrite: true);
+        }
     }
 
     /// <summary>

@@ -30,6 +30,12 @@ public enum AssignmentStatus
     OutOfRange,
     /// <summary>같은 셀을 두 원본이 노린다.</summary>
     DuplicateTarget,
+    /// <summary>
+    /// 문서에는 없는데 나이스에만 남아 있는 수업 — <b>지운다.</b>
+    /// 학급시간표는 기준시간표로 일괄 생성되므로, 문서보다 교시가 많은 날이 흔하다.
+    /// 덮어쓰기를 켰을 때만 나온다.
+    /// </summary>
+    ExtraToClear,
 }
 
 /// <summary>
@@ -52,8 +58,11 @@ public sealed record TimetableAssignment(
     string Reason = "",
     bool Overwrite = false)
 {
-    /// <summary>실제로 클릭이 일어날 항목인가.</summary>
-    public bool WillWrite => Status == AssignmentStatus.Pending;
+    /// <summary>실제로 클릭이 일어날 항목인가 (입력이든 삭제든).</summary>
+    public bool WillWrite => Status is AssignmentStatus.Pending or AssignmentStatus.ExtraToClear;
+
+    /// <summary>넣는 게 아니라 <b>지우는</b> 항목인가.</summary>
+    public bool WillClear => Status == AssignmentStatus.ExtraToClear;
 
     /// <summary>사람이 풀어야 실행할 수 있는 상태인가 (기술설계 §12 사전 검증).</summary>
     public bool IsBlocking => Status is
@@ -82,6 +91,10 @@ public sealed record TimetablePlan(IReadOnlyList<TimetableAssignment> Assignment
     /// <summary>이미 값이 있는데 덮어쓸 칸 — 동의 창에서 개수를 알린다.</summary>
     public IReadOnlyList<TimetableAssignment> Overwriting =>
         Assignments.Where(a => a.WillWrite && a.Overwrite).ToList();
+
+    /// <summary>문서에 없어서 지울 칸.</summary>
+    public IReadOnlyList<TimetableAssignment> Clearing =>
+        Assignments.Where(a => a.WillClear).ToList();
 
     /// <summary>기본 실행 가능 여부. 막힌 항목이 없어야 한다.</summary>
     public bool CanRun => Blocking.Count == 0 && Writable.Count > 0;

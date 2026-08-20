@@ -8,6 +8,10 @@ public enum CellWriteOutcome
 {
     /// <summary>입력하고 재검증까지 성공.</summary>
     Written,
+    /// <summary>문서에 없는 수업이라 지웠고, 빈 칸이 된 것까지 확인했다.</summary>
+    Cleared,
+    /// <summary>지울 것이 이미 없었다.</summary>
+    AlreadyEmpty,
     /// <summary>이미 목표와 같아 건드리지 않음.</summary>
     AlreadyMatches,
     /// <summary>기존에 다른 값이 있어 중단 (덮어쓰기 허용 안 됨).</summary>
@@ -20,6 +24,11 @@ public enum CellWriteOutcome
     VerificationFailed,
     /// <summary>화면 구조를 신뢰할 수 없어 중단 (날짜 불일치 등).</summary>
     Aborted,
+    /// <summary>
+    /// <b>목표가 아닌 다른 칸이 바뀌었다.</b> 재시도로 덮을 수 없다 — 사람이 봐야 한다.
+    /// 다시 시도하면 목표는 고쳐지지만 잘못 건드린 칸은 그대로 남는다.
+    /// </summary>
+    CollateralDamage,
 }
 
 /// <param name="Outcome">결과</param>
@@ -27,7 +36,7 @@ public enum CellWriteOutcome
 /// <param name="CellTextAfter">입력 후 읽은 셀 값 (비식별 처리는 호출부 몫)</param>
 public sealed record CellWriteResult(CellWriteOutcome Outcome, string Detail, string CellTextAfter = "")
 {
-    public bool Changed => Outcome == CellWriteOutcome.Written;
+    public bool Changed => Outcome is CellWriteOutcome.Written or CellWriteOutcome.Cleared;
 }
 
 /// <summary>
@@ -140,6 +149,85 @@ public sealed class TimetableCellWriter(IPage page)
         return new(CellWriteOutcome.VerificationFailed,
             "입력 후 값이 목표와 다릅니다. 저장하지 마세요.", afterText);
     }
+
+    /// <summary>
+    /// 문서에 없는 수업을 <b>지운다</b> — 메뉴의 <c>[수업삭제]</c>.
+    ///
+    /// 실측(2026-08-21): 확인창 없이 그 칸만 즉시 비워지고, 다른 교시가 밀리지 않으며 메뉴도 스스로 닫힌다.
+    /// 그래도 <b>비었는지 눈으로 확인한 뒤에만</b> 성공이라고 한다 — 클릭 성공은 삭제 성공이 아니다.
+    /// </summary>
+    public async Task<CellWriteResult> ClearAsync(TimetableCell cell, CancellationToken ct = default)
+    {
+        var snapshot = await _reader.ReadCurrentWeekAsync();
+        if (!snapshot.Cells.TryGetValue(cell, out var currentText))
+            return new(CellWriteOutcome.Aborted, $"{cell} 이 지금 화면의 주에 없습니다.");
+
+        if (currentText.Length == 0)
+            return new(CellWriteOutcome.AlreadyEmpty, "이미 비어 있습니다.");
+
+        var (rowIndex, dayColumn) = Locate(cell, snapshot);
+        if (rowIndex < 0)
+            return new(CellWriteOutcome.Aborted, $"{cell} 의 화면 위치를 찾지 못했습니다.");
+
+        var verifiedDate = await _reader.ReadCellDateAsync(rowIndex, dayColumn);
+        if (verifiedDate != cell.Date)
+            return new(CellWriteOutcome.Aborted,
+                $"지우려는 자리의 날짜가 {verifiedDate:yyyy-MM-dd} 로 목표({cell.Date:yyyy-MM-dd})와 다릅니다. 중단합니다.");
+
+        if (await _reader.ReadCatalogAsync(rowIndex, dayColumn, closeAfter: false) is null)
+            return new(CellWriteOutcome.CellUnavailable, "이 칸은 메뉴가 열리지 않습니다.");
+
+        if (!await ClickMenuItemAsync(ClearCommand))
+        {
+            await _reader.CloseMenuAsync();
+            return new(CellWriteOutcome.OptionNotFound, $"메뉴에서 [{ClearCommand}]를 찾지 못했습니다.");
+        }
+
+        var deadline = DateTime.UtcNow + ValueWait;
+        while (DateTime.UtcNow < deadline)
+        {
+            var after = await _reader.ReadCurrentWeekAsync();
+            after.Cells.TryGetValue(cell, out var afterText);
+
+            // <b>옆 칸이 하나라도 바뀌었으면 즉시 멈춘다.</b>
+            // 가상 스크롤에서 좌표가 미끄러지면 메뉴가 다른 칸에 걸린다 —
+            // 넣기는 값을 다시 보면 되지만 지우기는 그때 이미 늦다(실측 2026-08-21).
+            if (Collateral(snapshot, after, cell) is { } hit)
+            {
+                await _reader.EnsureMenuClosedAsync();
+                return new(CellWriteOutcome.CollateralDamage,
+                    $"지우려던 칸은 {cell.Period}교시인데 {hit.Period}교시가 바뀌었습니다. 저장하지 마세요.", currentText);
+            }
+
+            if (string.IsNullOrEmpty(afterText))
+            {
+                await _reader.EnsureMenuClosedAsync();
+                return new(CellWriteOutcome.Cleared, "지우고 빈 칸이 된 것을 확인했습니다.");
+            }
+
+            await Task.Delay(PollInterval, ct);
+        }
+
+        await _reader.EnsureMenuClosedAsync();
+        return new(CellWriteOutcome.VerificationFailed, "지웠는데도 값이 남아 있습니다. 저장하지 마세요.", currentText);
+    }
+
+    /// <summary>목표 말고 다른 칸이 바뀌었으면 그 칸을 돌려준다 (없으면 null).</summary>
+    private static TimetableCell? Collateral(
+        TimetableGridSnapshot before, TimetableGridSnapshot after, TimetableCell target)
+    {
+        foreach (var (key, was) in before.Cells)
+        {
+            if (key == target) continue;
+            after.Cells.TryGetValue(key, out var now);
+            if ((now ?? "") != was) return key;
+        }
+
+        return null;
+    }
+
+    /// <summary>나이스 메뉴의 삭제 명령 이름. 그 칸 하나만 지운다 ([전체 수업삭제]는 절대 쓰지 않는다).</summary>
+    private const string ClearCommand = "수업삭제";
 
     /// <summary>
     /// 입력 후 셀 값이 목표와 같은지 (기술설계 R-006).

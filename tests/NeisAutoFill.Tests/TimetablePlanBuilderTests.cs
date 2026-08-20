@@ -349,4 +349,103 @@ public class TimetablePlanBuilderTests
 
         Assert.Equal(AssignmentStatus.ExistingValueConflict, p.Assignments[0].Status);
     }
+
+    // ── 문서에 없는데 나이스에만 남은 수업 지우기 (2026-08-21) ──────────────
+    //
+    // 나이스 학급시간표는 기준시간표로 일괄 생성돼 문서보다 교시가 많은 날이 흔하다.
+    // 지우는 것은 되돌릴 수 없으므로 안전장치 두 겹을 여기서 못 박는다.
+
+    private static TimetablePlan 덮어쓰기계획(
+        IEnumerable<TimetableSourceLesson> lessons,
+        IEnumerable<TimetableMappingRule> rules,
+        TimetableScreenState screen)
+        => TimetablePlanBuilder.Build(lessons, rules, 카탈로그, screen, allowOverwrite: true);
+
+    private static (TimetableSourceLesson[] 수업, TimetableMappingRule[] 규칙) 월요일_1교시_국어() =>
+        (new[] { new TimetableSourceLesson(new TimetableCell(월, 1), "국") },
+         new[] { new TimetableMappingRule("국", 키("국어(교사A(account-a))"), MappingScope.Default) });
+
+    [Fact]
+    public void 문서에_없는데_나이스에_있는_수업은_지울_대상이다()
+    {
+        var (수업, 규칙) = 월요일_1교시_국어();
+        var 남은칸 = new TimetableCell(월, 2);
+
+        var p = 덮어쓰기계획(수업, 규칙,
+            화면(new() { [남은칸] = 키("체육(교사A(account-a))") }));
+
+        var 지움 = Assert.Single(p.Clearing);
+        Assert.Equal(남은칸, 지움.Cell);
+        Assert.Equal(AssignmentStatus.ExtraToClear, 지움.Status);
+        Assert.True(지움.WillWrite);
+    }
+
+    [Fact]
+    public void 덮어쓰기를_켜지_않으면_지우지_않는다()
+    {
+        var (수업, 규칙) = 월요일_1교시_국어();
+
+        var p = 계획(수업, 규칙,
+            화면(new() { [new TimetableCell(월, 2)] = 키("체육(교사A(account-a))") }));
+
+        Assert.Empty(p.Clearing);
+    }
+
+    [Fact]
+    public void 문서가_다루지_않는_날은_통째로_건드리지_않는다()
+    {
+        // 안전장치 ① — 파싱이 어긋난 날을 몽땅 비우는 사고를 막는다
+        var (수업, 규칙) = 월요일_1교시_국어();
+        var 다른날 = 월.AddDays(1);
+
+        var p = 덮어쓰기계획(수업, 규칙,
+            화면(new() { [new TimetableCell(다른날, 3)] = 키("체육(교사A(account-a))") }));
+
+        Assert.Empty(p.Clearing);
+    }
+
+    [Fact]
+    public void 카탈로그에_없는_값은_지우지_않는다()
+    {
+        // 안전장치 ② — 행사·현장체험학습처럼 학교가 따로 넣은 것은 남긴다
+        var (수업, 규칙) = 월요일_1교시_국어();
+
+        var p = 덮어쓰기계획(수업, 규칙,
+            화면(new() { [new TimetableCell(월, 2)] = "현장체험학습" }));
+
+        Assert.Empty(p.Clearing);
+    }
+
+    [Fact]
+    public void 학기_밖이거나_메뉴가_안_열리는_칸은_지우지_않는다()
+    {
+        var (수업, 규칙) = 월요일_1교시_국어();
+        var 막힌칸 = new TimetableCell(월, 2);
+        var 체육 = 키("체육(교사A(account-a))");
+
+        var 막힘 = TimetablePlanBuilder.Build(수업, 규칙, 카탈로그,
+            new TimetableScreenState(new Dictionary<TimetableCell, string> { [막힌칸] = 체육 },
+                                     new HashSet<TimetableCell> { 막힌칸 }),
+            allowOverwrite: true);
+        Assert.Empty(막힘.Clearing);
+
+        var 밖 = TimetablePlanBuilder.Build(수업, 규칙, 카탈로그,
+            new TimetableScreenState(new Dictionary<TimetableCell, string> { [막힌칸] = 체육 },
+                                     new HashSet<TimetableCell>(), 월.AddDays(7), 월.AddDays(30)),
+            allowOverwrite: true);
+        Assert.Empty(밖.Clearing);
+    }
+
+    [Fact]
+    public void 문서가_쓸_칸은_지울_대상이_아니다()
+    {
+        // 같은 칸을 지우면서 넣는 자기모순이 생기면 안 된다
+        var (수업, 규칙) = 월요일_1교시_국어();
+
+        var p = 덮어쓰기계획(수업, 규칙,
+            화면(new() { [new TimetableCell(월, 1)] = 키("체육(교사A(account-a))") }));
+
+        Assert.Empty(p.Clearing);
+        Assert.Equal(AssignmentStatus.Pending, p.Assignments[0].Status);
+    }
 }

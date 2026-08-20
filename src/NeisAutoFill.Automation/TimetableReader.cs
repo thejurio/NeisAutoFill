@@ -232,6 +232,62 @@ public sealed class TimetableReader(IPage page)
     }
 
     /// <summary>
+    /// 그 칸을 <b>확실히 짚어</b> 우클릭한다.
+    ///
+    /// 가상 스크롤 그리드에서는 좌표를 재고 누르는 사이에 <b>줄이 미끄러진다.</b>
+    /// 실제로 스크롤 직후 7교시를 우클릭했더니 메뉴가 <b>5교시</b>에 걸렸고,
+    /// 거기서 [수업삭제]를 눌러 <b>엉뚱한 수업이 지워졌다</b>(실측 2026-08-21).
+    /// 넣기는 값을 재확인해 되돌릴 수 있지만, <b>지우기는 그때 이미 늦다.</b>
+    ///
+    /// 그래서 누르기 직전에 두 가지를 확인한다:
+    /// <list type="number">
+    /// <item>같은 자리를 두 번 재서 <b>좌표가 멈췄는지</b> (스크롤이 끝났는지)</item>
+    /// <item><see cref="!:document.elementFromPoint"/> 로 그 점에 <b>정말 그 칸이 있는지</b></item>
+    /// </list>
+    /// 둘 다 맞을 때만 진짜 마우스로 누른다.
+    /// </summary>
+    private async Task<bool> RightClickCellAsync(int gridIndex, int rowIndex, int dayColumn)
+    {
+        const string PointJs = @"(a) => {
+          const grid = [...document.querySelectorAll('div.cl-grid[role=grid]')][a.gridIndex];
+          if (!grid) return null;
+          const row = grid.querySelector(`div.cl-grid-row[data-rowindex='${a.rowIndex}']`);
+          if (!row) return null;
+          const cell = row.querySelectorAll('div[role=gridcell]')[a.dayColumn];
+          if (!cell) return null;
+
+          const r = cell.getBoundingClientRect();
+          if (r.width < 4 || r.height < 4) return null;
+          const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2);
+          if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return null;
+
+          // 그 점에 정말 이 칸이 있는가 (다른 칸이나 덮개가 아닌가)
+          const at = document.elementFromPoint(x, y);
+          return [x, y, cell.contains(at) || cell === at ? 1 : 0];
+        }";
+
+        var deadline = DateTime.UtcNow + CellClickTimeout;
+        int[]? previous = null;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            var point = await page.EvaluateAsync<int[]?>(PointJs, new { gridIndex, rowIndex, dayColumn });
+
+            if (point is { Length: 3 } && point[2] == 1 &&
+                previous is not null && previous[0] == point[0] && previous[1] == point[1])
+            {
+                await page.Mouse.ClickAsync(point[0], point[1], new() { Button = MouseButton.Right });
+                return true;
+            }
+
+            previous = point;
+            await Task.Delay(PollInterval);
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// 그 행이 실제로 DOM 에 그려지도록 스크롤한다. <b>주차 목록과 시간표 그리드 둘 다</b> 쓴다.
     ///
     /// <b>eXBuilder6 그리드는 세로 가상 스크롤이다</b> — 보이는 만큼만 DOM 에 있고 나머지는 없다.
@@ -324,23 +380,8 @@ public sealed class TimetableReader(IPage page)
         // "수업 없는 날"로 오인돼 그 칸이 조용히 빠진다(6교시 실측 2026-08-20).
         await ScrollRowIntoViewAsync(gridIdx, rowIndex);
 
-        // 셀이 없으면 <b>빨리 포기한다</b>. 기본 타임아웃(30초)을 그대로 두면
-        // 학기 시작 전 요일 하나에서 30초씩 멈췄다가 오류창이 뜬다 — 다섯 요일이면 2분 반이다(실측).
         // 못 누르는 것은 실패가 아니라 "이 날은 메뉴가 안 열린다" 이므로 null 로 돌려준다.
-        try
-        {
-            await page.Locator($"div.cl-grid[role=grid] >> nth={gridIdx} >> " +
-                               $"div.cl-grid-row[data-rowindex='{rowIndex}'] div[role=gridcell] >> nth={dayColumn}")
-                      .ClickAsync(new LocatorClickOptions
-                      {
-                          Button = MouseButton.Right,
-                          Timeout = (float)CellClickTimeout.TotalMilliseconds,
-                      });
-        }
-        catch (TimeoutException)
-        {
-            return null;
-        }
+        if (!await RightClickCellAsync(gridIdx, rowIndex, dayColumn)) return null;
 
         if (!await WaitMenuAsync(open: true)) return null;   // 안 열리면 = 수업 없는 날
 
