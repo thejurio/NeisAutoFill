@@ -144,6 +144,22 @@ public sealed class TimetableReader(IPage page)
     /// </summary>
     private static readonly TimeSpan CellClickTimeout = TimeSpan.FromSeconds(4);
 
+    /// <summary>우클릭 메뉴가 열려 있는지.</summary>
+    public async Task<bool> IsMenuOpenAsync() => await page.EvaluateAsync<int>(MenuCountJs) >= 5;
+
+    /// <summary>
+    /// 메뉴가 닫힐 때까지 기다리고, 그래도 열려 있으면 닫는다.
+    ///
+    /// <b>열린 메뉴는 다른 클릭을 통째로 막는다.</b> 메뉴 상자(.cl-aside)가 화면을 덮고 있어
+    /// 주차를 누르려 해도 "다른 요소가 포인터 이벤트를 가로챈다"로 실패한다(실측 2026-08-20).
+    /// 항목을 고르면 메뉴가 스스로 닫히지만 값이 먼저 바뀌므로, 값만 보고 넘어가면 이 일이 생긴다.
+    /// </summary>
+    public async Task EnsureMenuClosedAsync()
+    {
+        if (await WaitMenuAsync(open: false)) return;
+        await CloseMenuAsync();
+    }
+
     /// <summary>시간표 그리드가 실제로 그려져 있는지 (조회·주차 선택이 끝났는지).</summary>
     public async Task<bool> HasGridAsync() => await page.EvaluateAsync<int>(FindGridJs) >= 0;
 
@@ -187,6 +203,9 @@ public sealed class TimetableReader(IPage page)
         if (!await ScrollWeekRowIntoViewAsync(weekGrid, weekRowIndex))
             throw new InvalidOperationException(
                 $"주차 목록에서 {weekRowIndex + 1}번째 주를 화면에 띄우지 못했습니다.");
+
+        // 열린 메뉴가 있으면 클릭이 막힌다 — 누르기 전에 확실히 닫는다
+        await EnsureMenuClosedAsync();
 
         // 바뀌기 전 날짜를 기억해 두고 클릭한다 — 언제 바뀌었는지 알아야 기다림을 끊는다
         var before = (await ReadCurrentWeekAsync()).Dates.FirstOrDefault();
@@ -359,14 +378,24 @@ public sealed class TimetableReader(IPage page)
     /// <b>[확인]을 누르면 저장된다</b> — 자동으로 누르지 않는다(D-010, 실기기검증 §11).
     /// </summary>
     public async Task<bool> HasSaveDialogAsync() =>
-        await page.EvaluateAsync<bool>(@"() => [...document.querySelectorAll('[role=button], button, .cl-button')]
-            .some(b => {
-                const r = b.getBoundingClientRect();
-                if (!(r.width > 0 && r.height > 0)) return false;
-                for (let e = b.parentElement; e; e = e.parentElement)
-                    if ((e.innerText || '').includes('저장하시겠습니까')) return true;
-                return false;
-            })");
+        await page.EvaluateAsync<bool>(@"() => {
+          // <b>보이는 대화상자 안에</b> 그 문구가 있을 때만 참이다.
+          // 예전에는 버튼의 조상을 끝까지 훑어 문구를 찾았는데, 그러면 화면 어딘가에 남은
+          // 글자에도 걸려 저장 직후마다 헛것을 봤다 — 주차 이동이 되고도 예외가 났다(실측 2026-08-20).
+          const vis = e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+
+          const dialogs = [...document.querySelectorAll('[role=dialog]')].filter(vis);
+          if (dialogs.some(d => (d.innerText || '').includes('저장하시겠습니까'))) return true;
+
+          // role=dialog 를 안 쓰는 화면도 있어 상자 크기로 한 번 더 본다
+          return [...document.querySelectorAll('div')].some(e => {
+            if (!vis(e)) return false;
+            const r = e.getBoundingClientRect();
+            if (!(r.width > 200 && r.width < 800 && r.height > 60 && r.height < 400)) return false;
+            const btns = [...e.querySelectorAll('[role=button], button, .cl-button')].filter(vis);
+            return btns.length >= 1 && btns.length <= 4 && (e.innerText || '').includes('저장하시겠습니까');
+          });
+        }");
 
     /// <summary>
     /// 저장 확인 대화상자를 <b>[취소]</b>로 닫는다 — 저장하지 않고 변경을 버린다.

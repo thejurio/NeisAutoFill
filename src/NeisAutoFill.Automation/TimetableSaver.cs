@@ -28,6 +28,8 @@ public sealed record SaveResult(SaveOutcome Outcome, string Detail, IReadOnlyLis
 /// </summary>
 public sealed class TimetableSaver(IPage page)
 {
+    private readonly TimetableReader reader = new(page);
+
     /// <summary>이 문구가 보이면 저장을 진행해도 되는 확인창이다.</summary>
     private static readonly string[] ConfirmPhrases = { "저장하시겠습니까" };
 
@@ -38,42 +40,66 @@ public sealed class TimetableSaver(IPage page)
     {
         var seen = new List<string>();
 
+        // 메뉴가 열려 있으면 [저장] 클릭이 막힌다
+        await reader.EnsureMenuClosedAsync();
+
         var state = await ButtonStateAsync("저장");
         if (state == "not-found") return new(SaveOutcome.Failed, "[저장] 버튼을 찾지 못했습니다.", seen);
         if (state == "disabled") return new(SaveOutcome.NothingToSave, "바뀐 내용이 없습니다.", seen);
 
         await ClickByTextAsync("저장");
-        await WaitDialogAsync(appear: true);
 
-        // 확인창 → 완료창 순으로 최대 두 번까지만 처리한다. 그 뒤에도 뭔가 남으면 사람이 본다.
-        for (var step = 0; step < 2; step++)
+        // ── ① 확인창 ─────────────────────────────────────────
+        var first = await WaitForDialogAsync(previous: null);
+        if (first is null)
+            return new(SaveOutcome.Failed, "저장 확인창이 뜨지 않았습니다.", seen);
+
+        seen.Add(first);
+
+        if (CompletePhrases.Any(first.Contains))
         {
-            ct.ThrowIfCancellationRequested();
-
-            var text = await DialogTextAsync();
-            if (text is null) break;   // 더 이상 상자가 없다
-            seen.Add(text);
-
-            if (!ConfirmPhrases.Any(text.Contains) && !CompletePhrases.Any(text.Contains))
-                return new(SaveOutcome.UnknownDialog,
-                    $"모르는 대화상자라 멈췄습니다: {Trim(text)}", seen);
-
-            if (!await ClickDialogButtonAsync("확인"))
-                return new(SaveOutcome.UnknownDialog, $"[확인]을 찾지 못했습니다: {Trim(text)}", seen);
-
-            // 다음 상자(완료 알림)가 뜨거나, 아무것도 안 남을 때까지만 기다린다.
-            // 고정 1500ms 를 쓰면 주마다 3초씩 버린다.
-            await WaitDialogAsync(appear: true);
+            // 확인 없이 바로 완료 알림이 뜨는 화면도 있을 수 있다
+            return await AcknowledgeAsync(first, seen);
         }
 
-        var leftover = await DialogTextAsync();
-        if (leftover is not null)
+        if (!ConfirmPhrases.Any(first.Contains))
+            return new(SaveOutcome.UnknownDialog, $"모르는 대화상자라 멈췄습니다: {Trim(first)}", seen);
+
+        if (!await ClickDialogButtonAsync("확인"))
+            return new(SaveOutcome.UnknownDialog, $"[확인]을 찾지 못했습니다: {Trim(first)}", seen);
+
+        // ── ② 완료 알림 ───────────────────────────────────────
+        //
+        // <b>확인을 누른 직후에는 아무 상자도 없다.</b> 저장은 서버를 다녀오므로
+        // 완료 알림이 1초 남짓 뒤에 뜬다. "상자가 없다 = 저장 끝" 으로 보고 나가면
+        // 그 알림이 나중에 떠서 화면을 막고, 주차 이동이 안 된다(실측 2026-08-20).
+        // 그래서 <b>완료 알림이 실제로 뜰 때까지</b> 기다린다.
+        var done = await WaitForDialogAsync(previous: first);
+        if (done is null)
+            return new(SaveOutcome.UnknownDialog,
+                "저장 완료 알림을 확인하지 못했습니다. 나이스 화면을 확인하세요.", seen);
+
+        seen.Add(done);
+
+        if (!CompletePhrases.Any(done.Contains))
+            return new(SaveOutcome.UnknownDialog, $"모르는 대화상자라 멈췄습니다: {Trim(done)}", seen);
+
+        return await AcknowledgeAsync(done, seen);
+    }
+
+    /// <summary>완료 알림의 [확인]을 누르고, 상자가 모두 사라진 것까지 본다.</summary>
+    private async Task<SaveResult> AcknowledgeAsync(string text, List<string> seen)
+    {
+        if (!await ClickDialogButtonAsync("확인"))
+            return new(SaveOutcome.UnknownDialog, $"[확인]을 찾지 못했습니다: {Trim(text)}", seen);
+
+        if (!await WaitGoneAsync())
         {
-            seen.Add(leftover);
-            return new(SaveOutcome.UnknownDialog, $"대화상자가 남아 있습니다: {Trim(leftover)}", seen);
+            var leftover = await DialogTextAsync();
+            return new(SaveOutcome.UnknownDialog, $"대화상자가 남아 있습니다: {Trim(leftover ?? "")}", seen);
         }
 
-        return new(SaveOutcome.Saved, "저장 확인창까지 통과했습니다. 재조회로 확인하세요.", seen);
+        return new(SaveOutcome.Saved, "저장하고 알림까지 닫았습니다. 재조회로 확인하세요.", seen);
     }
 
     private static string Trim(string s) => s.Length > 80 ? s[..80] + "…" : s;
@@ -85,19 +111,34 @@ public sealed class TimetableSaver(IPage page)
     private static readonly TimeSpan DialogWait = TimeSpan.FromSeconds(15);
 
     /// <summary>
-    /// 대화상자가 뜨기를(또는 사라지기를) 기다린다.
-    /// <b>고정 대기를 쓰지 않는다</b> — 실측 메뉴·화면 반응은 100~300ms 인데
-    /// 1200~1500ms 를 기다리고 있었다(2026-08-20).
+    /// 대화상자가 뜰 때까지 기다린다. <paramref name="previous"/> 와 같은 내용은 무시한다 —
+    /// 방금 누른 상자가 아직 안 사라졌을 수 있고, 그것을 다시 붙잡으면 같은 상자를 두 번 처리한다.
+    ///
+    /// <b>중간에 상자가 하나도 없는 순간을 지나간다.</b> 저장은 서버를 다녀오므로
+    /// 확인창이 사라지고 완료 알림이 뜨기까지 빈 시간이 있다. 그 틈에 나가면 안 된다.
     /// </summary>
-    private async Task WaitDialogAsync(bool appear)
+    private async Task<string?> WaitForDialogAsync(string? previous)
     {
         var deadline = DateTime.UtcNow + DialogWait;
         while (DateTime.UtcNow < deadline)
         {
             var text = await DialogTextAsync();
-            if (appear ? text is not null : text is null) return;
+            if (text is not null && text != previous) return text;
             await Task.Delay(PollInterval);
         }
+        return null;
+    }
+
+    /// <summary>상자가 모두 사라질 때까지 기다린다.</summary>
+    private async Task<bool> WaitGoneAsync()
+    {
+        var deadline = DateTime.UtcNow + DialogWait;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await DialogTextAsync() is null) return true;
+            await Task.Delay(PollInterval);
+        }
+        return false;
     }
 
     private async Task<string> ButtonStateAsync(string label) =>

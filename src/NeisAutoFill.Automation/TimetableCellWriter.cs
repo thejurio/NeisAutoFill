@@ -127,11 +127,16 @@ public sealed class TimetableCellWriter(IPage page)
             afterText ??= "";
 
             if (Verify(afterText, target, catalog))
+            {
+                // 값은 메뉴가 닫히기 <b>전에</b> 바뀐다. 열린 채 두면 다음 클릭이 막힌다.
+                await _reader.EnsureMenuClosedAsync();
                 return new(CellWriteOutcome.Written, "입력하고 값을 확인했습니다.", afterText);
+            }
 
             await Task.Delay(PollInterval);
         }
 
+        await _reader.EnsureMenuClosedAsync();
         return new(CellWriteOutcome.VerificationFailed,
             "입력 후 값이 목표와 다릅니다. 저장하지 마세요.", afterText);
     }
