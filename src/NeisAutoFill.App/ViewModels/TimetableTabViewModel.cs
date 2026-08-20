@@ -346,6 +346,7 @@ public sealed class TimetableTabViewModel : ObservableObject
         ClearLessonCommand = new RelayCommand(ClearLesson, () => SelectedCell?.HasLesson == true);
         ResetTeachersCommand = new RelayCommand(ResetTeachers, () => _catalog is not null);
         RunCommand = new AsyncRelayCommand(RunAsync, () => CanRun);
+        StopCommand = new RelayCommand(Stop, () => IsRunning);
     }
 
     public RelayCommand LoadTimetableCommand { get; }
@@ -362,6 +363,7 @@ public sealed class TimetableTabViewModel : ObservableObject
     public RelayCommand ClearLessonCommand { get; }
     public RelayCommand ResetTeachersCommand { get; }
     public AsyncRelayCommand RunCommand { get; }
+    public RelayCommand StopCommand { get; }
 
     public ObservableCollection<TimetableGridRow> Grid { get; } = new();
     public ObservableCollection<DayHeaderVm> DayHeaders { get; } = new();
@@ -677,6 +679,31 @@ public sealed class TimetableTabViewModel : ObservableObject
 
     public bool HasWarning => _warning.Length > 0;
 
+    /// <summary>지금 나이스에 넣고 있는 중인가.</summary>
+    public bool IsRunning
+    {
+        get => _isRunning;
+        private set
+        {
+            if (!SetProperty(ref _isRunning, value)) return;
+            OnPropertyChanged(nameof(IsIdle));
+            StopCommand.RaiseCanExecuteChanged();
+            RunCommand.RaiseCanExecuteChanged();
+        }
+    }
+    private bool _isRunning;
+
+    public bool IsIdle => !_isRunning;
+
+    private CancellationTokenSource? _runCts;
+
+    /// <summary>진행 중인 작업을 멈춘다. 넣던 주는 마무리하고 다음 주로 넘어가지 않는다.</summary>
+    private void Stop()
+    {
+        _runCts?.Cancel();
+        _log("중지합니다.");
+    }
+
     public bool CanRun => _source is not null && _catalog is not null
                           && Lessons.Count > 0 && _isConnected()
                           && Subjects.All(s => !s.NeedsTeacher);
@@ -923,6 +950,8 @@ public sealed class TimetableTabViewModel : ObservableObject
 
     private void RebuildCore()
     {
+        if (_source is null) return;   // Rebuild 가 이미 걸렀지만, 컴파일러가 알도록 여기서도 본다
+
         var lessons = Lessons;
 
         Weeks.Clear();
@@ -1514,20 +1543,34 @@ public sealed class TimetableTabViewModel : ObservableObject
 
         var range = new TimetableRangeChoice(_from.Value, _to.Value, AllowOverwrite);
 
+        _runCts = new CancellationTokenSource();
+        IsRunning = true;
         try
         {
             var flow = new Helpers.TimetableFlow(_session, _log);
             var result = await flow.RunPreparedAsync(
-                Lessons, _rules, range, Application.Current.MainWindow, _progress);
+                Lessons, _rules, range, Application.Current.MainWindow, _progress, _runCts.Token);
 
             _log(result.Message);
             MessageBox.Show(result.Message, "연간 시간표", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (OperationCanceledException)
+        {
+            _log("중지했습니다. 저장된 주는 그대로 남아 있습니다.");
         }
         catch (Exception ex)
         {
             Warn($"시간표 오류: {ex.Message}");
         }
+        finally
+        {
+            IsRunning = false;
+            _runCts?.Dispose();
+            _runCts = null;
+            Rebuild();
+        }
     }
+
 
     private static string Korean(DayOfWeek d) => d switch
     {

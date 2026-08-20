@@ -11,11 +11,12 @@ namespace NeisAutoFill.App.Helpers;
 /// 연간 시간표 자동입력의 전체 흐름을 한 곳에 모은다 (BatchUploadFlow 와 같은 역할).
 ///
 /// <code>
-/// (시간표 탭에서 문서·기간을 정한 뒤) 나이스 준비·카탈로그 → 매핑 창 → 실행 계획
-///   → 동의 창 → 주 단위 입력·저장·검증 → 결과 창
+/// (시간표 탭에서 문서·기간·교사를 정한 뒤) 나이스 준비·카탈로그 → 실행 계획
+///   → 주 단위 입력·저장·검증 → 결과 창
 /// </code>
 ///
-/// 계획까지는 나이스를 <b>읽기만</b> 한다. 되돌릴 수 없는 첫 행동은 동의 창의 [입력 시작]이다.
+/// 되돌릴 수 없는 첫 행동은 탭의 <b>[입력 시작]</b>이다. 누르면 바로 시작하고,
+/// 그 버튼은 <b>[작업 중지]</b>로 바뀐다 — 확인 창을 한 번 더 띄우지 않는다.
 /// </summary>
 public sealed class TimetableFlow(TimetableSession session, Action<string> log)
 {
@@ -33,11 +34,12 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
         IReadOnlyList<TimetableMappingRule> rules,
         TimetableRangeChoice range,
         Window? owner,
-        IProgress<ProgressInfo>? progress = null)
+        IProgress<ProgressInfo>? progress = null,
+        CancellationToken ct = default)
     {
         if (lessons.Count == 0) return new(null, "넣을 수업이 없습니다.");
 
-        var pre = await session.PreflightAsync(lessons.Min(l => l.Cell.Date), progress);
+        var pre = await session.PreflightAsync(lessons.Min(l => l.Cell.Date), progress, ct);
         if (!pre.Ok) return new(null, pre.Message);
 
         log(pre.Message);
@@ -58,7 +60,7 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
 
         if (!plan.CanRun) return new(plan, Describe(plan));
 
-        return await RunPlanAsync(plan, inTerm, rules, range, owner, progress);
+        return await RunPlanAsync(plan, inTerm, rules, range, owner, progress, ct);
     }
 
     /// <summary>나이스가 아는 학기 안의 수업만. 학기 밖 날짜는 화면에 존재하지도 않는다.</summary>
@@ -67,30 +69,32 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
             (session.TermStart is null || l.Cell.Date >= session.TermStart) &&
             (session.TermEnd is null || l.Cell.Date <= session.TermEnd)).ToList();
 
-    /// <summary>
-    /// 동의를 받고 실제로 입력·저장한다. 멈추면 결과 창에서 이어서 다시 시도할 수 있다.
-    /// </summary>
+    /// <summary>실제로 입력·저장한다. 멈추면 결과 창에서 이어서 다시 시도할 수 있다.</summary>
     private async Task<Result> RunPlanAsync(
         TimetablePlan plan,
         IReadOnlyList<TimetableSourceLesson> lessons,
         IReadOnlyList<TimetableMappingRule> rules,
         TimetableRangeChoice range,
         Window? owner,
-        IProgress<ProgressInfo>? progress)
+        IProgress<ProgressInfo>? progress,
+        CancellationToken ct)
     {
         var checkpoint = session.ResumePoint(plan, out var blocker);
         if (blocker is not null) log($"이전 기록을 이어서 쓰지 않습니다 — {blocker}");
 
-        if (!TimetableRunConsentWindow.Ask(plan, checkpoint, blocker, range, owner))
-            return new(plan, "입력을 취소했습니다. 나이스는 그대로입니다.");
+        log($"입력을 시작합니다 — {range.From:yyyy-MM-dd}~{range.To:yyyy-MM-dd} · 주 {plan.ByWeek.Count}개" +
+            (range.AllowOverwrite ? " · 기존 값 덮어씀" : ""));
 
         while (true)
         {
             var result = await session.RunBatchAsync(
-                plan, lessons, rules, checkpoint, range.AllowOverwrite, progress);
+                plan, lessons, rules, checkpoint, range.AllowOverwrite, progress, ct);
             checkpoint = result.Checkpoint;
 
             foreach (var week in result.Weeks) log(week.Describe());
+
+            // 사용자가 중지했으면 결과 창을 띄우지 않는다 — 스스로 멈춘 것을 다시 물을 이유가 없다
+            if (ct.IsCancellationRequested) return new(plan, Summarize(result));
 
             // 멈췄으면 사용자가 문제를 해결하고 [이어서 다시 시도]를 누를 수 있다
             if (!TimetableResultWindow.AskRetry(result, owner))

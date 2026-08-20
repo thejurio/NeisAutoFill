@@ -99,7 +99,7 @@ public sealed class TimetableBatchRunner(
         foreach (var weekStart in request.Weeks)
         {
             if (ct.IsCancellationRequested)
-                return new(outcomes, checkpoint, "사용자가 취소했습니다.");
+                return new(outcomes, checkpoint, "중지했습니다.");
 
             done++;
 
@@ -164,7 +164,9 @@ public sealed class TimetableBatchRunner(
 
         foreach (var a in targets.OrderBy(a => a.Cell.Date).ThenBy(a => a.Cell.Period))
         {
-            if (ct.IsCancellationRequested) return Stop("사용자가 취소했습니다.", records);
+            // 중지하면 <b>그 자리에서 그냥 멈춘다.</b> 저장하지 않는다.
+            if (ct.IsCancellationRequested)
+                return Stop("중지했습니다.", records);
 
             progress?.Report(new($"{a.Cell} 입력 중…", ++cellDone, targets.Count));
 
@@ -231,8 +233,7 @@ public sealed class TimetableBatchRunner(
         if (other is not null) await reader.SelectWeekAsync(other.Index);
         await reader.SelectWeekAsync(mine.Index);
 
-        ct.ThrowIfCancellationRequested();
-
+        // 저장까지 끝낸 뒤다 — 여기서 끊으면 저장됐는지 확인을 못 한 채 멈춘다. 끝까지 본다.
         var snapshot = await reader.ReadCurrentWeekAsync();
 
         foreach (var a in targets)

@@ -393,8 +393,8 @@
                             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,12,10,12">
                                 <StackPanel>
 
-                                    <!-- ① 문서 -->
-                                    <Border>
+                                    <!-- ① 문서 — 입력 중에는 잠근다. 도중에 자료가 바뀌면 결과를 믿을 수 없다 -->
+                                    <Border IsEnabled="{Binding IsIdle}">
                                         <Border.Style>
                                             <Style TargetType="Border" BasedOn="{StaticResource StepCard}">
                                                 <Style.Triggers>
@@ -421,7 +421,7 @@
                                     </Border>
 
                                     <!-- ② 나이스 -->
-                                    <Border>
+                                    <Border IsEnabled="{Binding IsIdle}">
                                         <Border.Style>
                                             <Style TargetType="Border" BasedOn="{StaticResource StepCard}">
                                                 <Style.Triggers>
@@ -449,7 +449,7 @@
                                     </Border>
 
                                     <!-- ③ 교사 배정 (오른쪽 표에서 한다) -->
-                                    <Border>
+                                    <Border IsEnabled="{Binding IsIdle}">
                                         <Border.Style>
                                             <Style TargetType="Border" BasedOn="{StaticResource StepCard}">
                                                 <Style.Triggers>
@@ -488,6 +488,7 @@
                                         <StackPanel IsEnabled="{Binding HasSource}">
                                             <TextBlock Text="④ 범위와 입력" Style="{StaticResource StepTitle}" Margin="0,0,0,7"/>
 
+                                            <StackPanel IsEnabled="{Binding IsIdle}">
                                             <ComboBox Style="{StaticResource Combo}" ItemsSource="{Binding Semesters}"
                                                       SelectedItem="{Binding SelectedSemester}" HorizontalAlignment="Stretch">
                                                 <ComboBox.ItemTemplate>
@@ -509,6 +510,7 @@
                                                       FontSize="12" Margin="0,8,0,0"
                                                       ToolTip="끄면 값이 있는 칸에서 멈춥니다.&#10;나이스 시간표는 기준시간표로 이미 채워져 있는 경우가 많습니다."/>
                                             <TextBlock Text="{Binding Summary}" Style="{StaticResource StepNote}"/>
+                                            </StackPanel>
 
                                             <Border Padding="10,8" Background="#FFF7ED" BorderBrush="#FDBA74"
                                                     BorderThickness="1" CornerRadius="6" Margin="0,10,0,8"
@@ -516,12 +518,25 @@
                                                 <TextBlock Text="{Binding Warning}" FontSize="11.5" Foreground="#9A3412"
                                                            TextWrapping="Wrap"/>
                                             </Border>
+                                            <!-- 누르면 바로 시작한다. 확인 창을 한 번 더 띄우지 않는다. -->
                                             <Button Style="{StaticResource PrimaryButton}" Content="▶ 입력 시작"
                                                     Command="{Binding RunCommand}" HorizontalAlignment="Stretch"
                                                     Padding="10,9" FontSize="13.5" ToolTipService.ShowOnDisabled="True"
-                                                    ToolTip="주 단위로 넣고 저장하고 다시 조회해 확인합니다.&#10;시작 전에 동의 창이 한 번 더 뜹니다."/>
-                                            <TextBlock Text="입력 중에는 나이스 창을 건드리지 마세요."
-                                                       Style="{StaticResource StepNote}"/>
+                                                    Visibility="{Binding IsIdle, Converter={StaticResource BoolToVis}}"
+                                                    ToolTip="누르면 곧바로 나이스에 넣기 시작합니다.&#10;주마다 넣고 저장하고 다시 조회해 확인합니다."/>
+
+                                            <Button Style="{StaticResource DangerGhostButton}" Content="■ 작업 중지"
+                                                    Command="{Binding StopCommand}" HorizontalAlignment="Stretch"
+                                                    Padding="10,9" FontSize="13.5"
+                                                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}"
+                                                    ToolTip="바로 멈춥니다.&#10;이미 저장된 주는 그대로 남고, 다음에 이어서 할 수 있습니다."/>
+
+                                            <TextBlock Style="{StaticResource StepNote}"
+                                                       Visibility="{Binding IsIdle, Converter={StaticResource BoolToVis}}"
+                                                       Text="누르면 바로 시작합니다. 저장한 것은 프로그램이 되돌리지 못하니 기간을 확인하세요."/>
+                                            <TextBlock Style="{StaticResource StepNote}" Foreground="#B45309"
+                                                       Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}"
+                                                       Text="입력 중입니다. 나이스 창을 건드리지 마세요."/>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
