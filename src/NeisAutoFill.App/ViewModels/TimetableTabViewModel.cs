@@ -169,12 +169,13 @@ public sealed class SubjectAssignmentRow : ObservableObject
 
     public SubjectAssignmentRow(
         string subject, IReadOnlyList<string> tokens, IReadOnlyList<TeacherChoice> candidates,
-        int assigned, int? standard, bool known, bool specialist,
+        int assigned, int? standard, bool known, bool specialist, int covered,
         Action<SubjectAssignmentRow> onTeacherChanged, Action<string, int?> onStandardChanged)
     {
         Subject = subject;
         IsKnown = known;
         IsSpecialist = specialist;
+        Covered = covered;
         Tokens = tokens;
         Candidates = candidates;
         Assigned = assigned;
@@ -195,8 +196,20 @@ public sealed class SubjectAssignmentRow : ObservableObject
     /// </summary>
     public bool IsKnown { get; }
 
-    /// <summary>문서에서 <b>전담 교사</b>(초록 글씨)로 표시된 과목인가.</summary>
+    /// <summary>문서에서 <b>전담 교사</b>(초록 글씨)로 표시된 시간이 있는 과목인가.</summary>
     public bool IsSpecialist { get; }
+
+    /// <summary>예외가 덮고 있는 시간 수 — 여기 고른 교사가 적용되지 <b>않는</b> 시간이다.</summary>
+    public int Covered { get; }
+
+    public bool HasCovered => Covered > 0;
+
+    /// <summary>모든 시간이 예외로 덮여 있다 — 기본 교사를 바꿔도 화면이 안 바뀐다.</summary>
+    public bool FullyCovered => Covered >= Assigned && Assigned > 0;
+
+    public string CoveredText => Covered == 0 ? ""
+        : FullyCovered ? $"전부 예외 {Covered}시간"
+        : $"예외 {Covered}시간";
 
     /// <summary>문서에 적힌 그대로 ("융"). 사전에 있는 표기면 빈 문자열 — 굳이 보여 줄 것이 없다.</summary>
     public string TokenHint => IsKnown ? "" : $"문서 표기: {string.Join(", ", Tokens)}";
@@ -939,8 +952,13 @@ public sealed class TimetableTabViewModel : ObservableObject
             // 그래서 과목 기본은 언제나 담임으로 두고, 초록 칸은 아래에서 예외로 만든다.
             var hasGreen = group.Any(l => l.Specialist);
 
+            // 예외가 덮는 시간 — 여기 고른 교사가 적용되지 않는 시간이다
+            var covered = group.Count(l => _rules.Any(r =>
+                r.Scope.Kind != MappingScopeKind.Default &&
+                tokens.Contains(r.SourceToken) && r.Scope.Matches(l.Cell)));
+
             var row = new SubjectAssignmentRow(
-                group.Key, tokens, candidates, group.Count(), standard, known, hasGreen,
+                group.Key, tokens, candidates, group.Count(), standard, known, hasGreen, covered,
                 OnTeacherChanged, OnStandardEdited);
 
             // 순서: ① 저장·기존 규칙 ② 화면에서 방금 고른 것 ③ 자동 배정.
@@ -1226,7 +1244,12 @@ public sealed class TimetableTabViewModel : ObservableObject
 
     private void OnTeacherChanged(SubjectAssignmentRow row)
     {
-        // 그 과목의 기본 규칙을 갈아 끼운다 (예외 규칙은 건드리지 않는다)
+        // 고른 교사가 예외에 가려 적용되지 못하는지 먼저 본다.
+        // 예외가 없거나 이미 같은 교사를 가리키면 묻지 않는다 —
+        // 결과가 달라지지 않는 일로 사람을 멈춰 세우면 안 된다.
+        if (row.Teacher is not null && !ResolveConflict(row)) return;
+
+        // 그 과목의 기본 규칙을 갈아 끼운다
         _rules.RemoveAll(r => r.Scope.Kind == MappingScopeKind.Default && row.Tokens.Contains(r.SourceToken));
 
         if (row.Teacher is not null)
@@ -1234,10 +1257,56 @@ public sealed class TimetableTabViewModel : ObservableObject
                 _rules.Add(new TimetableMappingRule(token, row.Teacher.TargetKey, MappingScope.Default,
                     IsUserConfirmed: true, _catalog?.Fingerprint ?? ""));
 
-        BuildGrid();
-        Warning = BuildWarning();
         _session.SaveRules(_rules);
-        RefreshRunnable();
+        Rebuild();
+    }
+
+    /// <summary>
+    /// 예외가 새로 고른 교사를 가리고 있으면 어떻게 할지 묻는다.
+    /// 계속 진행해도 되면 true, 사용자가 취소하면 false.
+    /// </summary>
+    private bool ResolveConflict(SubjectAssignmentRow row)
+    {
+        var target = row.Teacher!.TargetKey;
+
+        // 대상이 <b>다른</b> 예외만 문제다. 같은 교사를 가리키는 예외는 결과가 같다.
+        var conflicting = _rules
+            .Where(r => r.Scope.Kind != MappingScopeKind.Default)
+            .Where(r => row.Tokens.Contains(r.SourceToken))
+            .Where(r => r.TargetStableKey != target)
+            .ToList();
+
+        if (conflicting.Count == 0) return true;
+
+        var otherKey = conflicting[0].TargetStableKey;
+        var otherName = otherKey == TimetableMappingRule.SkipKey
+            ? "입력 안 함"
+            : _catalog?.Find(otherKey)?.TeacherName ?? "다른 교사";
+
+        var choice = TeacherConflictWindow.Ask(
+            row.Subject, row.Teacher.Label, otherName,
+            row.Covered,
+            conflicting.Count(r => r.Scope.Kind != MappingScopeKind.SpecificDate),
+            conflicting.Count(r => r.Scope.Kind == MappingScopeKind.SpecificDate),
+            row.FullyCovered,
+            Application.Current.MainWindow);
+
+        switch (choice)
+        {
+            case TeacherConflictChoice.Replace:
+                foreach (var r in conflicting) _rules.Remove(r);
+                _log($"{row.Subject} 예외 {conflicting.Count}건을 지우고 {row.Teacher.Label} 로 바꿨습니다.");
+                return true;
+
+            case TeacherConflictChoice.Keep:
+                _log($"{row.Subject} 예외 {conflicting.Count}건은 그대로 두고 나머지 시간만 바꿨습니다.");
+                return true;
+
+            default:
+                // 취소 — 화면의 선택을 되돌린다
+                Rebuild();
+                return false;
+        }
     }
 
     /// <summary>
