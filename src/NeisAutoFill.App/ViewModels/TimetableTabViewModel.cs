@@ -313,6 +313,16 @@ public sealed class TimetableTabViewModel : ObservableObject
     /// <summary>전담 예외는 카탈로그를 읽은 뒤 한 번만 얹는다 — 되풀이하면 같은 규칙이 쌓인다.</summary>
     private bool _specialistApplied;
 
+    /// <summary>
+    /// 화면을 다시 그리는 중인가.
+    ///
+    /// <b>그릴 때 넣는 값은 사용자 조작이 아니다.</b> 표를 만들면서 교사 칸에 값을 넣으면
+    /// 그 세터가 "사용자가 바꿨다"로 알아듣고 다시 그리기를 부르는데,
+    /// 그러면 그리기 → 대입 → 그리기 로 끝없이 돌아 프로그램이 스택 오버플로로 죽는다
+    /// (실측 2026-08-20: 과목·교사 불러오기에서 즉사).
+    /// </summary>
+    private bool _building;
+
     public TimetableTabViewModel(
         TimetableSession session, Action<string> log,
         IProgress<ProgressInfo>? progress, Func<bool> isConnected)
@@ -822,6 +832,17 @@ public sealed class TimetableTabViewModel : ObservableObject
     /// <summary>나이스에서 과목·교사 목록을 읽는다 — 교사를 배정하려면 이것이 먼저다.</summary>
     private async Task LoadCatalogAsync()
     {
+        try { await LoadCatalogCoreAsync(); }
+        catch (Exception ex)
+        {
+            // 나이스 화면은 늘 예상대로 있지 않다. 여기서 터지면 프로그램이 통째로 죽는다.
+            CatalogState = "실패";
+            Warn($"과목·교사를 불러오지 못했습니다. {ex.Message}");
+        }
+    }
+
+    private async Task LoadCatalogCoreAsync()
+    {
         var target = _from ?? DateOnly.FromDateTime(DateTime.Today);
 
         var pre = await _session.PreflightAsync(target, _progress);
@@ -893,7 +914,15 @@ public sealed class TimetableTabViewModel : ObservableObject
     private void Rebuild()
     {
         if (_suspendRefresh || _source is null) return;
+        if (_building) return;   // 다시 들어오지 않는다 — 그리는 중에 또 그리면 끝이 없다
 
+        _building = true;
+        try { RebuildCore(); }
+        finally { _building = false; }
+    }
+
+    private void RebuildCore()
+    {
         var lessons = Lessons;
 
         Weeks.Clear();
@@ -1275,6 +1304,9 @@ public sealed class TimetableTabViewModel : ObservableObject
 
     private void OnTeacherChanged(SubjectAssignmentRow row)
     {
+        // 화면을 그리는 중의 대입은 사용자 조작이 아니다 — 여기서 막지 않으면 무한 재귀다
+        if (_building) return;
+
         // 고른 교사가 예외에 가려 적용되지 못하는지 먼저 본다.
         // 예외가 없거나 이미 같은 교사를 가리키면 묻지 않는다 —
         // 결과가 달라지지 않는 일로 사람을 멈춰 세우면 안 된다.
@@ -1359,6 +1391,8 @@ public sealed class TimetableTabViewModel : ObservableObject
 
     private void OnStandardEdited(string subject, int? value)
     {
+        if (_building) return;
+
         if (value is null) _standardEdits.Remove(subject);
         else _standardEdits[subject] = value.Value;
     }

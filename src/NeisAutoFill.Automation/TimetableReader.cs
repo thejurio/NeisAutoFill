@@ -92,6 +92,12 @@ public sealed class TimetableReader(IPage page)
             .some(t => { const r = t.getBoundingClientRect();
                          return r.width > 0 && r.height > 0 && (t.innerText || '').includes('학급시간표'); })");
 
+    /// <summary>
+    /// 셀을 우클릭할 때 기다릴 시간.
+    /// 없는 셀을 30초씩 기다리면 요일마다 멈춰 프로그램이 멎은 것처럼 보인다.
+    /// </summary>
+    private static readonly TimeSpan CellClickTimeout = TimeSpan.FromSeconds(4);
+
     /// <summary>시간표 그리드가 실제로 그려져 있는지 (조회·주차 선택이 끝났는지).</summary>
     public async Task<bool> HasGridAsync() => await page.EvaluateAsync<int>(FindGridJs) >= 0;
 
@@ -231,9 +237,24 @@ public sealed class TimetableReader(IPage page)
         var gridIdx = await page.EvaluateAsync<int>(FindGridJs);
         if (gridIdx < 0) throw new InvalidOperationException("시간표 그리드를 찾지 못했습니다.");
 
-        await page.Locator($"div.cl-grid[role=grid] >> nth={gridIdx} >> " +
-                           $"div.cl-grid-row[data-rowindex='{rowIndex}'] div[role=gridcell] >> nth={dayColumn}")
-                  .ClickAsync(new LocatorClickOptions { Button = MouseButton.Right });
+        // 셀이 없으면 <b>빨리 포기한다</b>. 기본 타임아웃(30초)을 그대로 두면
+        // 학기 시작 전 요일 하나에서 30초씩 멈췄다가 오류창이 뜬다 — 다섯 요일이면 2분 반이다(실측).
+        // 못 누르는 것은 실패가 아니라 "이 날은 메뉴가 안 열린다" 이므로 null 로 돌려준다.
+        try
+        {
+            await page.Locator($"div.cl-grid[role=grid] >> nth={gridIdx} >> " +
+                               $"div.cl-grid-row[data-rowindex='{rowIndex}'] div[role=gridcell] >> nth={dayColumn}")
+                      .ClickAsync(new LocatorClickOptions
+                      {
+                          Button = MouseButton.Right,
+                          Timeout = (float)CellClickTimeout.TotalMilliseconds,
+                      });
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
+
         await page.WaitForTimeoutAsync((float)Timings.TimetableMenuOpen.TotalMilliseconds);
 
         // 열린 메뉴 안에서만 수집 — 같은 텍스트의 다른 버튼을 잡지 않기 위해(D-005)
