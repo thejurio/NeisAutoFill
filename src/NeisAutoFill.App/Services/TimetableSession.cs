@@ -187,6 +187,12 @@ public sealed class TimetableSession(
             progress, ct);
     }
 
+    /// <summary>저장해 둔 교사 배정을 지운다 — 자동 배정부터 다시 하고 싶을 때.</summary>
+    public void ClearRules()
+    {
+        if (Scope is not null) profiles.Delete(Scope);
+    }
+
     /// <summary>이 범위의 재개 기록을 지운다 — 처음부터 다시 하고 싶을 때.</summary>
     public void ClearCheckpoint()
     {

@@ -297,6 +297,9 @@ public sealed class TimetableTabViewModel : ObservableObject
     private TimetableCatalog? _catalog;
     private bool _suspendRefresh;
 
+    /// <summary>전담 예외는 카탈로그를 읽은 뒤 한 번만 얹는다 — 되풀이하면 같은 규칙이 쌓인다.</summary>
+    private bool _specialistApplied;
+
     public TimetableTabViewModel(
         TimetableSession session, Action<string> log,
         IProgress<ProgressInfo>? progress, Func<bool> isConnected)
@@ -318,6 +321,7 @@ public sealed class TimetableTabViewModel : ObservableObject
         RemoveExceptionCommand = new RelayCommand<ExceptionRow>(RemoveException);
         ChangeSubjectCommand = new RelayCommand(ChangeSubject, () => SelectedCell is not null && SelectedSubject is not null);
         ClearLessonCommand = new RelayCommand(ClearLesson, () => SelectedCell?.HasLesson == true);
+        ResetTeachersCommand = new RelayCommand(ResetTeachers, () => _catalog is not null);
         RunCommand = new AsyncRelayCommand(RunAsync, () => CanRun);
     }
 
@@ -333,6 +337,7 @@ public sealed class TimetableTabViewModel : ObservableObject
     public RelayCommand<ExceptionRow> RemoveExceptionCommand { get; }
     public RelayCommand ChangeSubjectCommand { get; }
     public RelayCommand ClearLessonCommand { get; }
+    public RelayCommand ResetTeachersCommand { get; }
     public AsyncRelayCommand RunCommand { get; }
 
     public ObservableCollection<TimetableGridRow> Grid { get; } = new();
@@ -699,6 +704,7 @@ public sealed class TimetableTabViewModel : ObservableObject
         _lessons.AddRange(parsed.Lessons);
         _standardEdits.Clear();
         _extraHolidays.Clear();
+        _specialistApplied = false;
         TimetableFileName = Path.GetFileName(path);
         // 교사 배정(_rules)은 지우지 않는다 — 같은 학급이면 문서를 다시 넣어도 그대로 쓴다
 
@@ -814,6 +820,15 @@ public sealed class TimetableTabViewModel : ObservableObject
 
         OnPropertyChanged(nameof(HasCatalog));
         Rebuild();
+
+        // 기본 교사가 정해진 뒤에 전담 예외를 얹는다 — 순서가 바뀌면 후보를 못 찾는다
+        if (_catalog is not null && !_specialistApplied)
+        {
+            _specialistApplied = true;
+            ApplySpecialistRules(_lessons);
+            _session.SaveRules(_rules);
+            Rebuild();
+        }
     }
 
     private static string? AskFile(string title)
@@ -920,12 +935,12 @@ public sealed class TimetableTabViewModel : ObservableObject
 
             var known = TimetableTokenNormalizer.Normalize(tokens[0]).IsKnownAlias;
 
-            // 문서가 전담(초록)으로 표시한 시간이 <b>절반을 넘으면</b> 그 과목은 전담 과목으로 본다.
-            // 몇 칸만 초록이면 그건 예외지 과목 전체의 성격이 아니다.
-            var specialist = group.Count(l => l.Specialist) * 2 > group.Count();
+            // 전담(초록)은 <b>그 수업 한 칸</b>의 담당을 바꾸는 것이지 과목의 성격이 아니다.
+            // 그래서 과목 기본은 언제나 담임으로 두고, 초록 칸은 아래에서 예외로 만든다.
+            var hasGreen = group.Any(l => l.Specialist);
 
             var row = new SubjectAssignmentRow(
-                group.Key, tokens, candidates, group.Count(), standard, known, specialist,
+                group.Key, tokens, candidates, group.Count(), standard, known, hasGreen,
                 OnTeacherChanged, OnStandardEdited);
 
             // 순서: ① 저장·기존 규칙 ② 화면에서 방금 고른 것 ③ 자동 배정.
@@ -938,7 +953,7 @@ public sealed class TimetableTabViewModel : ObservableObject
                 : previous.TryGetValue(group.Key, out var kept) && kept is not null
                   && candidates.FirstOrDefault(c => c.TargetKey == kept.TargetKey) is { } same
                     ? same
-                : AutoPick(candidates, specialist);
+                : AutoPick(candidates);
 
             Subjects.Add(row);
         }
@@ -979,16 +994,11 @@ public sealed class TimetableTabViewModel : ObservableObject
     private string _creativeSummary = "";
 
     /// <summary>
-    /// 교사를 자동으로 고른다.
-    ///
-    /// <list type="bullet">
-    /// <item>보통은 <b>담임</b>(지금 로그인한 교사) — 학급시간표는 담임이 대부분을 맡는다</item>
-    /// <item>문서가 전담으로 표시한 과목이면 <b>담임이 아닌 교사</b>. 단 그런 교사가 딱 하나일 때만 —
-    ///       여럿이면 누구인지 알 수 없으니 사람이 고른다(D-002)</item>
-    /// <item>후보가 하나뿐이면 그것</item>
-    /// </list>
+    /// 과목의 <b>기본</b> 교사를 자동으로 고른다 — 언제나 담임(지금 로그인한 교사)이다.
+    /// 학급시간표관리는 담임 화면이고, 전담이 맡는 시간은 칸 단위 예외로 따로 잡는다.
+    /// 후보가 하나뿐이면 그것. 담임을 못 찾으면 고르지 않는다(D-002).
     /// </summary>
-    private TeacherChoice? AutoPick(IReadOnlyList<TeacherChoice> candidates, bool specialist)
+    private TeacherChoice? AutoPick(IReadOnlyList<TeacherChoice> candidates)
     {
         var matched = candidates.Where(c => c.IsMatch).ToList();
         if (matched.Count == 0) return null;
@@ -998,10 +1008,63 @@ public sealed class TimetableTabViewModel : ObservableObject
         if (string.IsNullOrEmpty(homeroom)) return null;
 
         var mine = matched.Where(c => c.Option?.TeacherName == homeroom).ToList();
-        var others = matched.Where(c => c.Option?.TeacherName != homeroom).ToList();
-
-        if (specialist) return others.Count == 1 ? others[0] : null;
         return mine.Count == 1 ? mine[0] : null;
+    }
+
+    /// <summary>
+    /// 문서가 초록으로 표시한 칸을 <b>전담 예외</b>로 만든다.
+    ///
+    /// 과목 기본은 담임 그대로 두고, 그 시간만 담임이 아닌 교사로 바꾼다.
+    /// 같은 요일·교시가 <b>늘</b> 초록이면 정기 예외 하나로 묶고,
+    /// 몇 번만 초록이면 그 날짜만 바꾼다 — 사람이 손으로 하는 것과 같은 결과다.
+    /// </summary>
+    private void ApplySpecialistRules(IReadOnlyList<TimetableSourceLesson> lessons)
+    {
+        if (_catalog is null || string.IsNullOrEmpty(_session.HomeroomTeacher)) return;
+
+        var made = 0;
+
+        foreach (var subject in lessons.GroupBy(l => l.SourceToken))
+        {
+            if (!subject.Any(l => l.Specialist)) continue;
+
+            // 이 과목의 전담 후보 — 담임이 아닌 교사가 딱 하나일 때만 자동으로 정한다
+            var others = MatchingOptions(subject.Key)
+                .Where(o => o.TeacherName != _session.HomeroomTeacher).ToList();
+            if (others.Count != 1) continue;
+
+            var target = others[0].StableKey;
+
+            foreach (var slot in subject.GroupBy(l => (l.Cell.DayOfWeek, l.Cell.Period)))
+            {
+                var green = slot.Where(l => l.Specialist).ToList();
+                if (green.Count == 0) continue;
+
+                if (green.Count == slot.Count())
+                {
+                    // 그 요일·교시는 늘 전담이다
+                    AddRule(subject.Key, target, MappingScope.ForDayPeriod(slot.Key.DayOfWeek, slot.Key.Period));
+                    made++;
+                }
+                else
+                {
+                    foreach (var l in green)
+                    {
+                        AddRule(subject.Key, target, MappingScope.ForDate(l.Cell.Date, l.Cell.Period));
+                        made++;
+                    }
+                }
+            }
+        }
+
+        if (made > 0) _log($"문서의 전담 표시(초록)로 예외 {made}건을 만들었습니다.");
+    }
+
+    private void AddRule(string token, string target, MappingScope scope)
+    {
+        _rules.RemoveAll(r => r.SourceToken == token && r.Scope == scope);
+        _rules.Add(new TimetableMappingRule(token, target, scope, IsUserConfirmed: true,
+            _catalog?.Fingerprint ?? ""));
     }
 
     /// <summary>
@@ -1175,6 +1238,23 @@ public sealed class TimetableTabViewModel : ObservableObject
         Warning = BuildWarning();
         _session.SaveRules(_rules);
         RefreshRunnable();
+    }
+
+    /// <summary>
+    /// 저장해 둔 교사 배정을 버리고 자동 배정부터 다시 한다.
+    /// 저장된 규칙이 자동 배정보다 우선하므로, 예전에 잘못 고른 값이 계속 되살아난다 —
+    /// 그걸 되돌릴 길이 화면에 있어야 한다.
+    /// </summary>
+    private void ResetTeachers()
+    {
+        _rules.Clear();
+        _session.ClearRules();
+        _log("교사 배정을 지웠습니다. 담임 기준으로 다시 배정합니다.");
+
+        Rebuild();
+        ApplySpecialistRules(_lessons);
+        _session.SaveRules(_rules);
+        Rebuild();
     }
 
     private void OnStandardEdited(string subject, int? value)

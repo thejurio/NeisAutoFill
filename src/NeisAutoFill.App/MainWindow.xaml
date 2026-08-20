@@ -501,6 +501,10 @@
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,7">
                                     <TextBlock Text="과목별 담당 교사와 시수" FontWeight="Bold" FontSize="13"
                                                Foreground="{StaticResource Ink}" VerticalAlignment="Center"/>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="배정 초기화"
+                                            Command="{Binding ResetTeachersCommand}" Padding="10,3" Margin="10,0,0,0"
+                                            FontSize="11.5"
+                                            ToolTip="저장해 둔 교사 배정을 버리고 담임 기준으로 다시 배정합니다.&#10;예전에 잘못 고른 값이 되살아날 때 쓰세요."/>
                                     <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" FontSize="11"
                                                Foreground="#94A3B8" Margin="10,0,0,0"
                                                Text="과목 · 담당 교사 · 배정 / 기준 / 차이"/>
@@ -546,6 +550,9 @@
                                                                 <TextBlock Text="모르는 표기" FontSize="9.5" Foreground="#B45309"
                                                                            Visibility="{Binding IsKnown, Converter={StaticResource TrueToCollapsed}}"
                                                                            ToolTip="{Binding TokenHint}"/>
+                                                                <TextBlock Text="전담 시간 있음" FontSize="9.5" Foreground="#047857"
+                                                                           Visibility="{Binding IsSpecialist, Converter={StaticResource BoolToVis}}"
+                                                                           ToolTip="문서에 초록으로 표시된 시간이 있습니다.&#10;그 시간만 전담 교사로 바뀌고, 나머지는 여기 고른 교사입니다."/>
                                                             </StackPanel>
 
                                                             <ComboBox Grid.Column="1" ItemsSource="{Binding Candidates}"

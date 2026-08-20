@@ -220,4 +220,61 @@ public class TimetableTeacherAssignmentTests
         Assert.False(plan.CanRun);
     }
 
+    // ── 전담 = 그 시간만 바꾸는 것 ─────────────────────────
+
+    [Fact]
+    public void 전담은_과목_기본이_아니라_그_시간만_바꾼다()
+    {
+        // 문서가 초록으로 표시한 시간만 전담이고, 나머지는 담임 그대로다.
+        // "국어 담당은 B선생님" 이 아니라 "월 3교시 국어만 B선생님" 이다.
+        var rules = new[]
+        {
+            기본("국어(교사A(a))"),                                   // 담임
+            new TimetableMappingRule("국", 키("국어(교사B(b))"),        // 전담 시간
+                MappingScope.ForDayPeriod(DayOfWeek.Monday, 3), true),
+        };
+
+        Assert.Equal("교사B", 교사(new TimetableCell(월, 3), rules));      // 초록이던 시간
+        Assert.Equal("교사A", 교사(new TimetableCell(월, 1), rules));      // 같은 과목 다른 시간
+        Assert.Equal("교사A", 교사(new TimetableCell(월.AddDays(2), 3), rules));
+    }
+
+    [Fact]
+    public void 과목이_통째로_전담이면_그_요일_교시마다_예외가_생긴다()
+    {
+        // 모든 영어 시간이 초록이면, 영어가 놓인 요일·교시마다 예외가 하나씩 생긴다.
+        // 결과는 "영어는 전부 전담" 과 같지만, 근거가 칸에 남아 되돌리기 쉽다.
+        var rules = new[]
+        {
+            기본("국어(교사A(a))"),
+            new TimetableMappingRule("국", 키("국어(교사C(c))"),
+                MappingScope.ForDayPeriod(DayOfWeek.Monday, 1), true),
+            new TimetableMappingRule("국", 키("국어(교사C(c))"),
+                MappingScope.ForDayPeriod(DayOfWeek.Monday, 3), true),
+        };
+
+        Assert.Equal("교사C", 교사(new TimetableCell(월, 1), rules));
+        Assert.Equal("교사C", 교사(new TimetableCell(월, 3), rules));
+        Assert.Equal("교사C", 교사(new TimetableCell(다음월, 3), rules));   // 매주
+        Assert.Equal("교사A", 교사(new TimetableCell(월, 2), rules));       // 초록이 아니던 시간
+    }
+
+    [Fact]
+    public void 사람이_고친_예외가_전담_예외를_덮는다()
+    {
+        // 전담 예외는 요일·교시(정기)로 걸리고, 사람이 칸을 눌러 만든 것은 날짜(비정기)다.
+        // 더 구체적인 쪽이 이기므로 그 날만 사람이 고친 대로 간다.
+        var rules = new[]
+        {
+            기본("국어(교사A(a))"),
+            new TimetableMappingRule("국", 키("국어(교사B(b))"),
+                MappingScope.ForDayPeriod(DayOfWeek.Monday, 3), true),
+            new TimetableMappingRule("국", 키("국어(교사C(c))"),
+                MappingScope.ForDate(월, 3), true),
+        };
+
+        Assert.Equal("교사C", 교사(new TimetableCell(월, 3), rules));
+        Assert.Equal("교사B", 교사(new TimetableCell(다음월, 3), rules));
+    }
+
 }
