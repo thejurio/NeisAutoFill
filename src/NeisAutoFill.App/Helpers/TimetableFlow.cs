@@ -54,8 +54,13 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
         if (inTerm.Count < lessons.Count)
             log($"나이스 학기 밖 {lessons.Count - inTerm.Count}칸은 제외합니다.");
 
+        // <b>계획에 든 모든 주를 먼저 훑는다.</b> 지금 떠 있는 한 주만 보고 세면
+        // "이미 같음"도 "지울 칸"도 그 주 것만 나와 사용자를 속인다 — 특히 지우기는 되돌릴 수 없다.
+        var screen = await session.SurveyAsync(
+            inTerm.Select(l => l.Cell.WeekStart).Distinct(), progress, ct);
+
         var plan = TimetablePlanBuilder.Build(
-            inTerm, rules, session.Catalog!, session.ScreenState(), range.AllowOverwrite);
+            inTerm, rules, session.Catalog!, screen, range.AllowOverwrite);
         log(Describe(plan));
 
         if (!plan.CanRun) return new(plan, Describe(plan));
@@ -113,12 +118,16 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
     /// <summary>계획을 사람 말로 요약한다. 막힌 것이 있으면 그것부터 알린다.</summary>
     private static string Describe(TimetablePlan plan)
     {
+        // 이 숫자들은 <b>연간 전체</b>를 훑고 센 것이다 (SurveyAsync). 현재 주만이 아니다.
         var lines = new List<string>
         {
-            $"전체 {plan.Assignments.Count}칸 · 입력 예정 {plan.Writable.Count - plan.Clearing.Count}칸" +
-            (plan.Clearing.Count > 0 ? $" · 지울 칸 {plan.Clearing.Count}개" : "") +
-            $" · 주 {plan.ByWeek.Count}개",
+            $"문서 {plan.Assignments.Count - plan.Clearing.Count}칸 · 입력 예정 " +
+            $"{plan.Writable.Count - plan.Clearing.Count}칸 · 주 {plan.ByWeek.Count}개",
         };
+
+        if (plan.Clearing.Count > 0)
+            lines.Add($"문서에 없어 지울 칸 {plan.Clearing.Count}개 " +
+                      $"({DaysOf(plan.Clearing)})");
 
         foreach (var kv in plan.CountByStatus.OrderByDescending(k => k.Value))
             lines.Add($"  {Korean(kv.Key)} {kv.Value}칸");
@@ -128,6 +137,15 @@ public sealed class TimetableFlow(TimetableSession session, Action<string> log)
             : $"\n먼저 풀어야 할 항목이 {plan.Blocking.Count}칸 있습니다.");
 
         return string.Join("\n", lines);
+    }
+
+    /// <summary>지울 칸이 어느 날에 몰려 있는지 한 줄로 — 숫자만 보면 감이 안 온다.</summary>
+    private static string DaysOf(IReadOnlyList<TimetableAssignment> cells)
+    {
+        var days = cells.Select(c => c.Cell.Date).Distinct().OrderBy(d => d).ToList();
+        var head = string.Join(", ", days.Take(3).Select(d => $"{d:MM-dd}"));
+
+        return days.Count <= 3 ? head : $"{head} 외 {days.Count - 3}일 · 모두 {days.Count}일";
     }
 
     private static string Korean(AssignmentStatus s) => s switch

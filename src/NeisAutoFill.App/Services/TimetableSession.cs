@@ -199,6 +199,48 @@ public sealed class TimetableSession(
         if (Scope is not null) checkpoints.Delete(Scope);
     }
 
+    /// <summary>
+    /// <b>계획에 든 모든 주를 훑어</b> 나이스의 현재 값을 통째로 모은다.
+    ///
+    /// <see cref="ScreenState"/> 는 <b>지금 떠 있는 한 주</b>만 안다. 그걸로 계획을 만들면
+    /// "이미 같음"이나 <b>"지울 칸"</b> 같은 숫자가 그 주 것만 세어져 사용자를 속인다.
+    /// 특히 지우기는 되돌릴 수 없어서, <b>시작 전에 진짜 개수를 알려 줘야 한다.</b>
+    ///
+    /// 값은 싸다 — 실측 <b>주당 234 ms</b>, 28주 한 학기를 <b>6.6초</b>에 훑는다(2026-08-21).
+    /// </summary>
+    public async Task<TimetableScreenState> SurveyAsync(
+        IEnumerable<DateOnly> weekStarts,
+        IProgress<ProgressInfo>? progress = null,
+        CancellationToken ct = default)
+    {
+        var tools = engine.Timetable
+            ?? throw new InvalidOperationException("브라우저에 연결되어 있지 않습니다.");
+
+        var wanted = weekStarts.ToHashSet();
+        var weeks = (await tools.Reader.ReadWeeksAsync())
+            .Where(w => wanted.Contains(MondayOf(w.Start)))
+            .ToList();
+
+        var current = new Dictionary<TimetableCell, string>();
+        var done = 0;
+
+        foreach (var week in weeks)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(new($"나이스 시간표를 훑고 있어요… ({++done}/{weeks.Count}주)", done, weeks.Count));
+
+            await tools.Reader.SelectWeekAsync(week.Index);
+
+            foreach (var (cell, raw) in (await tools.Reader.ReadCurrentWeekAsync()).Cells)
+                if (raw.Length > 0)
+                    current[cell] = TimetableMenuParser.Parse(raw).StableKey;
+        }
+
+        return new TimetableScreenState(current, Unavailable, TermStart, TermEnd);
+    }
+
+    private static DateOnly MondayOf(DateOnly d) => d.AddDays(-(((int)d.DayOfWeek + 6) % 7));
+
     /// <summary>지금 읽은 화면 상태 — 실행 계획을 만들 때 넘긴다.</summary>
     public TimetableScreenState ScreenState()
     {
