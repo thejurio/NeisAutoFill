@@ -3,7 +3,11 @@ namespace NeisAutoFill.Core.Timetable;
 /// <summary>원본에서 읽어낸 수업 한 칸 (문서 인식 결과 — 나이스 항목이 아니다).</summary>
 /// <param name="Cell">날짜+교시</param>
 /// <param name="SourceToken">원본 표기 ("국", "창" 등)</param>
-public sealed record TimetableSourceLesson(TimetableCell Cell, string SourceToken);
+/// <param name="Specialist">
+/// 전담 교사가 맡는 시간인가. 이지에듀는 이것을 <b>초록 글씨</b>로 표시한다.
+/// 표시가 없는 문서에서는 언제나 false — 그때는 담임으로 본다.
+/// </param>
+public sealed record TimetableSourceLesson(TimetableCell Cell, string SourceToken, bool Specialist = false);
 
 /// <summary>계획을 만들 때 필요한 나이스 쪽 현재 상태 (브라우저 없이 테스트할 수 있도록 값으로 받는다).</summary>
 /// <param name="CurrentValues">셀 → 현재 값의 안정 키. 비어 있는 셀은 넣지 않는다</param>

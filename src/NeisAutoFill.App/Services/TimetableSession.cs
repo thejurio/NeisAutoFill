@@ -33,6 +33,13 @@ public sealed class TimetableSession(
     /// <summary>메뉴가 열리지 않은 셀들 — 학기 시작 전·휴업일. 실패가 아니라 정상 상태다.</summary>
     public HashSet<TimetableCell> Unavailable { get; } = new();
 
+    /// <summary>
+    /// 지금 로그인한 교사 이름 = <b>이 학급의 담임</b>.
+    /// 학급시간표관리는 담임 화면이므로 로그인 사용자가 곧 담임이다.
+    /// <b>메모리에만 둔다</b> — 파일에 남는 범위(Scope)에는 해시로만 들어간다(D-012).
+    /// </summary>
+    public string? HomeroomTeacher { get; private set; }
+
     /// <summary>나이스가 아는 학기 범위 — 주차 목록의 처음과 끝.</summary>
     public DateOnly? TermStart { get; private set; }
     public DateOnly? TermEnd { get; private set; }
@@ -81,6 +88,12 @@ public sealed class TimetableSession(
 
         // 범위 — 학교·사용자는 여기서 즉시 해시로 바뀌고 원문은 보관하지 않는다(D-012)
         var info = await tools.Scope.ReadAsync();
+
+        // "진두성(thejurio)" 처럼 이름 뒤에 계정이 붙어 온다 — 이름만 떼어 둔다
+        HomeroomTeacher = info?.User is { Length: > 0 } user
+            ? (user.IndexOf('(') is var i && i > 0 ? user[..i] : user).Trim()
+            : null;
+
         Scope = info is null ? null : TimetableProfileScope.Create(
             info.Host, info.School, info.User, info.SchoolYear, info.Semester, info.Grade, info.ClassName);
 

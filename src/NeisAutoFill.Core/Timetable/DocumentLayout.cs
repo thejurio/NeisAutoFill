@@ -25,6 +25,12 @@ public readonly record struct TextGlyph(
     public bool IsRed => Red > 0.6 && Green < 0.35 && Blue < 0.35;
 
     /// <summary>
+    /// 초록 글씨. 이지에듀는 <b>전담 교사가 맡는 시간</b>을 초록(#008000)으로 찍는다.
+    /// 학교에 따라 아예 안 쓸 수도 있다 — 없으면 아무 일도 일어나지 않는다.
+    /// </summary>
+    public bool IsGreen => Green > 0.3 && Red < 0.4 && Blue < 0.4;
+
+    /// <summary>
     /// 흰 글씨. 한글 문서의 그림자 글꼴은 같은 글자를 <b>흰색·빨강·회색 세 겹</b>으로 찍는다 —
     /// 흰 겹은 눈에 보이지 않는데 그대로 읽으면 "재재재"처럼 세 번 겹쳐 나온다.
     /// </summary>

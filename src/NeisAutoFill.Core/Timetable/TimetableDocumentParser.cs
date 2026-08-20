@@ -299,6 +299,7 @@ public static partial class TimetableDocumentParser
         var half = SlotWidth(slots) / 2 + 1;   // 칸 경계 — 이웃 칸으로 새지 않게
         var buckets = new string?[slots.Count];
         var redBuckets = new string?[slots.Count];   // 빨간 글씨 = 공휴일·휴업일
+        var green = new bool[slots.Count];           // 초록 글씨 = 전담 교사 시간
 
         // 그림자 글꼴이 찍은 안 보이는 흰 겹은 버린다 — 그대로 두면 같은 글자가 겹쳐 들어온다.
         // 빗금 무늬(▒)는 수업이 없는 칸을 메운 표시다 — 과목으로 읽으면 안 된다(스쿨마스터 실측).
@@ -333,6 +334,7 @@ public static partial class TimetableDocumentParser
             if (best < 0) continue;
 
             buckets[best] = (buckets[best] ?? "") + g.Text;
+            if (g.IsGreen) green[best] = true;
         }
 
         // 빨간 글씨가 있는 날은 통째로 공휴일이다.
@@ -368,7 +370,7 @@ public static partial class TimetableDocumentParser
                 continue;
             }
 
-            lessons.Add(new TimetableSourceLesson(new TimetableCell(date, period), token));
+            lessons.Add(new TimetableSourceLesson(new TimetableCell(date, period), token, green[i]));
         }
     }
 

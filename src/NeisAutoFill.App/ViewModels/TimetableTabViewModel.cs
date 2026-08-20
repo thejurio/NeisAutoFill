@@ -169,11 +169,12 @@ public sealed class SubjectAssignmentRow : ObservableObject
 
     public SubjectAssignmentRow(
         string subject, IReadOnlyList<string> tokens, IReadOnlyList<TeacherChoice> candidates,
-        int assigned, int? standard, bool known,
+        int assigned, int? standard, bool known, bool specialist,
         Action<SubjectAssignmentRow> onTeacherChanged, Action<string, int?> onStandardChanged)
     {
         Subject = subject;
         IsKnown = known;
+        IsSpecialist = specialist;
         Tokens = tokens;
         Candidates = candidates;
         Assigned = assigned;
@@ -193,6 +194,9 @@ public sealed class SubjectAssignmentRow : ObservableObject
     /// 그런 표기는 사용자가 무엇인지 한 번 이어 줘야 한다.
     /// </summary>
     public bool IsKnown { get; }
+
+    /// <summary>문서에서 <b>전담 교사</b>(초록 글씨)로 표시된 과목인가.</summary>
+    public bool IsSpecialist { get; }
 
     /// <summary>문서에 적힌 그대로 ("융"). 사전에 있는 표기면 빈 문자열 — 굳이 보여 줄 것이 없다.</summary>
     public string TokenHint => IsKnown ? "" : $"문서 표기: {string.Join(", ", Tokens)}";
@@ -916,16 +920,17 @@ public sealed class TimetableTabViewModel : ObservableObject
 
             var known = TimetableTokenNormalizer.Normalize(tokens[0]).IsKnownAlias;
 
+            // 문서가 전담(초록)으로 표시한 시간이 <b>절반을 넘으면</b> 그 과목은 전담 과목으로 본다.
+            // 몇 칸만 초록이면 그건 예외지 과목 전체의 성격이 아니다.
+            var specialist = group.Count(l => l.Specialist) * 2 > group.Count();
+
             var row = new SubjectAssignmentRow(
-                group.Key, tokens, candidates, group.Count(), standard, known,
+                group.Key, tokens, candidates, group.Count(), standard, known, specialist,
                 OnTeacherChanged, OnStandardEdited);
 
-            // 순서: ① 저장·기존 규칙 ② 화면에서 방금 고른 것 ③ 후보가 딱 하나면 자동.
-            // 여러 명 중 하나를 임의로 고르지는 않는다(D-002).
+            // 순서: ① 저장·기존 규칙 ② 화면에서 방금 고른 것 ③ 자동 배정.
             var fromRule = _rules
                 .FirstOrDefault(r => r.Scope.Kind == MappingScopeKind.Default && tokens.Contains(r.SourceToken));
-
-            var matched = candidates.Where(c => c.IsMatch).ToList();
 
             row.Teacher =
                 fromRule is not null && candidates.FirstOrDefault(c => c.TargetKey == fromRule.TargetStableKey) is { } saved
@@ -933,7 +938,7 @@ public sealed class TimetableTabViewModel : ObservableObject
                 : previous.TryGetValue(group.Key, out var kept) && kept is not null
                   && candidates.FirstOrDefault(c => c.TargetKey == kept.TargetKey) is { } same
                     ? same
-                : matched.Count == 1 ? matched[0] : null;
+                : AutoPick(candidates, specialist);
 
             Subjects.Add(row);
         }
@@ -974,6 +979,32 @@ public sealed class TimetableTabViewModel : ObservableObject
     private string _creativeSummary = "";
 
     /// <summary>
+    /// 교사를 자동으로 고른다.
+    ///
+    /// <list type="bullet">
+    /// <item>보통은 <b>담임</b>(지금 로그인한 교사) — 학급시간표는 담임이 대부분을 맡는다</item>
+    /// <item>문서가 전담으로 표시한 과목이면 <b>담임이 아닌 교사</b>. 단 그런 교사가 딱 하나일 때만 —
+    ///       여럿이면 누구인지 알 수 없으니 사람이 고른다(D-002)</item>
+    /// <item>후보가 하나뿐이면 그것</item>
+    /// </list>
+    /// </summary>
+    private TeacherChoice? AutoPick(IReadOnlyList<TeacherChoice> candidates, bool specialist)
+    {
+        var matched = candidates.Where(c => c.IsMatch).ToList();
+        if (matched.Count == 0) return null;
+        if (matched.Count == 1) return matched[0];
+
+        var homeroom = _session.HomeroomTeacher;
+        if (string.IsNullOrEmpty(homeroom)) return null;
+
+        var mine = matched.Where(c => c.Option?.TeacherName == homeroom).ToList();
+        var others = matched.Where(c => c.Option?.TeacherName != homeroom).ToList();
+
+        if (specialist) return others.Count == 1 ? others[0] : null;
+        return mine.Count == 1 ? mine[0] : null;
+    }
+
+    /// <summary>
     /// 그 원본 표기로 고를 수 있는 항목들. 끝에 언제나 "입력 안 함"을 붙인다 —
     /// 나이스에 없는 활동이라도 사용자가 매듭지을 수 있어야 실행이 막히지 않는다.
     /// </summary>
@@ -987,10 +1018,14 @@ public sealed class TimetableTabViewModel : ObservableObject
         choices.AddRange(matched.Select(TeacherChoice.Of));
         choices.Add(TeacherChoice.Skip);
 
-        // 이름이 같은 항목 말고 <b>나이스의 다른 과목</b>도 고를 수 있어야 한다.
-        // 문서는 "정보"인데 나이스는 "실과"처럼 이름이 어긋나는 일이 흔하고,
-        // 그때 [입력 안 함]밖에 없으면 진짜 수업이 조용히 빠진다.
-        var rest = _catalog.Assignable.Except(matched)
+        // 이름이 맞는 항목이 있으면 <b>그것만</b> 보여 준다.
+        // 국어에 담임 한 명뿐인데 나이스 전 과목·전 교사를 늘어놓으면 잘못 고르기 쉽다.
+        //
+        // 맞는 것이 하나도 없을 때만 나이스 전체를 연다 — 문서는 "정보"인데 나이스는 "실과"처럼
+        // 이름이 어긋나는 경우다. 그때 [입력 안 함]밖에 없으면 진짜 수업이 조용히 빠진다.
+        if (matched.Count > 0) return choices;
+
+        var rest = _catalog.Assignable
             .OrderBy(o => o.Subject, StringComparer.CurrentCulture)
             .ThenBy(o => o.TeacherName, StringComparer.CurrentCulture);
 

@@ -226,4 +226,55 @@ public class TimetableDocumentParserTests
         Assert.Equal(10, p.Lessons.Count);   // 흰 글씨가 수업 토큰을 오염시키지 않는다
     }
 
+    // ── 전담 표시 (초록 글씨) ────────────────────────────
+
+    /// <summary>초록 글씨(전담) 하루치를 깐다.</summary>
+    private static IEnumerable<TextGlyph> GreenDay(double y, int dayIndex, string tokens)
+    {
+        for (var i = 0; i < tokens.Length && i < 3; i++)
+            yield return new TextGlyph(tokens[i].ToString(), 150 + (dayIndex * 3 + i) * 10, y, 6,
+                Red: 0, Green: 0.5, Blue: 0);
+    }
+
+    [Fact]
+    public void 초록_글씨는_전담_시간으로_표시한다()
+    {
+        // 이지에듀는 전담 교사가 맡는 시간을 #008000 으로 찍는다.
+        // 초록 칸은 검정 칸과 겹치지 않는 자리에 둔다 — 실제 문서에서도 한 칸에 한 글자다
+        var p = Parse(
+            HeaderLine(400),
+            WeekLine(380, "3.2-3.6", new[] { "국수" }),
+            GreenDay(380, 2, "체"));
+
+        var green = p.Lessons.Where(l => l.Specialist).ToList();
+        Assert.Single(green);
+        Assert.Equal("체", green[0].SourceToken);
+        Assert.All(p.Lessons.Where(l => l.SourceToken != "체"), l => Assert.False(l.Specialist));
+    }
+
+    [Fact]
+    public void 초록이_없으면_모두_담임_시간이다()
+    {
+        // 전담 표시를 안 쓰는 학교가 있다 — 그때는 아무 일도 일어나지 않아야 한다.
+        var p = Parse(
+            HeaderLine(400),
+            WeekLine(380, "3.2-3.6", new[] { "국수", "국수", "국수", "국수", "국수" }));
+
+        Assert.All(p.Lessons, l => Assert.False(l.Specialist));
+    }
+
+    [Fact]
+    public void 전담_표시가_과목까지_바꾸지는_않는다()
+    {
+        // 색은 "누가 가르치나"만 말한다. 무슨 과목인지는 글자가 정한다.
+        var p = Parse(
+            HeaderLine(400),
+            WeekLine(380, "3.2-3.6", new[] { "국", "국" }),
+            GreenDay(380, 3, "체"));
+
+        var cell = p.Lessons.Single(l => l.Specialist);
+        Assert.Equal("체", cell.SourceToken);
+        Assert.Equal(3, p.Lessons.Count);
+    }
+
 }
