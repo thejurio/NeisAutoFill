@@ -110,8 +110,15 @@ public sealed class TimetableReader(IPage page)
     /// <summary>폴링 간격 — 너무 촘촘하면 왕복 비용이 커진다.</summary>
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(30);
 
-    /// <summary>메뉴가 열리거나 닫히기를 기다리는 최대 시간.</summary>
-    private static readonly TimeSpan MenuWait = TimeSpan.FromSeconds(3);
+    /// <summary>
+    /// 메뉴가 열리거나 닫히기를 기다리는 최대 시간.
+    ///
+    /// 실측 메뉴는 91ms 에 뜬다. 이 값이 큰 만큼 <b>안 열리는 날에 그대로 손해</b>다 —
+    /// 학기 첫 주는 월·화가 개학 전이라 메뉴가 안 열리는데,
+    /// 3초로 뒀더니 카탈로그 한 번 읽는 데 6.2초가 걸렸다(2026-08-20).
+    /// 91ms 의 8배면 넉넉하다.
+    /// </summary>
+    private static readonly TimeSpan MenuWait = TimeSpan.FromMilliseconds(800);
 
     /// <summary>주차를 옮긴 뒤 화면이 바뀌기를 기다리는 최대 시간.</summary>
     private static readonly TimeSpan WeekChangeWait = TimeSpan.FromSeconds(4);

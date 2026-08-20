@@ -235,10 +235,14 @@ public sealed class TimetableSession(
     {
         var dates = Snapshot?.Dates ?? Array.Empty<DateOnly>();
 
-        for (var col = 1; col <= 5; col++)   // 월~금
+        // <b>이미 값이 있는 칸부터 찔러 본다.</b> 값이 있으면 메뉴가 반드시 열린다.
+        // 앞에서부터 훑으면 학기 첫 주의 월·화(개학 전)에서 각각 헛기다림이 생긴다 —
+        // 그것만으로 카탈로그 읽기가 6초에서 안 줄었다(2026-08-20).
+        foreach (var (row, col) in ProbeOrder())
         {
             ct.ThrowIfCancellationRequested();
-            var catalog = await reader.ReadCatalogAsync(0, col);
+
+            var catalog = await reader.ReadCatalogAsync(row, col);
             if (catalog is not null) return catalog;
 
             // 이 날은 메뉴가 안 열린다 → 그 날 전체를 사용 불가로 (학기 시작 전 등)
@@ -247,5 +251,51 @@ public sealed class TimetableSession(
                     Unavailable.Add(new TimetableCell(d, period));
         }
         return null;
+    }
+
+    /// <summary>
+    /// 카탈로그를 읽어 볼 (행, 열) 순서.
+    ///
+    /// <b>학기 밖 날짜는 아예 건너뛴다.</b> 학기 첫 주는 개학 전 요일이 섞여 있는데,
+    /// 그런 날은 메뉴가 열리지 않아 찔러 볼 때마다 헛기다림이 생긴다(요일당 0.8초).
+    /// 날짜로 거르면 값이 하나도 없는 빈 시간표에서도 통한다 — 처음 넣을 때가 바로 그렇다.
+    ///
+    /// 그다음엔 <b>값이 있는 칸</b>을 먼저 본다. 값이 있으면 메뉴가 반드시 열린다.
+    /// 한 요일당 한 번만 찔러 본다.
+    /// </summary>
+    private IReadOnlyList<(int Row, int Col)> ProbeOrder()
+    {
+        var order = new List<(int Row, int Col)>();
+        var seen = new HashSet<int>();
+
+        if (Snapshot is not { } snap) return new[] { (0, 1), (0, 2), (0, 3), (0, 4), (0, 5) };
+
+        var periods = snap.Cells.Keys.Select(c => c.Period).Distinct().OrderBy(p => p).ToList();
+
+        bool InTerm(int col) =>
+            snap.Columns.TryGetValue(col, out var d) &&
+            (TermStart is null || d >= TermStart) &&
+            (TermEnd is null || d <= TermEnd);
+
+        // ① 값이 있는 칸 (메뉴가 열리는 것이 확실하다)
+        foreach (var cell in snap.Cells.Where(c => c.Value.Length > 0)
+                     .Select(c => c.Key).OrderBy(c => c.Period).ThenBy(c => c.Date))
+        {
+            var col = snap.ColumnOf(cell.Date);
+            if (col is < 1 or > 5 || !InTerm(col) || !seen.Add(col)) continue;
+
+            var row = periods.IndexOf(cell.Period);
+            if (row >= 0) order.Add((row, col));
+        }
+
+        // ② 학기 안이지만 값이 없는 요일
+        for (var col = 1; col <= 5; col++)
+            if (InTerm(col) && seen.Add(col)) order.Add((0, col));
+
+        // ③ 학기 밖 요일 — 여기까지 왔다면 앞이 다 실패한 것이다. 마지막으로만 본다.
+        for (var col = 1; col <= 5; col++)
+            if (seen.Add(col)) order.Add((0, col));
+
+        return order;
     }
 }
