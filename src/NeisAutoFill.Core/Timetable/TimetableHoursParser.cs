@@ -141,11 +141,11 @@ public static class TimetableHoursParser
         DocumentPage page, ref IReadOnlyList<(string Name, double Center)>? columns)
     {
         var lines = page.Lines();
-        var headerIndex = FindHeaderLine(lines);
+        var headerIndex = FindHeaderLine(lines, out var headerGlyphs);
 
         if (headerIndex >= 0)
         {
-            var found = HeaderColumns(lines[headerIndex]);
+            var found = HeaderColumns(headerGlyphs);
             if (found.Count >= 3) columns = found;
         }
 
@@ -200,16 +200,51 @@ public static class TimetableHoursParser
         }
     }
 
-    /// <summary>과목 이름이 늘어선 줄. 아는 과목 이름이 넷 이상 있으면 그 줄이다.</summary>
-    private static int FindHeaderLine(IReadOnlyList<IReadOnlyList<TextGlyph>> lines)
+    /// <summary>이름이 두 줄에 걸쳐 있을 때 위아래로 볼 거리. 행 간격(10 이상)보다 작아야 한다.</summary>
+    private const double HeaderPairGap = 7;
+
+    /// <summary>
+    /// 과목 이름이 늘어선 자리. 아는 이름이 넷 이상 있으면 그 자리다.
+    ///
+    /// <b>한 줄이 아닐 수 있다.</b> 이름 길이가 제각각이면 짧은 이름은 아래, 긴 이름은
+    /// 한 줄 위에 걸쳐 적힌다(1학년 이지에듀: 아래 "국어 수학 바른생활" / 위 "슬기로운 즐거운 창의적").
+    /// 그래서 <b>바로 윗줄이 가까우면 함께</b> 본다. 아랫줄은 보지 않는다 —
+    /// 거기엔 "생활·체험활동" 같은 뒷부분이 있어 섞이면 이름이 끊긴다.
+    /// </summary>
+    private static int FindHeaderLine(
+        IReadOnlyList<IReadOnlyList<TextGlyph>> lines, out IReadOnlyList<TextGlyph> glyphs)
     {
+        glyphs = Array.Empty<TextGlyph>();
+
         for (var i = 0; i < lines.Count; i++)
         {
-            var text = string.Concat(lines[i].Where(g => !g.IsInvisible).Select(g => g.Text));
+            var merged = WithLineAbove(lines, i);
+            var text = string.Concat(merged.Select(g => g.Text));
+
             if (!text.Contains("국어")) continue;
-            if (SubjectHints.Count(text.Contains) >= 4) return i;
+            if (SubjectHints.Count(text.Contains) < 4) continue;
+
+            glyphs = merged;
+            return i;
         }
         return -1;
+    }
+
+    /// <summary>그 줄 + (가까우면) 바로 윗줄의 글자를 왼쪽부터 늘어놓는다.</summary>
+    private static IReadOnlyList<TextGlyph> WithLineAbove(
+        IReadOnlyList<IReadOnlyList<TextGlyph>> lines, int index)
+    {
+        var self = lines[index].Where(g => !g.IsInvisible).ToList();
+        if (self.Count == 0 || index == 0) return self.OrderBy(g => g.X).ToList();
+
+        var above = lines[index - 1].Where(g => !g.IsInvisible).ToList();
+        if (above.Count == 0) return self.OrderBy(g => g.X).ToList();
+
+        // Lines() 는 위에서 아래로 준다 — 윗줄의 Y 가 더 크다
+        var gap = above.Max(g => g.Y) - self.Max(g => g.Y);
+        if (gap is <= 0 or > HeaderPairGap) return self.OrderBy(g => g.X).ToList();
+
+        return self.Concat(above).OrderBy(g => g.X).ToList();
     }
 
     /// <summary>행 이름을 알아본다. 모르는 행이면 null — 표 밖의 줄이다.</summary>
