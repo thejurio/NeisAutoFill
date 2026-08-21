@@ -31,12 +31,13 @@ public static class EvalPlanDocumentParser
             var cols = EvalTableColumns.Detect(header);
             if (!cols.IsUsable) continue;
 
-            foreach (var (first, last) in table.GroupRows(cols.Standard, firstRow: 1))
+            foreach (var (first, last) in table.GroupRows(cols.BlockColumn, firstRow: 1))
             {
                 var standard = table.Span(first, last, cols.Standard).Trim();
                 var area = table.Span(first, last, cols.Area).Trim();
 
-                if (standard.Length == 0) continue;
+                // 성취기준 열이 없는 표(학교자율시간)에서는 영역만으로도 한 건이다
+                if (standard.Length == 0 && area.Length == 0) continue;
                 if (IsHeaderRow(standard, area)) continue;
 
                 var criteria = new List<EvalCriterion>();

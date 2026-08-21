@@ -14,8 +14,17 @@ namespace NeisAutoFill.Core.Evaluation;
 /// <param name="Result">평가기준(평가결과) 열</param>
 public sealed record EvalTableColumns(int Area, int Standard, int Element, int Level, int Result)
 {
-    /// <summary>넣는 데 꼭 필요한 열이 다 있는가. 평가단계 열은 없을 수도 있다(§3).</summary>
-    public bool IsUsable => Standard >= 0 && Result >= 0;
+    /// <summary>
+    /// 넣는 데 꼭 필요한 열이 있는가.
+    ///
+    /// <b>성취기준 열이 없는 표도 있다</b> — 학교자율시간이 그렇다(실측: 머리글이
+    /// <c>시기 │ 평가 영역 │ 평가 요소 │ 평가 방법 │ 평가 기준</c>). 성취기준을 따로 쓰지 않고
+    /// 영역·평가요소로만 적는다. 그런 표는 <b>영역</b>을 묶음 기준으로 삼는다.
+    /// </summary>
+    public bool IsUsable => Result >= 0 && (Standard >= 0 || Area >= 0);
+
+    /// <summary>성취기준 하나를 나누는 기준 열. 성취기준 열이 없으면 영역 열을 쓴다.</summary>
+    public int BlockColumn => Standard >= 0 ? Standard : Area;
 
     /// <summary>
     /// 평가기준 열의 머리글 — <b>양식마다 이름이 다르다</b>(실측 2026-08-21).

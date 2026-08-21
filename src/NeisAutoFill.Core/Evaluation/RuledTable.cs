@@ -35,10 +35,26 @@ public sealed class RuledTable
 
     public RuledTable(DocumentPage page)
     {
-        _glyphs = page.Glyphs.Where(g => !g.IsInvisible).ToList();
-        _horizontals = page.Rulings.Where(r => !r.Vertical).ToList();
+        var verticals = page.Rulings.Where(r => r.Vertical).ToList();
 
-        ColumnEdges = Cluster(page.Rulings.Where(r => r.Vertical).Select(r => r.Position));
+        // 표의 위아래는 <b>세로줄이 뻗은 만큼</b>이다. 그 밖의 글자는 쪽 머리글·꼬리말이라
+        // 그대로 두면 "2026학년도 … 전주덕일초등학교" 가 자료 행인 척 섞여 든다(실측 5건).
+        //
+        // <b>끝값을 쓴다 — 넓게 잡고 못 미더운 것은 표시해서 내보낸다.</b>
+        // 좁혀 보려고 가운뎃값·최빈값을 써 봤더니 쪽마다 표 높이가 달라 <b>진짜 내용이 잘려 나갔다</b>
+        // (성취기준 35건 → 17건). 쪽 꼬리말이 몇 줄 딸려 들어오는 편이 낫다 —
+        // 그런 줄은 평가기준이 한 줄뿐이라 "나이스가 모르는 단계 수"로 걸러진다(2026-08-21).
+        var top = verticals.Count > 0 ? verticals.Max(r => r.To) : double.MaxValue;
+        var bottom = verticals.Count > 0 ? verticals.Min(r => r.From) : double.MinValue;
+
+        _glyphs = page.Glyphs
+            .Where(g => !g.IsInvisible && g.Y >= bottom - Tolerance && g.Y <= top + Tolerance)
+            .ToList();
+        _horizontals = page.Rulings
+            .Where(r => !r.Vertical && r.Position >= bottom - Tolerance && r.Position <= top + Tolerance)
+            .ToList();
+
+        ColumnEdges = Cluster(verticals.Select(r => r.Position));
         var rows = Cluster(_horizontals.Select(r => r.Position));
         rows.Reverse();   // 위에서 아래로
         RowEdges = rows;
@@ -118,50 +134,34 @@ public sealed class RuledTable
         // 오차 4.5pt — 같은 줄인데도 글자마다 기준선이 다르다.
         // 실측: [6국04-05] 안에서 '-' 645.9 · '4' 643.5 · '[' 642.3 로 3.7pt 벌어져 있었다.
         // 줄 간격은 8pt 남짓이라 4.5 면 줄끼리 섞이지 않는다.
-        var lines = new DocumentPage(0, inside).Lines(tolerance: 4.5).ToList();
+        var lines = new DocumentPage(0, SnapMarks(inside)).Lines(tolerance: 4.5).ToList();
 
-        return Merge(lines).Select(Join).Where(t => t.Trim().Length > 0).ToList();
+        return lines.Select(Join).Where(t => t.Trim().Length > 0).ToList();
     }
 
     /// <summary>
-    /// <b>작은 기호만 있는 줄을 이웃 줄에 붙인다.</b>
+    /// <b>작은 기호의 기준선을 가장 가까운 글자 줄에 맞춘다.</b>
     ///
-    /// 가운뎃점 <c>·</c> 은 폭이 0.8pt 에 기준선도 떠 있어(실측) 혼자 한 줄로 잡힌다.
-    /// 그대로 두면 좁은 칸에서 <c>듣기·말하기</c> 가 <c>듣·기말하기</c> 로 뒤집힌다 —
-    /// 기호 줄이 위 글자와 아래 글자 사이에 끼어들기 때문이다.
-    /// 위아래 중 <b>기준선이 더 가까운 쪽</b>에 붙인다.
+    /// 가운뎃점 <c>·</c> 은 폭이 0.8pt 이고 <b>기준선이 떠 있다</b>(실측: 아래 글자보다 3.8pt 위).
+    /// 그대로 줄을 묶으면 위 줄에 끌려가 <c>듣기·말하기</c> 가 <c>듣·기말하기</c> 로,
+    /// <c>실기평가</c> 가 <c>실·기평가</c> 로 뒤집힌다(2026-08-21).
+    ///
+    /// 좌표를 옮기는 것은 <b>줄을 묶을 때뿐</b>이고, 가로 순서는 원래 X 를 그대로 쓴다.
     /// </summary>
-    private static List<IReadOnlyList<TextGlyph>> Merge(List<IReadOnlyList<TextGlyph>> lines)
+    private static List<TextGlyph> SnapMarks(List<TextGlyph> glyphs)
     {
-        if (lines.Count < 2) return lines;
+        var widths = glyphs.Where(g => g.Width > 0).Select(g => g.Width).OrderBy(w => w).ToList();
+        if (widths.Count < 3) return glyphs;
 
-        var normal = lines.SelectMany(l => l).Select(g => g.Width).Where(w => w > 0).ToList();
-        var small = (normal.Count > 0 ? normal.Average() : 6) * 0.4;
+        var small = widths[widths.Count / 2] * 0.4;
+        var anchors = glyphs.Where(g => g.Width >= small).Select(g => g.Y).Distinct().ToList();
+        if (anchors.Count == 0) return glyphs;
 
-        var result = new List<IReadOnlyList<TextGlyph>>();
-
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var line = lines[i];
-            var isMarkOnly = line.All(g => g.Width < small);
-
-            if (!isMarkOnly || (result.Count == 0 && i + 1 >= lines.Count))
-            {
-                result.Add(line);
-                continue;
-            }
-
-            var y = line.Average(g => g.Y);
-            var above = result.Count > 0 ? Math.Abs(result[^1].Average(g => g.Y) - y) : double.MaxValue;
-            var below = i + 1 < lines.Count ? Math.Abs(lines[i + 1].Average(g => g.Y) - y) : double.MaxValue;
-
-            if (above <= below && result.Count > 0)
-                result[^1] = result[^1].Concat(line).ToList();
-            else
-                lines[i + 1] = line.Concat(lines[i + 1]).ToList();
-        }
-
-        return result;
+        return glyphs
+            .Select(g => g.Width >= small
+                ? g
+                : g with { Y = anchors.OrderBy(y => Math.Abs(y - g.Y)).First() })
+            .ToList();
     }
 
     /// <summary>
