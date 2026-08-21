@@ -45,6 +45,26 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     private TimetableTools? _timetable;
     private Microsoft.Playwright.IPage? _timetablePage;
 
+    /// <summary>평가계획 도구 — 시간표와 같은 방식으로, 페이지가 바뀌면 다시 만든다.</summary>
+    public EvalPlanTools? EvalPlan
+    {
+        get
+        {
+            if (_page is null) { _evalPlan = null; _evalPage = null; return null; }
+
+            if (!ReferenceEquals(_evalPage, _page))
+            {
+                _evalPage = _page;
+                var reader = new EvalScreenReader(_page);
+                _evalPlan = new EvalPlanTools(reader, new EvalPlanWriter(_page, reader));
+            }
+
+            return _evalPlan;
+        }
+    }
+    private EvalPlanTools? _evalPlan;
+    private Microsoft.Playwright.IPage? _evalPage;
+
     public async Task<bool> AttachAsync(CancellationToken ct = default)
     {
         _pw ??= await Playwright.CreateAsync();

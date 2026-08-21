@@ -42,7 +42,8 @@ public sealed class MainViewModel : ObservableObject
         Automation.EngineOptions engineOptions,
         ProfileStore profiles,
         NeisSessionController session,
-        TimetableSession timetable)
+        TimetableSession timetable,
+        EvalPlanSession evalPlan)
     {
         _session = session;
         _timetable = timetable;
@@ -81,6 +82,7 @@ public sealed class MainViewModel : ObservableObject
         OpenScaleEditorCommand = new RelayCommand(OpenScaleEditor);
         OpenRecentCommand = new RelayCommand<string>(p => { if (p is not null) LoadExcel(p); });
         OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
+        OpenEvalPlanCommand = new RelayCommand(OpenEvalPlan);
         RunAllSubjectsCommand = new AsyncRelayCommand(RunAllSubjectsAsync);
         InspectCommand = new AsyncRelayCommand(InspectAsync);
         ExportGradesCommand = new RelayCommand(ExportGrades);
@@ -90,6 +92,10 @@ public sealed class MainViewModel : ObservableObject
         _logExpanded = appState.State.LogExpanded;
 
         Timetable = new TimetableTabViewModel(_timetable, Log, _progress, () => IsConnected);
+        EvalPlan = new EvalPlanTabViewModel(evalPlan, Log, _progress, () => IsConnected);
+
+        // 지난번 [자료 준비]에서 읽은 문서를 그대로 이어받는다 — 두 번 고르지 않게
+        if (appState.State.LastEvalDocumentPath is { } last) EvalPlan.OfferDocument(last);
 
         if (_profiles.IsSubjectMode)
             InitSubjectAxis();        // 전담: 등록된 반 목록·첫 조합 로드
@@ -108,6 +114,7 @@ public sealed class MainViewModel : ObservableObject
                 {
                     RefreshNextStep();
                     Timetable.RefreshRunnable();   // 연결돼야 시간표 입력을 시작할 수 있다
+                    EvalPlan.RefreshRunnable();    // 평가계획도 마찬가지
                 }
                 else OnPropertyChanged(nameof(ShowNextStep));   // 연결 배너와 상호배타
             }
@@ -190,6 +197,9 @@ public sealed class MainViewModel : ObservableObject
     // ── 명단·평가계획 인앱 편집 ──────────────
     public ICommand OpenPlanEditorCommand { get; }
 
+    /// <summary>평가계획 문서를 나이스에 넣는 창을 연다 — 평가 탭 안에 둔다.</summary>
+    public ICommand OpenEvalPlanCommand { get; }
+
 
     /// <summary>드래그앤드롭된 평가계획 문서(pdf/hwp/hwpx) → 편집 창 열고 AI 가져오기 시작.</summary>
     public void ImportPlanDocument(string path) => OpenPlanEditor(path);
@@ -198,9 +208,14 @@ public sealed class MainViewModel : ObservableObject
     {
         // 담임 import: 과목 목록 인식 → 선택 콜백 → 고른 과목만 (F9 M4b)
         Task<IReadOnlyList<SubjectPlan>> Importer(string path, IProgress<string> progress,
-            Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>? select) =>
-            new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
+            Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>? select)
+        {
+            // 원본 문서 경로를 기억해 둔다 — 평가계획을 나이스에 넣을 때 그대로 쓴다
+            RememberEvalDocument(path);
+
+            return new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
                 .ImportAsync(path, _scales.Active, progress, select);
+        }
 
         // 전담 import: (학년·과목) 단위 인식 → 선택 콜백 → 학년별 세트 (F9 M4b)
         Task<IReadOnlyList<Generator.GasPlanImporter.GradePlanSet>> UnitImporter(string path, IProgress<string> progress,
@@ -449,6 +464,9 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>시간표 탭 — 문서 읽기부터 나이스 입력까지 그 탭 안에서 끝낸다.</summary>
     public TimetableTabViewModel Timetable { get; }
 
+    /// <summary>평가계획 입력 — 평가 탭의 [📋 평가계획] 창이 쓴다.</summary>
+    public EvalPlanTabViewModel EvalPlan { get; }
+
     // ── 본문 탭 (0 = 평가, 1 = 시간표) ──────────
     private int _mainTabIndex;
     public int MainTabIndex
@@ -593,6 +611,28 @@ public sealed class MainViewModel : ObservableObject
     public ICommand LaunchEdgeCommand { get; }
     public ICommand OpenExcelCommand { get; }
     public ICommand OpenGeneratorCommand { get; }
+
+    /// <summary>
+    /// [자료 준비]가 읽은 원본 문서를 기억한다.
+    /// 우리 파서가 읽을 수 있는 것(PDF·HWP·HWPX)만 — 엑셀은 AI 가 만든 결과물이라
+    /// 성취기준 문장과 평가요소가 없어 나이스에 넣을 수 없다.
+    /// </summary>
+    private void RememberEvalDocument(string path)
+    {
+        var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
+        if (ext is not (".pdf" or ".hwp" or ".hwpx")) return;
+
+        _appState.State.LastEvalDocumentPath = path;
+        _appState.Save();
+        EvalPlan.OfferDocument(path);
+    }
+
+    /// <summary>평가계획 입력 창 — 새 탭을 만들지 않고 <b>평가 탭 안</b>에 둔다(사용자 결정 2026-08-21).</summary>
+    private void OpenEvalPlan()
+    {
+        var window = new EvalPlanWindow(EvalPlan) { Owner = Application.Current.MainWindow };
+        window.Show();
+    }
 
     private void OpenGenerator()
     {

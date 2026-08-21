@@ -37,10 +37,35 @@ public readonly record struct TextGlyph(
     public bool IsInvisible => Red > 0.95 && Green > 0.95 && Blue > 0.95;
 }
 
+/// <summary>
+/// 표를 그린 <b>선</b> 하나 (가로줄 또는 세로줄).
+///
+/// 왜 필요한가: 평가계획 문서는 표의 칸이 <b>맞붙어 있어</b> 글자만으로는 열을 나눌 수 없다
+/// (실측: 빈 세로 구간이 4pt 이상인 곳이 페이지 전체에 두 군데뿐이었다).
+/// 선을 읽으면 열·행 경계가 정확히 나오고, <b>세로 병합된 칸</b>도 알아낼 수 있다 —
+/// 병합된 칸에는 가로줄이 지나가지 않기 때문이다(실측 2026-08-21).
+/// </summary>
+/// <param name="Vertical">세로줄인가</param>
+/// <param name="Position">세로줄이면 X, 가로줄이면 Y</param>
+/// <param name="From">뻗은 구간의 시작 (세로줄이면 아래 Y, 가로줄이면 왼쪽 X)</param>
+/// <param name="To">뻗은 구간의 끝</param>
+public readonly record struct DocumentRule(bool Vertical, double Position, double From, double To)
+{
+    public double Length => To - From;
+}
+
 /// <summary>문서 한 쪽의 글자들. Core 는 이 값만 받고 PDF 라이브러리를 알지 못한다.</summary>
 /// <param name="Number">1부터 세는 쪽 번호</param>
-public sealed record DocumentPage(int Number, IReadOnlyList<TextGlyph> Glyphs)
+/// <param name="Glyphs">글자와 좌표</param>
+/// <param name="Rules">표를 그린 선. 표가 없는 문서에서는 비어 있다</param>
+public sealed record DocumentPage(
+    int Number,
+    IReadOnlyList<TextGlyph> Glyphs,
+    IReadOnlyList<DocumentRule>? Rules = null)
 {
+    /// <summary>표를 그린 선 (없으면 빈 목록).</summary>
+    public IReadOnlyList<DocumentRule> Rulings => Rules ?? Array.Empty<DocumentRule>();
+
     /// <summary>
     /// 같은 줄에 있는 글자끼리 묶어 위에서 아래로 돌려준다.
     /// <paramref name="tolerance"/> 는 같은 줄로 볼 Y 간격 — 표 안에서 글자 기준선이 조금씩 흔들린다.

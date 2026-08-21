@@ -8,6 +8,13 @@ public sealed class AppState
 {
     public string? LastGradePath { get; set; }
     public string? LastPlanPath { get; set; }
+
+    /// <summary>
+    /// [자료 준비]에서 <b>가져오기로 읽은 평가계획 원본 문서</b> (PDF·HWP·HWPX).
+    /// 평가계획을 나이스에 넣을 때 <b>같은 문서를 다시 고르지 않도록</b> 기억한다
+    /// — 엑셀(평가계획서.xlsx)은 AI 가 만든 결과물이라 성취기준 문장·평가요소가 없다.
+    /// </summary>
+    public string? LastEvalDocumentPath { get; set; }
     public List<string> RecentGradeFiles { get; set; } = new();
     public List<string> RecentPlanFiles { get; set; } = new();
     public bool ShowCriteriaPanel { get; set; }
