@@ -59,9 +59,11 @@ public sealed class RuledTable
         return result;
     }
 
-    /// <summary>칸 하나의 글자.</summary>
+    /// <summary>칸 하나의 글자. 없는 열(-1)이면 빈 문자열 — 양식마다 없는 열이 있다.</summary>
     public string Cell(int row, int column) =>
-        Text(RowEdges[row + 1], RowEdges[row], ColumnEdges[column], ColumnEdges[column + 1]);
+        column < 0 || column >= ColumnCount || row < 0 || row >= RowCount
+            ? ""
+            : Text(RowEdges[row + 1], RowEdges[row], ColumnEdges[column], ColumnEdges[column + 1]);
 
     /// <summary>칸 하나를 <b>줄 단위로</b> — 한 칸에 두 가지가 층으로 들어 있을 때 쓴다.</summary>
     public IReadOnlyList<string> CellLines(int row, int column) =>
@@ -77,7 +79,9 @@ public sealed class RuledTable
     /// 그래서 행 하나씩 읽지 않고 구간 전체를 한 번에 읽는다.
     /// </summary>
     public string Span(int firstRow, int lastRow, int column) =>
-        Text(RowEdges[lastRow + 1], RowEdges[firstRow], ColumnEdges[column], ColumnEdges[column + 1]);
+        column < 0 || column >= ColumnCount || firstRow < 0 || lastRow >= RowCount
+            ? ""
+            : Text(RowEdges[lastRow + 1], RowEdges[firstRow], ColumnEdges[column], ColumnEdges[column + 1]);
 
     /// <summary>
     /// 칸 안의 글자를 하나의 문장으로.
