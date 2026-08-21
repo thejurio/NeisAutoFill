@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using NeisAutoFill.App.Helpers;
 using NeisAutoFill.App.ViewModels;
 
@@ -230,4 +232,95 @@ public partial class MainWindow : Window
             e.Handled = true;   // 도움말은 열지 않음
         }
     }
+
+    // ── 큰 축 탭의 미끄러지는 조각 ────────────────────────────────────────
+    //
+    // 고른 칸을 파랗게 <b>칠하는</b> 대신, 조각 하나가 <b>옮겨 간다.</b>
+    // 켜고 끄는 것이 아니라 <b>둘 중 하나로 바뀌는 것</b>임을 움직임으로 보여 준다.
+    //
+    // 자리와 너비를 코드가 정하는 이유: 라벨 길이가 달라 칸 너비가 제각각이라
+    // (평가 2자 · 시간표 3자) XAML 로는 못 박을 수 없다. 못 박았더니 짧은 쪽만 헐렁해 보였다.
+
+    private static readonly Duration SlideTime = new(TimeSpan.FromMilliseconds(220));
+
+    private void MainTabs_Loaded(object sender, RoutedEventArgs e)
+    {
+        MoveTabThumb(animate: false);
+        PaintTabLabels(animate: false);
+    }
+
+    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;   // 안쪽 탭의 이벤트는 무시
+        MoveTabThumb(animate: true);
+        PaintTabLabels(animate: true);
+    }
+
+    /// <summary>조각을 고른 칸 위로 옮긴다. 처음 그릴 때는 움직이지 않고 그 자리에 둔다.</summary>
+    private void MoveTabThumb(bool animate)
+    {
+        if (MainTabs.Template is null) return;
+        if (MainTabs.Template.FindName("Thumb", MainTabs) is not Border thumb) return;
+        if (MainTabs.Template.FindName("Segments", MainTabs) is not Panel segments) return;
+        if (MainTabs.ItemContainerGenerator.ContainerFromIndex(MainTabs.SelectedIndex) is not TabItem tab) return;
+        if (thumb.RenderTransform is not TranslateTransform shift) return;
+
+        // 아직 자리를 못 잡았으면(첫 그리기) 다 그려진 뒤에 다시 부른다
+        if (tab.ActualWidth < 1)
+        {
+            Dispatcher.BeginInvoke(() => MoveTabThumb(animate), System.Windows.Threading.DispatcherPriority.Loaded);
+            return;
+        }
+
+        var x = tab.TranslatePoint(new Point(0, 0), segments).X;
+
+        if (!animate)
+        {
+            shift.BeginAnimation(TranslateTransform.XProperty, null);
+            thumb.BeginAnimation(WidthProperty, null);
+            shift.X = x;
+            thumb.Width = tab.ActualWidth;
+            thumb.Height = tab.ActualHeight;
+            return;
+        }
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        thumb.Height = tab.ActualHeight;
+        shift.BeginAnimation(TranslateTransform.XProperty,
+            new DoubleAnimation(x, SlideTime) { EasingFunction = ease });
+        thumb.BeginAnimation(WidthProperty,
+            new DoubleAnimation(tab.ActualWidth, SlideTime) { EasingFunction = ease });
+    }
+
+    /// <summary>고른 칸은 흰 글자, 나머지는 회색. 미끄러지는 동안에는 <b>색도 같이 건너간다.</b></summary>
+    /// <remarks>
+    /// 색을 즉시 바꾸면, 조각이 아직 오는 중인데 글자만 먼저 하얘져
+    /// <b>회색 위의 흰 글씨</b>가 되어 잠깐 안 보인다. 조각과 같은 시간·같은 가감속으로 물들인다.
+    /// </remarks>
+    private void PaintTabLabels(bool animate)
+    {
+        for (var i = 0; i < MainTabs.Items.Count; i++)
+        {
+            if (MainTabs.ItemContainerGenerator.ContainerFromIndex(i) is not TabItem tab) continue;
+
+            var want = i == MainTabs.SelectedIndex ? Colors.White : UnselectedTabColor;
+
+            // 칸마다 제 브러시를 쥐고 있어야 각자 물들일 수 있다 (템플릿의 것은 공유·동결이다)
+            if (tab.Foreground is not SolidColorBrush brush || brush.IsFrozen)
+                tab.Foreground = brush = new SolidColorBrush(want);
+
+            if (!animate)
+            {
+                brush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+                brush.Color = want;
+                continue;
+            }
+
+            brush.BeginAnimation(SolidColorBrush.ColorProperty,
+                new ColorAnimation(want, SlideTime) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut } });
+        }
+    }
+
+    /// <summary>고르지 않은 칸의 글자색 — Theme.xaml 의 Sub 와 같다.</summary>
+    private static readonly Color UnselectedTabColor = Color.FromRgb(0x64, 0x74, 0x8B);
 }

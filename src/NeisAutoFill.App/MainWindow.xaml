@@ -212,9 +212,10 @@
 
                 <!-- ===== 본문 탭 (평가 / 시간표) =====
                      기능이 늘어나도 탭만 추가하면 되도록 큰 축을 여기서 나눈다. -->
-                <TabControl Grid.Row="2" Style="{StaticResource MainTabControl}"
+                <TabControl x:Name="MainTabs" Grid.Row="2" Style="{StaticResource MainTabControl}"
                             BorderThickness="0" Background="{StaticResource Panel2}" Padding="0"
-                            SelectedIndex="{Binding MainTabIndex}">
+                            SelectedIndex="{Binding MainTabIndex}"
+                            SelectionChanged="MainTabs_SelectionChanged" Loaded="MainTabs_Loaded">
                     <TabControl.ItemContainerStyle>
                         <Style TargetType="TabItem" BasedOn="{StaticResource MainTab}"/>
                     </TabControl.ItemContainerStyle>

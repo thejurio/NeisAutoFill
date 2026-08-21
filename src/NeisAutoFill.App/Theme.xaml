@@ -340,9 +340,12 @@
         전에는 둘이 따로 떨어진 알약이라 <b>그냥 단추 두 개로 읽혔다.</b> 이제 홈(track) 안에
         나란히 넣어 "이 중 <b>하나</b>를 고르는 것"임을 모양으로 보인다 (D-DeskCal 의 월간·주간·안건과 같은 꼴).
 
-        덤으로 <b>오른쪽이 잘리던 문제가 구조적으로 사라진다.</b> 칸마다 최소 폭을 주고 글을 가운데 두므로,
-        헤더를 잰 너비보다 조금 넓게 그려도 남는 자리가 흡수한다 —
-        예전에는 폭이 글자에 딱 맞아서 넘치는 만큼 오른쪽이 눌렸다(실측: 왼쪽 21px · 오른쪽 9px).
+        칸 너비는 <b>글자 길이에 맡긴다.</b> 한때 둘 다 108px 로 못 박아 봤는데, 라벨이 2자와 3자라
+        짧은 쪽에 빈 자리가 더 많이 남았다 — 파란 칸은 색이 차 있어 안 보이지만 회색 칸은 그 여백이
+        그대로 드러나 <b>한쪽만 헐렁해 보였다.</b>
+
+        오른쪽이 잘리던 문제(실측: 왼쪽 21px · 오른쪽 9px)는 글을 <b>가운데</b> 두는 것으로 풀린다.
+        헤더를 잰 너비보다 조금 넓게 그려도 넘치는 양이 좌우로 나뉘어, 한쪽만 눌리지 않는다.
     -->
     <Style x:Key="MainTabControl" TargetType="TabControl">
         <Setter Property="Template">
@@ -352,7 +355,21 @@
                         <!-- 홈. 흰 바탕 위에서도 보이도록 Panel 보다 한 단계 진한 Line 을 쓴다 -->
                         <Border DockPanel.Dock="Top" HorizontalAlignment="Left" Margin="14,10,14,8"
                                 CornerRadius="9" Padding="3" Background="{StaticResource Line}">
-                            <TabPanel IsItemsHost="True"/>
+                            <Grid>
+                                <!--
+                                    고른 칸을 덮는 <b>파란 조각</b>. 칸마다 배경을 켜고 끄는 대신
+                                    조각 하나가 <b>미끄러져 옮겨 간다</b> — 그래야 '전환'으로 읽힌다.
+                                    자리와 너비는 코드가 정한다(MainWindow.xaml.cs 의 MoveTabThumb):
+                                    라벨 길이가 달라 칸 너비가 제각각이라 XAML 로는 못 박을 수 없다.
+                                -->
+                                <Border x:Name="Thumb" HorizontalAlignment="Left" Width="0"
+                                        CornerRadius="6" Background="{StaticResource Neis}">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="ThumbShift"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <TabPanel x:Name="Segments" IsItemsHost="True" Background="Transparent"/>
+                            </Grid>
                         </Border>
                         <Border Background="{TemplateBinding Background}">
                             <ContentPresenter ContentSource="SelectedContent"/>
@@ -371,28 +388,27 @@
         <Setter Property="Foreground" Value="{StaticResource Sub}"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Margin" Value="0"/>
-        <Setter Property="MinWidth" Value="108"/>
         <Setter Property="Height" Value="32"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
+                    <!-- 배경은 칠하지 않는다 — 고른 칸의 파란색은 미끄러지는 조각(Thumb)이 맡는다 -->
                     <Border x:Name="b" Background="Transparent" CornerRadius="6"
-                            Padding="14,0" SnapsToDevicePixels="True">
+                            Padding="16,0" SnapsToDevicePixels="True">
                         <ContentPresenter ContentSource="Header"
                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="b" Property="Background" Value="{StaticResource Neis}"/>
-                            <Setter Property="Foreground" Value="White"/>
-                        </Trigger>
+                        <!-- 고른 칸의 흰 글자는 코드가 물들인다 (MainWindow.xaml.cs 의 PaintTabLabels).
+                             여기서 즉시 바꾸면 조각이 오기 전에 글자만 하얘져 잠깐 안 보인다. -->
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsSelected" Value="False"/>
                                 <Condition Property="IsMouseOver" Value="True"/>
                             </MultiTrigger.Conditions>
+                            <!-- 글자색은 건드리지 않는다 — 코드가 쥔 값이 이겨서 어차피 안 먹는다.
+                                 흰 바탕이 켜지는 것만으로 '누를 수 있다'는 신호는 충분하다. -->
                             <Setter TargetName="b" Property="Background" Value="White"/>
-                            <Setter Property="Foreground" Value="{StaticResource Neis}"/>
                         </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
