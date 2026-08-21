@@ -135,8 +135,7 @@ public sealed class EvalPlanTabViewModel : ObservableObject
         private set
         {
             SetProperty(ref _isRunning, value);
-            OnPropertyChanged(nameof(CanRun));
-            RunCommand.RaiseCanExecuteChanged();
+            RefreshRunnable();
             StopCommand.RaiseCanExecuteChanged();
         }
     }
@@ -145,14 +144,31 @@ public sealed class EvalPlanTabViewModel : ObservableObject
     /// <summary>지금 어느 단계까지 왔나 — 화면에서 다음에 할 일을 도드라지게 하는 데 쓴다.</summary>
     public int CurrentStep => !HasDocument ? 1 : Subjects.All(s => !s.Selected) ? 2 : 3;
 
-    public bool CanRun => HasDocument && !IsRunning && _connected() && Subjects.Any(s => s.Selected);
+    public bool CanRun => Blocker is null;
+
+    /// <summary>
+    /// 지금 [입력 시작]을 누를 수 없는 이유. 누를 수 있으면 null.
+    ///
+    /// <b>꺼진 단추만 두지 않는다.</b> 왜 안 되는지 모르면 사용자는 손쓸 방법이 없다 —
+    /// 실제로 브라우저가 안 떠 있어 잠겼는데 화면에 아무 말이 없었다(2026-08-21).
+    /// </summary>
+    public string? Blocker =>
+        !HasDocument ? "평가계획 문서를 먼저 골라 주세요."
+        : !_connected() ? "나이스에 연결되어 있지 않습니다 — [🌐 NEIS 접속] 으로 브라우저를 열고 로그인해 주세요."
+        : !Subjects.Any(s => s.Selected) ? "넣을 교과를 하나 이상 골라 주세요."
+        : IsRunning ? "넣는 중입니다."
+        : null;
 
     /// <summary>연결 상태가 바뀌면 실행 가능 여부도 바뀐다.</summary>
     public void RefreshRunnable()
     {
         OnPropertyChanged(nameof(CanRun));
+        OnPropertyChanged(nameof(Blocker));
+        OnPropertyChanged(nameof(HasBlocker));
         RunCommand.RaiseCanExecuteChanged();
     }
+
+    public bool HasBlocker => Blocker is not null;
 
     // ── ① 문서 고르기 ─────────────────────────────────────
 
@@ -180,7 +196,18 @@ public sealed class EvalPlanTabViewModel : ObservableObject
                 PdfLayoutExtractor.ExtractAny(path, keepSpaces: true)));
 
             Subjects.Clear();
-            foreach (var subject in doc.Subjects) Subjects.Add(new EvalSubjectRow(subject));
+            foreach (var subject in doc.Subjects)
+            {
+                var row = new EvalSubjectRow(subject);
+
+                // 체크를 껐다 켜면 [입력 시작]도 따라 바뀌어야 한다
+                row.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(EvalSubjectRow.Selected)) RefreshRunnable();
+                };
+
+                Subjects.Add(row);
+            }
 
             DocumentName = Path.GetFileName(path) +
                            (fromWorkspace ? "  (자료 준비에서 읽은 문서)" : "");

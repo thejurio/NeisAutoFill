@@ -30,9 +30,14 @@
             <Border DockPanel.Dock="Bottom" Padding="14,10" Background="White"
                     BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
                 <DockPanel LastChildFill="False">
-                    <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="12"
-                               Foreground="{StaticResource Sub}" TextWrapping="Wrap" MaxWidth="480"
-                               Text="{Binding DocumentSummary}"/>
+                    <!-- 못 누르는 이유를 단추 옆에 그대로 적는다 — 꺼진 단추만 두지 않는다 -->
+                    <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" MaxWidth="540">
+                        <TextBlock FontSize="12" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
+                                   Text="{Binding DocumentSummary}"/>
+                        <TextBlock Margin="0,3,0,0" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   Foreground="#8F550F" Text="{Binding Blocker}"
+                                   Visibility="{Binding HasBlocker, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
                     <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}"
                             Content="입력 시작" Command="{Binding RunCommand}" Padding="18,7"
                             Visibility="{Binding IsRunning, Converter={StaticResource TrueToCollapsed}}"/>
