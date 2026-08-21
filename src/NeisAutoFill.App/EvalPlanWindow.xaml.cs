@@ -13,6 +13,9 @@ public partial class EvalPlanWindow : Window
     {
         InitializeComponent();
         DataContext = vm;
+
+        // [자료 준비]에서 읽은 문서가 있으면 창이 뜨자마자 그것을 쓴다 — 두 번 고르지 않게
+        Loaded += async (_, _) => await vm.LoadOfferedAsync();
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

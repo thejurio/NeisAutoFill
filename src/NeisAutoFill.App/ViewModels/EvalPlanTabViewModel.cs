@@ -84,6 +84,23 @@ public sealed class EvalPlanTabViewModel : ObservableObject
 
     public ObservableCollection<EvalSubjectRow> Subjects { get; } = new();
 
+    /// <summary>
+    /// [자료 준비]가 읽은 문서를 이어받는다 — <b>같은 문서를 두 번 고르지 않게</b>(사용자 요청 2026-08-21).
+    /// 창을 열 때 <see cref="LoadOfferedAsync"/> 가 이것을 읽는다.
+    /// </summary>
+    public void OfferDocument(string path) => _offered = path;
+    private string? _offered;
+
+    /// <summary>
+    /// 창이 열릴 때 부른다. 아직 문서를 안 골랐고 [자료 준비]가 읽은 것이 있으면 그것을 쓴다.
+    /// </summary>
+    public async Task LoadOfferedAsync()
+    {
+        if (HasDocument || _offered is null || !File.Exists(_offered)) return;
+
+        await LoadAsync(_offered, fromWorkspace: true);
+    }
+
     /// <summary>고른 문서 이름. 없으면 빈 문자열.</summary>
     public string DocumentName
     {
@@ -149,7 +166,11 @@ public sealed class EvalPlanTabViewModel : ObservableObject
 
         if (dialog.ShowDialog() != true) return;
 
-        var path = dialog.FileName;
+        await LoadAsync(dialog.FileName, fromWorkspace: false);
+    }
+
+    private async Task LoadAsync(string path, bool fromWorkspace)
+    {
         _log($"평가계획 문서를 읽고 있어요 — {Path.GetFileName(path)}");
 
         try
@@ -161,7 +182,8 @@ public sealed class EvalPlanTabViewModel : ObservableObject
             Subjects.Clear();
             foreach (var subject in doc.Subjects) Subjects.Add(new EvalSubjectRow(subject));
 
-            DocumentName = Path.GetFileName(path);
+            DocumentName = Path.GetFileName(path) +
+                           (fromWorkspace ? "  (자료 준비에서 읽은 문서)" : "");
             DocumentSummary = doc.Describe();
 
             SkippedNote = doc.Skipped.Count == 0

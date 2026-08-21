@@ -59,7 +59,7 @@
                             <TextBlock Text="① 평가계획 문서" FontWeight="Bold" FontSize="12.5"
                                        Foreground="{StaticResource Ink}"/>
                             <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="{StaticResource Sub}"
-                                       Text="학교에서 받은 평가계획 (PDF · HWP · HWPX)"
+                                       Text="학교에서 받은 평가계획 (PDF · HWP · HWPX)&#10;[자료 준비]에서 이미 읽으셨다면 그 문서를 그대로 씁니다."
                                        Visibility="{Binding HasDocument, Converter={StaticResource TrueToCollapsed}}"/>
                             <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="{StaticResource Neis}"
                                        FontWeight="SemiBold" Text="{Binding DocumentName}"
