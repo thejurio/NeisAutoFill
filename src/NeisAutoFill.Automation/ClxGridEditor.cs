@@ -46,14 +46,51 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
 {
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(700);
 
-    /// <summary>이 머리글이 있는 그리드를 찾는 스크립트 조각.</summary>
-    private const string FindJs = @"(h) => [...document.querySelectorAll('div.cl-grid[role=grid]')]
-        .find(g => [...g.querySelectorAll('[role=columnheader]')]
-                    .some(c => (c.innerText || '').replace(/\s/g, '').includes(h)))";
+    /// <summary>
+    /// 이 머리글이 있는 그리드를 찾는 스크립트 조각.
+    ///
+    /// <b>대화상자가 열려 있으면 그 안을 먼저 본다.</b> 본문에도 같은 머리글의 그리드가 있어서
+    /// (영역명관리 상자와 성취기준 본문 둘 다 "영역명" 열을 갖는다) 그냥 찾으면
+    /// <b>상자 뒤의 본문 그리드</b>를 잡는다 — 행을 더해도 늘지 않아 한참 헤맸다(실측 2026-08-21).
+    /// </summary>
+    private const string FindJs = @"(h) => {
+        const vis = e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
+        const has = g => [...g.querySelectorAll('[role=columnheader]')]
+                          .some(c => (c.innerText || '').replace(/\s/g, '').includes(h));
+        const dlg = [...document.querySelectorAll('[role=dialog]')].filter(vis).pop();
+        if (dlg) {
+          const inside = [...dlg.querySelectorAll('div.cl-grid[role=grid]')].find(has);
+          if (inside) return inside;
+        }
+        return [...document.querySelectorAll('div.cl-grid[role=grid]')].filter(vis).find(has);
+      }";
 
     public async Task<int> RowCountAsync() => await page.EvaluateAsync<int>(
         $"(h) => {{ const g = ({FindJs})(h); return g ? g.querySelectorAll(\"div.cl-grid-row[data-rowindex]\").length : 0; }}",
         headerWord);
+
+    /// <summary>
+    /// 머리글로 열 번호를 찾는다. 없으면 -1.
+    ///
+    /// <b>열 번호를 못 박지 않는다.</b> 같은 값을 담은 열이라도 화면마다 자리가 다르다 —
+    /// 성취기준관리에서는 영역명이 2열인데 성취기준(평가기준)관리에서는 1열이다(실측 2026-08-21).
+    /// 문서 파싱에서 겪은 것과 같은 함정이다.
+    /// </summary>
+    public async Task<int> ColumnAsync(string word) => await page.EvaluateAsync<int>(
+        $@"(a) => {{
+          const g = ({FindJs})(a.h); if (!g) return -1;
+          const hs = [...g.querySelectorAll('[role=columnheader]')];
+          return hs.findIndex(c => (c.innerText || '').replace(/\s/g, '').includes(a.w));
+        }}", new { h = headerWord, w = word });
+
+    /// <summary>여러 머리글의 열 번호를 한 번에.</summary>
+    public async Task<IReadOnlyDictionary<string, int>> ColumnsAsync(params string[] words)
+    {
+        var found = new Dictionary<string, int>();
+        foreach (var w in words) found[w] = await ColumnAsync(w);
+
+        return found;
+    }
 
     /// <summary>칸의 지금 값.</summary>
     public async Task<string> CellAsync(int row, int column) => await page.EvaluateAsync<string>(
@@ -90,7 +127,9 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
         for (var i = 0; i < edits.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
-            await WriteAsync(edits[i], ct);
+
+            // 스스로 확정된 칸(한 줄 입력·콤보)은 다음 칸을 누를 필요가 없다
+            if (await WriteAsync(edits[i], ct)) continue;
 
             if (i + 1 >= edits.Count) continue;
 
@@ -102,27 +141,56 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
         }
     }
 
-    private async Task WriteAsync(CellEdit edit, CancellationToken ct)
+    /// <returns>스스로 확정됐으면 true — 다음 칸을 눌러 줄 필요가 없다.</returns>
+    private async Task<bool> WriteAsync(CellEdit edit, CancellationToken ct)
     {
         var at = await PointAsync(edit.Row, edit.Column)
             ?? throw new InvalidOperationException($"{edit.Row}행 {edit.Column}열을 화면에서 찾지 못했습니다.");
 
         if (edit.FromList)
         {
-            // 콤보 칸은 한 번만 누른다 — 더블클릭하면 목록이 열렸다 닫힌다
-            await page.Mouse.ClickAsync(at[0], at[1]);
-            await Task.Delay(Settle, ct);
+            // 콤보 칸은 <b>한 번만</b> 누른다 — 더블클릭하면 목록이 열렸다 닫힌다.
+            // 그리고 <b>이미 열려 있으면 누르지 않는다</b>: 앞 칸을 확정하려고 누른 그 클릭이
+            // 이미 목록을 열어 놨을 수 있고, 한 번 더 누르면 도로 닫힌다(실측 2026-08-21).
+            if (!await ListOpenAsync())
+            {
+                await page.Mouse.ClickAsync(at[0], at[1]);
+                await Task.Delay(Settle, ct);
+            }
+
             await PickAsync(edit.Value, ct);
-            return;
+
+            return true;   // 목록에서 고르면 그 자리에서 확정된다
         }
 
         await page.Mouse.DblClickAsync(at[0], at[1]);
         await Task.Delay(Settle, ct);
+
+        // <b>편집기 종류에 따라 확정 방법이 다르다</b>(실측 2026-08-21).
+        //   INPUT    한 줄 칸(영역명 등) — Enter 가 확정한다
+        //   TEXTAREA 여러 줄 칸(성취기준·평가결과) — Enter 는 줄바꿈이라 확정이 안 된다
+        // 이걸 몰라 한 줄 칸을 연쇄로 채웠더니 마지막 줄이 빈 채로 남아
+        // 나이스가 "영역명은 공백으로 입력할 수 없습니다" 로 저장을 거절했다.
+        var oneLine = await page.EvaluateAsync<bool>(
+            "() => document.activeElement && document.activeElement.tagName === 'INPUT'");
+
         await page.Keyboard.PressAsync("Control+a");
         await Task.Delay(120, ct);
         await page.Keyboard.InsertTextAsync(edit.Value);
         await Task.Delay(300, ct);
+
+        if (!oneLine) return false;
+
+        await page.Keyboard.PressAsync("Enter");
+        await Task.Delay(Settle, ct);
+
+        return true;
     }
+
+    /// <summary>고를 수 있는 목록이 지금 떠 있는가.</summary>
+    private async Task<bool> ListOpenAsync() => await page.EvaluateAsync<bool>(
+        @"() => [...document.querySelectorAll('div.cl-combobox-item')]
+            .some(e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; })");
 
     /// <summary>열린 목록에서 그 글자를 고른다.</summary>
     private async Task PickAsync(string option, CancellationToken ct)
