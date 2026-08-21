@@ -334,9 +334,25 @@
     <!-- ==== 앱 상위 탭 (평가 / 시간표) ====
          밑줄만으로는 "누르는 것"으로 보이지 않아서, 서로 붙은 알약형 버튼으로 만든다.
          고르지 않은 탭도 테두리와 배경이 있어 클릭 대상임이 드러난다. -->
+    <!--
+        큰 축 탭 (평가 / 시간표).
+
+        <b>오른쪽 여백이 왼쪽보다 좁게 나오던 문제를 고친 자리다</b> (실측 2026-08-21).
+        헤더(이모지+글자)를 <b>잰 너비보다 넓게 그려서</b> 남는 자리가 오른쪽에서 깎였다 —
+        측정 결과 왼쪽 21px 인데 오른쪽은 9px 였다.
+
+        세 가지를 같이 둔다. 결정적인 것은 ③이고, ①②는 잰 너비와 그린 너비를 어긋나지 않게 하는 것이다.
+          ① 굵기를 선택 상태로 바꾸지 않는다 — 보통 굵기로 재고 굵게 그리면 그만큼 어긋난다.
+             선택 표시는 배경색(파랑)과 글자색(흰색)으로 충분하다.
+          ② 이모지에 고정 폭을 준다 (MainWindow.xaml 의 탭 머리글). 대체 폰트라 측정이 어긋난다.
+          ③ 오른쪽 여백을 넉넉히 준다 — 18/28. 남는 자리가 있어야 조금 어긋나도 눌리지 않는다.
+
+        고친 뒤 실측: 평가 왼쪽 22px · 오른쪽 23px.
+    -->
     <Style x:Key="MainTab" TargetType="TabItem">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
         <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="Bold"/>
         <Setter Property="Foreground" Value="{StaticResource Sub}"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Margin" Value="0,0,6,0"/>
@@ -344,7 +360,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
                     <Border x:Name="b" Background="White" BorderThickness="1" CornerRadius="8"
-                            BorderBrush="#CBD5E1" Padding="18,8" SnapsToDevicePixels="True">
+                            BorderBrush="#CBD5E1" Padding="18,8,28,8" SnapsToDevicePixels="True">
                         <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -352,7 +368,6 @@
                             <Setter TargetName="b" Property="Background" Value="{StaticResource Neis}"/>
                             <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Neis}"/>
                             <Setter Property="Foreground" Value="White"/>
-                            <Setter Property="FontWeight" Value="Bold"/>
                         </Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>

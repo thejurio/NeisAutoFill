@@ -221,10 +221,11 @@
                     <!-- ─────────── 평가 탭 ─────────── -->
                     <TabItem>
                         <TabItem.Header>
-                            <!-- 이모지는 대체 폰트로 그려진다 — 문자열 헤더로 두면 오른쪽이 잘린다.
-                                 폰트를 지정하고 Ideal 측정으로 그린다. -->
+                            <!-- 이모지는 대체 폰트로 그려져 잰 너비보다 넓게 나온다 — 그만큼 오른쪽이 잘린다.
+                                 폭을 고정해 <b>잰 너비와 그린 너비를 같게</b> 만든다(실측 2026-08-21). -->
                             <StackPanel Orientation="Horizontal" TextOptions.TextFormattingMode="Ideal">
-                                <TextBlock Text="✅" FontFamily="Segoe UI Emoji" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="✅" FontFamily="Segoe UI Emoji" Width="19" TextAlignment="Center"
+                                           Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="평가" VerticalAlignment="Center"/>
                             </StackPanel>
                         </TabItem.Header>
@@ -376,7 +377,8 @@
                     <TabItem>
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal" TextOptions.TextFormattingMode="Ideal">
-                                <TextBlock Text="🗓" FontFamily="Segoe UI Emoji" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="🗓" FontFamily="Segoe UI Emoji" Width="19" TextAlignment="Center"
+                                           Margin="0,0,6,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="시간표" VerticalAlignment="Center"/>
                             </StackPanel>
                         </TabItem.Header>
