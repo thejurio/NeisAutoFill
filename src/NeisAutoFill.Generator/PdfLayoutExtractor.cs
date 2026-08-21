@@ -80,15 +80,15 @@ public static class PdfLayoutExtractor
     /// 한컴이 없으면 <see cref="PlanFileExtractor"/> 와 같은 안내 예외가 난다 —
     /// 그때는 사용자가 직접 PDF 로 저장해서 넣으면 된다.
     /// </summary>
-    public static DocumentLayout ExtractAny(string path)
+    public static DocumentLayout ExtractAny(string path, bool keepSpaces = false)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
-        if (ext == ".pdf") return Extract(path);
+        if (ext == ".pdf") return Extract(path, keepSpaces);
 
         if (ext is ".hwp" or ".hwpx")
         {
             var pdf = PlanFileExtractor.HwpToPdf(path);
-            try { return Extract(pdf) with { FileName = Path.GetFileName(path) }; }
+            try { return Extract(pdf, keepSpaces) with { FileName = Path.GetFileName(path) }; }
             finally { try { File.Delete(pdf); } catch { /* 임시파일 정리 실패는 무시 */ } }
         }
 

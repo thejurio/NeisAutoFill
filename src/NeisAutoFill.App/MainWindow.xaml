@@ -249,6 +249,8 @@
                                             ToolTip="학생 명단·평가계획을 입력합니다 (평가계획서 파일을 넣으면 AI가 자동 인식)"/>
                                     <Button Style="{StaticResource AccentGhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}"
                                             ToolTip="AI 서술문 생성·나이스 입력 창을 엽니다"/>
+                                    <Button Style="{StaticResource GhostButton}" Content="📋 평가계획" Command="{Binding OpenEvalPlanCommand}" Margin="6,0,0,0"
+                                            ToolTip="학교 평가계획 문서를 읽어 나이스 [평가계획(안)관리]에 넣습니다&#10;영역·성취기준·평가요소와 단계별 평가기준까지"/>
                                     <Border Width="1" Background="{StaticResource Line}" Margin="10,2,4,2"/>
                                     <StackPanel Orientation="Horizontal" Margin="6,0,6,0">
                                         <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}" Padding="9,7"/>
