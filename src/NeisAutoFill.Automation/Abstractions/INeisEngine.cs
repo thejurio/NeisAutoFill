@@ -65,6 +65,13 @@ public interface INeisEngine
     /// <summary>지금 나이스가 어떤 상황인지 판별 (연결·로그인·화면 종류). 상태 표시·맞춤 안내용.</summary>
     Task<NeisStatus> DetectStatusAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// <c>"접속유지시간이 N분 남았습니다"</c> 안내가 떠 있는지.
+    /// 세션은 아직 살아 있지만 <b>그 상자가 모든 클릭을 막는다.</b>
+    /// 입력 중에는 뜨지 않지만(활동이 시간을 되돌린다), <b>놀려 둔 뒤 시작할 때</b> 걸린다.
+    /// </summary>
+    Task<bool> HasSessionWarningAsync();
+
     /// <summary>목표 화면(교과평가/학기말종합의견/교과학습발달상황)으로 이동. 상단 '학급담임'부터 눌러
     /// 어느 페이지에서 출발해도 찾아간다. 실제 그 화면이 떴을 때만 true (F9 M10).</summary>
     Task<bool> NavigateToAsync(NeisTarget target, IProgress<ProgressInfo>? progress = null, CancellationToken ct = default);

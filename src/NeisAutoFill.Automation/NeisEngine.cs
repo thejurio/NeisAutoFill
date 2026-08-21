@@ -243,7 +243,20 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
     /// <summary>현재 화면 제목(app-tit 요소 텍스트). 실측: "교과평가"/"학기말종합의견"/"교과학습발달상황".
     /// 없으면 빈 문자열. 화면 종류 판별·도착 확인의 가장 확실한 신호 (F9 M10).</summary>
-    /// <summary>화면 안에 세션 만료 안내가 떠 있는지 (SPA 라 문서 제목은 그대로다).</summary>
+    /// <summary>
+    /// 화면 안에 <b>세션이 끝났다는 안내</b>가 떠 있는지 (SPA 라 문서 제목은 그대로다).
+    ///
+    /// 실측한 문구는 두 갈래다(2026-08-21):
+    /// <list type="bullet">
+    /// <item>끊김: <c>"로그아웃 되었습니다…"</c> · <c>"정보보호를 위해 시스템을 종료합니다"</c></item>
+    /// <item>예고: <c>"접속유지시간이 10분 남았습니다… 접속시간을 연장하시겠습니까?"</c> [연장][종료]</item>
+    /// </list>
+    /// <b>예고를 끊김으로 세면 안 된다</b> — 아직 살아 있는 세션이다.
+    /// 예고문에도 "시스템을 자동 종료합니다" 가 들어 있어서, <c>남았습니다</c> 가 있으면 제외한다.
+    ///
+    /// 이걸 놓치면 화면 종류가 <c>OtherNeisPage</c> 로 잡혀
+    /// "나이스지만 아직 그 화면이 아니다"라는 <b>엉뚱한 안내</b>가 나간다(실측).
+    /// </summary>
     private async Task<bool> HasSessionExpiredNoticeAsync()
     {
         if (_page is null) return false;
@@ -254,7 +267,30 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
                     const r = e.getBoundingClientRect();
                     if (!(r.width > 200 && r.height > 40)) return false;
                     const t = e.innerText || '';
-                    return t.includes('로그아웃 되었습니다') || t.includes('다시 로그인');
+                    if (t.includes('남았습니다')) return false;      // 아직 살아 있는 예고
+                    return t.includes('로그아웃 되었습니다')
+                        || t.includes('다시 로그인')
+                        || t.includes('시스템을 종료합니다');
+                })");
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// <b>접속시간 연장 안내</b>가 떠 있는지 — <c>"접속유지시간이 N분 남았습니다"</c>.
+    /// 세션은 아직 살아 있지만, 이 상자가 <b>모든 클릭을 막는다.</b> 그냥 두면 작업이 조용히 멈춘다.
+    /// </summary>
+    public async Task<bool> HasSessionWarningAsync()
+    {
+        if (_page is null) return false;
+        try
+        {
+            return await _page.EvaluateAsync<bool>(@"() => [...document.querySelectorAll('div')]
+                .some(e => {
+                    const r = e.getBoundingClientRect();
+                    if (!(r.width > 200 && r.height > 40)) return false;
+                    const t = e.innerText || '';
+                    return t.includes('접속유지시간') && t.includes('남았습니다');
                 })");
         }
         catch { return false; }

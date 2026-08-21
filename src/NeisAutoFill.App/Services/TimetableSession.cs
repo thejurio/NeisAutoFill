@@ -57,6 +57,13 @@ public sealed class TimetableSession(
         var tools = engine.Timetable;
         if (tools is null) return new TimetablePreflight(false, "브라우저에 연결되어 있지 않습니다.");
 
+        // 놀려 두면 접속시간 연장 안내가 뜬다. 세션은 살아 있지만 그 상자가 <b>모든 클릭을 막아</b>
+        // 시작해도 아무것도 안 된다. 자동으로 누르지 않고 사용자에게 알린다(2026-08-21).
+        if (await engine.HasSessionWarningAsync())
+            return new TimetablePreflight(false,
+                "나이스에 접속시간 연장 안내가 떠 있습니다." + Environment.NewLine +
+                "나이스 화면에서 [연장]을 누른 뒤 다시 시작해 주세요.");
+
         var reader = tools.Reader;
         if (!await reader.IsTimetableScreenAsync())
             return new TimetablePreflight(false, "학급시간표관리 화면이 아닙니다.");
