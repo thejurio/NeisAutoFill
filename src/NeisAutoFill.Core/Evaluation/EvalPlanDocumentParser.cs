@@ -21,6 +21,7 @@ public static class EvalPlanDocumentParser
         // 교과 → 영역명 → 성취기준들. 쪽을 넘나들며 같은 영역이 이어지므로 여기서 모은다.
         var bySubject = new Dictionary<string, Dictionary<string, List<EvalStandard>>>();
         var order = new List<string>();
+        var ignored = new List<string>();
 
         RuledTable? previous = null;
         EvalTableColumns? previousColumns = null;
@@ -80,8 +81,19 @@ public static class EvalPlanDocumentParser
 
                 if (criteria.Count == 0) continue;
 
-                var subject = EvalSubjectCode.Of(standard) ?? "(교과 미확인)";
+                // 교과를 가리지 못하면 <b>넣지 않는다</b> — 나이스 평가계획은 교과(목) 단위다.
+                // 창체·학교자율시간, 그리고 표에 섞인 쪽 꼬리말이 여기 걸린다.
+                // 조용히 버리지 않고 무엇을 뺐는지 남긴다(사용자 결정 2026-08-21).
+                var subject = EvalSubjectCode.Of(standard);
                 var areaName = area.Length > 0 ? area : "(영역 미확인)";
+
+                if (subject is null)
+                {
+                    if (!ignored.Contains(areaName)) ignored.Add(areaName);
+                    pending = null;
+                    continue;
+                }
+
 
                 if (!bySubject.TryGetValue(subject, out var areas))
                 {
@@ -103,7 +115,7 @@ public static class EvalPlanDocumentParser
                 bySubject[s].Select(a => new EvalArea(a.Key, a.Value)).ToList()))
             .ToList();
 
-        return new EvalPlanDocument(subjects);
+        return new EvalPlanDocument(subjects, Ignored: ignored);
     }
 
     /// <summary>평가결과가 들어 있는 <b>마지막</b> 줄. 없으면 <paramref name="first"/> 보다 작다.</summary>

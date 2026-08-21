@@ -122,4 +122,27 @@ public class EvalPlanParsingTests
         Assert.Equal(1, c.Level);
         Assert.Equal(2, c.Result);
     }
+
+    // ── 교과를 못 가리는 것은 뺀다 (E-008) ──────────────────
+
+    [Fact]
+    public void 뺀_영역은_세어서_알린다()
+    {
+        var doc = new EvalPlanDocument(
+            new[] { new EvalSubjectPlan("국어", new[] { new EvalArea("문법", Array.Empty<EvalStandard>()) }) },
+            Ignored: new[] { "자율 활동", "동아리 활동" });
+
+        // 조용히 버리지 않는다 — 몇 건을 왜 뺐는지 사용자가 알아야 한다
+        Assert.Equal(2, doc.Skipped.Count);
+        Assert.Contains("뺀 영역 2", doc.Describe());
+    }
+
+    [Fact]
+    public void 뺀_것이_없으면_설명에_나오지_않는다()
+    {
+        var doc = new EvalPlanDocument(Array.Empty<EvalSubjectPlan>());
+
+        Assert.Empty(doc.Skipped);
+        Assert.DoesNotContain("뺀 영역", doc.Describe());
+    }
 }

@@ -46,17 +46,30 @@ public sealed record EvalSubjectPlan(string Subject, IReadOnlyList<EvalArea> Are
 /// <param name="SchoolYear">문서에 적힌 학년도 (못 읽으면 null)</param>
 /// <param name="Semester">학기 (못 읽으면 null)</param>
 /// <param name="Grade">학년 (못 읽으면 null)</param>
+/// <param name="Ignored">
+/// 교과를 가리지 못해 <b>뺀</b> 영역들 (중복 없이).
+///
+/// 성취기준 코드(<c>[6국04-05]</c>)가 없으면 어느 교과인지 알 길이 없다.
+/// 그런 것은 <b>창의적 체험활동</b>(자율·동아리·진로)과 <b>학교자율시간</b>, 그리고
+/// 표에 섞여 든 <b>쪽 꼬리말</b>이다. 나이스 평가계획은 교과(목) 단위라 넣을 자리가 없다.
+/// 사용자가 "아예 무시해 달라"고 정했다(2026-08-21) — <b>다만 몇 건을 뺐는지는 알린다.</b>
+/// </param>
 public sealed record EvalPlanDocument(
     IReadOnlyList<EvalSubjectPlan> Subjects,
     int? SchoolYear = null,
     int? Semester = null,
-    int? Grade = null)
+    int? Grade = null,
+    IReadOnlyList<string>? Ignored = null)
 {
+    /// <summary>뺀 영역들 (없으면 빈 목록).</summary>
+    public IReadOnlyList<string> Skipped => Ignored ?? Array.Empty<string>();
+
     public int AreaCount => Subjects.Sum(s => s.Areas.Count);
 
     public int StandardCount => Subjects.Sum(s => s.StandardCount);
 
     /// <summary>사람이 검산할 수 있게 한 줄로 — 교과 수·영역 수·성취기준 수.</summary>
     public string Describe() =>
-        $"교과 {Subjects.Count} · 영역 {AreaCount} · 성취기준 {StandardCount}";
+        $"교과 {Subjects.Count} · 영역 {AreaCount} · 성취기준 {StandardCount}" +
+        (Skipped.Count > 0 ? $" · 뺀 영역 {Skipped.Count}" : "");
 }
