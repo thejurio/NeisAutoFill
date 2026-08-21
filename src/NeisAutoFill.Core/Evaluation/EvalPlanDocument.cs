@@ -14,11 +14,16 @@ public sealed record EvalCriterion(string Level, string Result);
 /// <param name="Element">평가요소</param>
 /// <param name="Criteria">단계별 평가기준. 순서가 곧 화면 입력 순서다(위가 높은 단계)</param>
 /// <param name="Code">문서에 적힌 성취기준 코드 (없으면 빈 문자열) — 나이스에는 넣지 않는다</param>
+/// <param name="SpansPages">
+/// 쪽을 넘어 <b>이어붙인</b> 것인가. 원문 한 쪽 안에 통째로 들어 있지 않으므로
+/// 기계 대조(원문 부분문자열 확인)로는 맞는지 알 수 없다 — 사람이 봐야 한다.
+/// </param>
 public sealed record EvalStandard(
     string Standard,
     string Element,
     IReadOnlyList<EvalCriterion> Criteria,
-    string Code = "")
+    string Code = "",
+    bool SpansPages = false)
 {
     /// <summary>단계 수. 문서에 숫자로 적혀 있지 않으므로 <b>세어서</b> 정한다(E-002).</summary>
     public int LevelCount => Criteria.Count;

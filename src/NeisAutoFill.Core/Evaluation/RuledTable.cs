@@ -30,6 +30,11 @@ public sealed class RuledTable
 
     public int RowCount => Math.Max(0, RowEdges.Count - 1);
 
+    /// <summary>열 경계가 같은 표인가 — <b>쪽을 넘어 이어지는 표</b>를 알아보는 데 쓴다.</summary>
+    public bool SameColumns(RuledTable other) =>
+        ColumnCount == other.ColumnCount &&
+        ColumnEdges.Zip(other.ColumnEdges).All(p => Math.Abs(p.First - p.Second) <= Tolerance);
+
     /// <summary>같은 선으로 볼 좌표 오차 (pt).</summary>
     private const double Tolerance = 3;
 
@@ -76,10 +81,14 @@ public sealed class RuledTable
     }
 
     /// <summary>칸 하나의 글자. 없는 열(-1)이면 빈 문자열 — 양식마다 없는 열이 있다.</summary>
-    public string Cell(int row, int column) =>
+    /// <param name="trim">
+    /// 앞뒤 공백을 없앨지. <b>쪽을 넘어 이어 붙일 때는 false</b> — 줄 끝 공백이
+    /// 낱말이 붙는지 띄는지를 가르는 유일한 단서다(<c>프로그램을</c> + <c>작성한다</c> 대 <c>연산</c> + <c>자</c>).
+    /// </param>
+    public string Cell(int row, int column, bool trim = true) =>
         column < 0 || column >= ColumnCount || row < 0 || row >= RowCount
             ? ""
-            : Text(RowEdges[row + 1], RowEdges[row], ColumnEdges[column], ColumnEdges[column + 1]);
+            : Text(RowEdges[row + 1], RowEdges[row], ColumnEdges[column], ColumnEdges[column + 1], trim);
 
     /// <summary>칸 하나를 <b>줄 단위로</b> — 한 칸에 두 가지가 층으로 들어 있을 때 쓴다.</summary>
     public IReadOnlyList<string> CellLines(int row, int column) =>
@@ -94,10 +103,10 @@ public sealed class RuledTable
     /// 병합된 칸의 글자는 가운데 행에 몰려 있지만 <b>이웃 행으로 넘치기도 한다</b>(실측).
     /// 그래서 행 하나씩 읽지 않고 구간 전체를 한 번에 읽는다.
     /// </summary>
-    public string Span(int firstRow, int lastRow, int column) =>
+    public string Span(int firstRow, int lastRow, int column, bool trim = true) =>
         column < 0 || column >= ColumnCount || firstRow < 0 || lastRow >= RowCount
             ? ""
-            : Text(RowEdges[lastRow + 1], RowEdges[firstRow], ColumnEdges[column], ColumnEdges[column + 1]);
+            : Text(RowEdges[lastRow + 1], RowEdges[firstRow], ColumnEdges[column], ColumnEdges[column + 1], trim);
 
     /// <summary>
     /// 칸 안의 글자를 하나의 문장으로.
@@ -106,13 +115,15 @@ public sealed class RuledTable
     /// (실측: <c>분석하고적</c> / <c>절한표현을</c>), 줄과 줄은 <b>붙여서</b> 잇는다.
     /// 띄어쓰기는 <see cref="Join"/> 이 글자 사이 간격을 보고 되살린다.
     /// </summary>
-    private string Text(double bottom, double top, double left, double right)
+    private string Text(double bottom, double top, double left, double right, bool trim = true)
     {
         // 줄 끝 공백을 <b>지우지 않고</b> 이어 붙인다 — 낱말 경계에서 줄이 바뀌면
         // 그 공백이 유일한 단서다(실측: 지웠더니 "글로쓸", "구성하고,매체를" 처럼 붙어 버렸다).
         var joined = string.Concat(Raw(bottom, top, left, right));
 
-        return System.Text.RegularExpressions.Regex.Replace(joined, @"\s+", " ").Trim();
+        var collapsed = System.Text.RegularExpressions.Regex.Replace(joined, @"\s+", " ");
+
+        return trim ? collapsed.Trim() : collapsed;
     }
 
     private List<string> Lines(double bottom, double top, double left, double right) =>
