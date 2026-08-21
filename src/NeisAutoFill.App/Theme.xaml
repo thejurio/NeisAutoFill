@@ -335,38 +335,55 @@
          밑줄만으로는 "누르는 것"으로 보이지 않아서, 서로 붙은 알약형 버튼으로 만든다.
          고르지 않은 탭도 테두리와 배경이 있어 클릭 대상임이 드러난다. -->
     <!--
-        큰 축 탭 (평가 / 시간표).
+        큰 축 탭 (평가 / 시간표) — <b>한 홈 안에 붙인 전환 컨트롤</b>.
 
-        <b>오른쪽 여백이 왼쪽보다 좁게 나오던 문제를 고친 자리다</b> (실측 2026-08-21).
-        헤더(이모지+글자)를 <b>잰 너비보다 넓게 그려서</b> 남는 자리가 오른쪽에서 깎였다 —
-        측정 결과 왼쪽 21px 인데 오른쪽은 9px 였다.
+        전에는 둘이 따로 떨어진 알약이라 <b>그냥 단추 두 개로 읽혔다.</b> 이제 홈(track) 안에
+        나란히 넣어 "이 중 <b>하나</b>를 고르는 것"임을 모양으로 보인다 (D-DeskCal 의 월간·주간·안건과 같은 꼴).
 
-        세 가지를 같이 둔다. 결정적인 것은 ③이고, ①②는 잰 너비와 그린 너비를 어긋나지 않게 하는 것이다.
-          ① 굵기를 선택 상태로 바꾸지 않는다 — 보통 굵기로 재고 굵게 그리면 그만큼 어긋난다.
-             선택 표시는 배경색(파랑)과 글자색(흰색)으로 충분하다.
-          ② 이모지에 고정 폭을 준다 (MainWindow.xaml 의 탭 머리글). 대체 폰트라 측정이 어긋난다.
-          ③ 오른쪽 여백을 넉넉히 준다 — 18/28. 남는 자리가 있어야 조금 어긋나도 눌리지 않는다.
-
-        고친 뒤 실측: 평가 왼쪽 22px · 오른쪽 23px.
+        덤으로 <b>오른쪽이 잘리던 문제가 구조적으로 사라진다.</b> 칸마다 최소 폭을 주고 글을 가운데 두므로,
+        헤더를 잰 너비보다 조금 넓게 그려도 남는 자리가 흡수한다 —
+        예전에는 폭이 글자에 딱 맞아서 넘치는 만큼 오른쪽이 눌렸다(실측: 왼쪽 21px · 오른쪽 9px).
     -->
+    <Style x:Key="MainTabControl" TargetType="TabControl">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <DockPanel>
+                        <!-- 홈. 흰 바탕 위에서도 보이도록 Panel 보다 한 단계 진한 Line 을 쓴다 -->
+                        <Border DockPanel.Dock="Top" HorizontalAlignment="Left" Margin="14,10,14,8"
+                                CornerRadius="9" Padding="3" Background="{StaticResource Line}">
+                            <TabPanel IsItemsHost="True"/>
+                        </Border>
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter ContentSource="SelectedContent"/>
+                        </Border>
+                    </DockPanel>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 홈 안의 칸 하나. 고른 것만 도드라진다. -->
     <Style x:Key="MainTab" TargetType="TabItem">
         <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontWeight" Value="Bold"/>
         <Setter Property="Foreground" Value="{StaticResource Sub}"/>
         <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="MinWidth" Value="108"/>
+        <Setter Property="Height" Value="32"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="b" Background="White" BorderThickness="1" CornerRadius="8"
-                            BorderBrush="#CBD5E1" Padding="18,8,28,8" SnapsToDevicePixels="True">
-                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                    <Border x:Name="b" Background="Transparent" CornerRadius="6"
+                            Padding="14,0" SnapsToDevicePixels="True">
+                        <ContentPresenter ContentSource="Header"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="b" Property="Background" Value="{StaticResource Neis}"/>
-                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Neis}"/>
                             <Setter Property="Foreground" Value="White"/>
                         </Trigger>
                         <MultiTrigger>
@@ -374,8 +391,7 @@
                                 <Condition Property="IsSelected" Value="False"/>
                                 <Condition Property="IsMouseOver" Value="True"/>
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="b" Property="Background" Value="{StaticResource NeisSoft}"/>
-                            <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Neis}"/>
+                            <Setter TargetName="b" Property="Background" Value="White"/>
                             <Setter Property="Foreground" Value="{StaticResource Neis}"/>
                         </MultiTrigger>
                     </ControlTemplate.Triggers>
@@ -384,10 +400,6 @@
         </Setter>
     </Style>
 
-    <!-- 탭 머리줄 — 버튼 띠처럼 보이도록 배경과 여백을 준다 -->
-    <Style x:Key="MainTabPanel" TargetType="TabPanel">
-        <Setter Property="Margin" Value="14,8,14,8"/>
-    </Style>
 
     <!-- ==== 진행 막대의 단계 칩 ====
          끝난 단계는 ✓ 로, 남은 단계는 번호로. 누르면 그 단계를 다시 한다. -->
