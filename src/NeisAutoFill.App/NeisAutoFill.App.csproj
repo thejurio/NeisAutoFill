@@ -34,10 +34,11 @@
   <ItemGroup>
     <!-- 창·작업표시줄 아이콘용 (WPF Window Icon 바인딩) -->
     <Resource Include="..\..\assets\app.ico" Link="app.ico" />
-    <!-- 내장 사용설명서 — [?] 버튼이 로컬로 연다 (호스팅·로그인 불필요) -->
-    <Content Include="사용설명서.html" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 내장 사용설명서 — docs/guide 한 파일을 앱 출력에 연결해 문서·배포본이 갈라지지 않게 한다. -->
+    <Content Include="..\..\docs\guide\사용설명서.html"
+             Link="사용설명서.html"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
-
 
