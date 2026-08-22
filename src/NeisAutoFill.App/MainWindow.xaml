@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:NeisAutoFill.App.ViewModels"
+        xmlns:views="clr-namespace:NeisAutoFill.App.Views"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="NEIS 교과평가 자동입력기" Height="840" Width="1280" MinWidth="1060" MinHeight="700"
         Icon="app.ico" WindowStyle="None" ResizeMode="CanResize"
@@ -230,6 +231,17 @@
                                 <TextBlock Text="평가" VerticalAlignment="Center"/>
                             </StackPanel>
                         </TabItem.Header>
+
+                      <!-- 평가 안의 세 갈래 (사용자 결정 2026-08-22).
+                           창을 오가지 않고 여기서 다 끝낸다: 등급 매기기 → 계획 올리기 → 서술문. -->
+                      <TabControl x:Name="EvalTabs" Style="{StaticResource SectionTabControl}"
+                                  BorderThickness="0" Background="White" Padding="0"
+                                  SelectionChanged="EvalTabs_SelectionChanged">
+                        <TabControl.ItemContainerStyle>
+                            <Style TargetType="TabItem" BasedOn="{StaticResource SectionTab}"/>
+                        </TabControl.ItemContainerStyle>
+
+                        <TabItem Header="교과평가">
                       <DockPanel Background="White">
                         <!-- 평가 전용 도구 -->
                         <Border DockPanel.Dock="Top" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
@@ -247,10 +259,6 @@
                                     </Border>
                                     <Button Style="{StaticResource GhostButton}" Content="📁 자료 준비" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"
                                             ToolTip="학생 명단·평가계획을 입력합니다 (평가계획서 파일을 넣으면 AI가 자동 인식)"/>
-                                    <Button Style="{StaticResource AccentGhostButton}" Content="✨ 교과학습" Command="{Binding OpenGeneratorCommand}"
-                                            ToolTip="AI 서술문 생성·나이스 입력 창을 엽니다"/>
-                                    <Button Style="{StaticResource GhostButton}" Content="📋 평가계획" Command="{Binding OpenEvalPlanCommand}" Margin="6,0,0,0"
-                                            ToolTip="학교 평가계획 문서를 읽어 나이스 [평가계획(안)관리]에 넣습니다&#10;영역·성취기준·평가요소와 단계별 평가기준까지"/>
                                     <Border Width="1" Background="{StaticResource Line}" Margin="10,2,4,2"/>
                                     <StackPanel Orientation="Horizontal" Margin="6,0,6,0">
                                         <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}" Padding="9,7"/>
@@ -377,6 +385,18 @@
                 </Border>
                         </Grid>
                       </DockPanel>
+                        </TabItem>
+
+                        <!-- 평가계획 → 나이스 [평가계획(안)관리] 에 넣기 -->
+                        <TabItem Header="평가계획">
+                            <views:EvalPlanView DataContext="{Binding EvalPlan}"/>
+                        </TabItem>
+
+                        <!-- 교과학습발달상황(세특) 생성·입력 -->
+                        <TabItem Header="교과학습">
+                            <views:GeneratorView DataContext="{Binding Generator}"/>
+                        </TabItem>
+                      </TabControl>
                     </TabItem>
 
                     <!-- ─────────── 시간표 탭 ───────────

@@ -1,31 +1,13 @@
-<Window x:Class="NeisAutoFill.App.EvalPlanWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="평가계획 나이스 입력" Height="600" Width="900" MinHeight="460" MinWidth="740"
-        WindowStartupLocation="CenterOwner" WindowStyle="None"
-        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
-        FontFamily="{StaticResource UiFont}">
-    <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="38" ResizeBorderThickness="6" CornerRadius="0"
-                            GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
-    </shell:WindowChrome.WindowChrome>
-
-    <Border BorderBrush="#CBD5E1" BorderThickness="1" Background="{StaticResource Panel2}">
-        <DockPanel>
-
-            <!-- 제목줄 -->
-            <Border DockPanel.Dock="Top" Height="38" Background="White"
-                    BorderBrush="{StaticResource Neis}" BorderThickness="0,0,0,2">
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="✕"
-                            Click="Close_Click" Padding="12,4" Margin="0,0,8,0"
-                            shell:WindowChrome.IsHitTestVisibleInChrome="True"/>
-                    <TextBlock Text="평가계획 나이스 입력" VerticalAlignment="Center" Margin="14,0"
-                               FontWeight="Bold" FontSize="13" Foreground="{StaticResource Ink}"/>
-                </DockPanel>
-            </Border>
-
+﻿<UserControl x:Class="NeisAutoFill.App.Views.EvalPlanView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
+             FontFamily="{StaticResource UiFont}">
+    <!--
+        평가계획을 나이스 [평가계획(안)관리]에 넣는 화면. 따로 뜨던 창에서 [평가] 탭 안으로 옮겼다
+        (사용자 요청 2026-08-22). 자료는 [자료 준비]에 있는 것을 그대로 쓴다.
+    -->
+    <DockPanel Background="{StaticResource Panel2}">
             <!-- 아래 실행줄 -->
             <Border DockPanel.Dock="Bottom" Padding="14,10" Background="White"
                     BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
@@ -127,6 +109,5 @@
                     </ScrollViewer>
                 </DockPanel>
             </Border>
-        </DockPanel>
-    </Border>
-</Window>
+    </DockPanel>
+</UserControl>

@@ -78,11 +78,9 @@ public sealed class MainViewModel : ObservableObject
 
         LaunchEdgeCommand = new RelayCommand(LaunchEdge);
         OpenExcelCommand = new RelayCommand(OpenExcel);
-        OpenGeneratorCommand = new RelayCommand(OpenGenerator);
         OpenScaleEditorCommand = new RelayCommand(OpenScaleEditor);
         OpenRecentCommand = new RelayCommand<string>(p => { if (p is not null) LoadExcel(p); });
         OpenPlanEditorCommand = new RelayCommand(() => OpenPlanEditor());
-        OpenEvalPlanCommand = new RelayCommand(OpenEvalPlan);
         RunAllSubjectsCommand = new AsyncRelayCommand(RunAllSubjectsAsync);
         InspectCommand = new AsyncRelayCommand(InspectAsync);
         ExportGradesCommand = new RelayCommand(ExportGrades);
@@ -172,8 +170,8 @@ public sealed class MainViewModel : ObservableObject
             if (!anyGrade)
                 return "다음: 성적표에서 등급을 입력하세요. 셀을 여러 개 선택하고 숫자키(1·2·3…)나 드래그로 한 번에 지정할 수 있어요.";
             if (!IsConnected)
-                return "다음: 나이스에 입력하려면 [🌐 NEIS 접속]으로 로그인·조회해 연결하세요. 서술문은 [✨ 교과학습] 창에서 생성합니다.";
-            return "준비 완료! 과목 탭에서 [▶ 이 과목 입력] 또는 [🚀 전과목 입력]으로 나이스에 넣으세요. 서술문은 [✨ 교과학습] 창에서.";
+                return "다음: 나이스에 입력하려면 [🌐 NEIS 접속]으로 로그인·조회해 연결하세요. 서술문은 [교과학습] 탭에서 만듭니다.";
+            return "준비 완료! 과목 탭에서 [▶ 이 과목 입력] 또는 [🚀 전과목 입력]으로 나이스에 넣으세요. 서술문은 [교과학습] 탭에서.";
         }
     }
 
@@ -200,7 +198,6 @@ public sealed class MainViewModel : ObservableObject
     public ICommand OpenPlanEditorCommand { get; }
 
     /// <summary>평가계획 문서를 나이스에 넣는 창을 연다 — 평가 탭 안에 둔다.</summary>
-    public ICommand OpenEvalPlanCommand { get; }
 
 
     /// <summary>드래그앤드롭된 평가계획 문서(pdf/hwp/hwpx) → 편집 창 열고 AI 가져오기 시작.</summary>
@@ -461,7 +458,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>시간표 탭 — 문서 읽기부터 나이스 입력까지 그 탭 안에서 끝낸다.</summary>
     public TimetableTabViewModel Timetable { get; }
 
-    /// <summary>평가계획 입력 — 평가 탭의 [📋 평가계획] 창이 쓴다.</summary>
+    /// <summary>평가계획 입력 — 평가 탭 안 [평가계획] 갈래가 쓴다.</summary>
     public EvalPlanTabViewModel EvalPlan { get; }
 
     // ── 본문 탭 (0 = 평가, 1 = 시간표) ──────────
@@ -607,20 +604,24 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand LaunchEdgeCommand { get; }
     public ICommand OpenExcelCommand { get; }
-    public ICommand OpenGeneratorCommand { get; }
 
 
-    /// <summary>평가계획 입력 창 — 새 탭을 만들지 않고 <b>평가 탭 안</b>에 둔다(사용자 결정 2026-08-21).</summary>
-    private void OpenEvalPlan()
-    {
-        var window = new EvalPlanWindow(EvalPlan) { Owner = Application.Current.MainWindow };
-        window.Show();
-    }
+    /// <summary>
+    /// 교과학습(세특) 화면의 속. 처음 <b>그 탭을 열 때</b> 만들어진다 —
+    /// 만드는 값이 비싸고(과목·계획 스냅샷), 안 쓰는 사람도 있기 때문이다.
+    /// </summary>
+    public GeneratorViewModel? Generator => _generatorVm;
 
-    private void OpenGenerator()
+    /// <summary>
+    /// 교과학습 탭을 열 때 부른다. 전에는 창을 여는 일이었다(사용자 요청 2026-08-22 로 탭이 됨).
+    /// 메인에서 지금 보고 있는 과목·반에 맞춰 놓는 것이 핵심이다.
+    /// </summary>
+    public void PrepareGenerator()
     {
         try
         {
+            var isNew = _generatorVm is null;
+
             _generatorVm ??= new GeneratorViewModel(
                 // 담임: 메인의 전 과목 성적·계획. 전담이면 아래 subjectMode 가 자체 구동하므로 안 쓰임.
                 () => Subjects.Select(s => s.Snapshot()).ToList(),
@@ -634,11 +635,12 @@ public sealed class MainViewModel : ObservableObject
                     SelectedSubject?.OwnerClass is { } oc ? (oc.Grade, oc.Class) : null);
             else
                 _generatorVm.RefreshSubjects();   // 담임: 메인에서 로드된 성적·평가계획을 자동 반영
-            new GeneratorWindow(_generatorVm) { Owner = Application.Current.MainWindow }.Show();
+
+            if (isNew) OnPropertyChanged(nameof(Generator));
         }
         catch (Exception ex)
         {
-            Log($"생성기 열기 오류: {ex.Message}");
+            Log($"교과학습 화면 준비 오류: {ex.Message}");
             ShowError(ex.ToString());
         }
     }

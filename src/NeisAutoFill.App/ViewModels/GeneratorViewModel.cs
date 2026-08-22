@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Net.Http;
 using System.Windows;
@@ -763,7 +763,7 @@ public sealed class GeneratorViewModel : ObservableObject
     }
 
     // ── 동작 ──────────────────────────────
-    /// <summary>메인 창에서 로드된 성적·평가계획을 다시 읽어 반영 (창 열 때마다 호출).</summary>
+    /// <summary>메인에서 로드된 성적·평가계획을 다시 읽어 반영 (교과학습 탭을 열 때마다 호출).</summary>
     public void RefreshSubjects()
     {
         _plans = Plans();

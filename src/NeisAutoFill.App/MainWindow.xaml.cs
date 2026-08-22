@@ -214,6 +214,22 @@ public partial class MainWindow : Window
     private void GradeGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
         _gradeGrid.OnPreviewMouseLeftButtonDown((DataGrid)sender, e);
 
+    /// <summary>
+    /// 평가 안의 갈래를 바꿀 때. 각 화면은 <b>열릴 때 최신 자료를 다시 읽는다</b> —
+    /// 교과평가에서 고친 명단·계획이 곧바로 보여야 하기 때문이다.
+    /// </summary>
+    private void EvalTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, EvalTabs)) return;   // 안쪽 과목 탭 전환은 무시
+        if (DataContext is not MainViewModel vm) return;
+
+        switch ((EvalTabs.SelectedItem as TabItem)?.Header as string)
+        {
+            case "평가계획": vm.EvalPlan.Refresh(); break;
+            case "교과학습": vm.PrepareGenerator(); break;
+        }
+    }
+
     private void AddStudent_Click(object sender, RoutedEventArgs e) => _gradeGrid.AddStudent();
 
     /// <summary>
