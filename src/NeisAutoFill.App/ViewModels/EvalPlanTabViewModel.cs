@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Windows;
 using NeisAutoFill.App.Mvvm;
 using NeisAutoFill.App.Services;
 using NeisAutoFill.Automation;
@@ -179,12 +180,21 @@ public sealed class EvalPlanTabViewModel : ObservableObject
     }
 
     /// <summary>한 단계에서 고른 교과를 차례로 돈다. 끝까지 갔으면 true.</summary>
+    /// <summary>이번 실행에서 무엇이 끝났고 어디서 멈췄는지 — 끝나고 사용자에게 보여 준다.</summary>
+    private readonly List<EvalSubjectResult> _results = new();
+    private string? _stopped;
+
     private async Task<bool> RunStepAsync(
         EvalStep step, string label, IReadOnlyList<EvalSubjectRow> chosen,
         Func<EvalSubjectPlan, CancellationToken, Task<EvalSubjectResult>> run)
     {
         var blocked = await _session.EnterAsync(step, _cancel!.Token);
-        if (blocked is not null) { _log($"{label} 화면으로 옮기지 못했습니다 — {blocked}"); return false; }
+        if (blocked is not null)
+        {
+            _stopped = $"{label} 화면으로 옮기지 못했습니다 — {blocked}";
+            _log(_stopped);
+            return false;
+        }
 
         _log($"── {label} 단계 — 교과 {chosen.Count}개");
 
@@ -196,13 +206,18 @@ public sealed class EvalPlanTabViewModel : ObservableObject
             row.Failed = false;
 
             var result = await run(row.Plan, _cancel.Token);
+            _results.Add(result);
 
             row.Result = result.Describe();
             row.Failed = !result.Ok;
             _log(result.Describe());
 
             // 한 교과가 막히면 다음으로 넘어가지 않는다 — 무엇이 잘못됐는지 먼저 봐야 한다
-            if (!result.Ok) return false;
+            if (!result.Ok)
+            {
+                _stopped = $"[{label}] {result.Subject} 에서 멈췄습니다.\n\n{result.Failure}";
+                return false;
+            }
         }
 
         return true;
@@ -218,8 +233,11 @@ public sealed class EvalPlanTabViewModel : ObservableObject
 
         try
         {
+            _results.Clear();
+            _stopped = null;
+
             var blocked = await _session.PreflightAsync(_cancel.Token);
-            if (blocked is not null) { _log(blocked); return; }
+            if (blocked is not null) { _stopped = blocked; _log(blocked); return; }
 
             var scope = _session.Scope!;
             _log($"{scope.SchoolYear}학년도 {scope.Semester}학기 {scope.Grade}학년에서 " +
@@ -239,9 +257,40 @@ public sealed class EvalPlanTabViewModel : ObservableObject
         finally
         {
             IsRunning = false;
+            var canceled = _cancel?.IsCancellationRequested ?? false;
             _cancel?.Dispose();
             _cancel = null;
             _progress.Report(new(""));
+
+            if (!canceled) Report();
         }
+    }
+
+    /// <summary>
+    /// 끝나고 <b>무슨 일이 있었는지 창으로 알린다.</b>
+    ///
+    /// 로그만 남기면 사용자는 끝난 줄도, 막힌 줄도 모른다 — 등급·서술문은 결과 창이 뜨는데
+    /// 평가계획만 조용했다(사용자 지적 2026-08-22).
+    /// </summary>
+    private void Report()
+    {
+        var standards = _results.Sum(r => r.Standards);
+        var criteria = _results.Sum(r => r.Criteria);
+        var subjects = _results.Select(r => r.Subject).Distinct().Count();
+
+        var did = $"교과 {subjects}개 · 성취기준 {standards}건 · 평가기준 {criteria}건";
+
+        if (_stopped is null)
+        {
+            MessageBox.Show(
+                $"평가계획을 나이스에 넣었습니다.\n\n{did}\n\n나이스 화면에서 값을 확인해 주세요.",
+                "평가계획 입력 완료", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        MessageBox.Show(
+            $"{_stopped}\n\n거기까지 넣은 것: {did}\n\n고친 뒤 다시 [입력 시작]을 누르면 " +
+            "이미 들어간 것은 건너뛰고 이어서 넣습니다.",
+            "평가계획 입력 중단", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 }
