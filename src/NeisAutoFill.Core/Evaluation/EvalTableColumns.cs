@@ -1,4 +1,4 @@
-namespace NeisAutoFill.Core.Evaluation;
+﻿namespace NeisAutoFill.Core.Evaluation;
 
 /// <summary>
 /// 평가계획 표에서 <b>어느 열이 무엇인지</b>. 머리글을 읽어 정한다.
@@ -23,8 +23,16 @@ public sealed record EvalTableColumns(int Area, int Standard, int Element, int L
     /// </summary>
     public bool IsUsable => Result >= 0 && (Standard >= 0 || Area >= 0);
 
-    /// <summary>성취기준 하나를 나누는 기준 열. 성취기준 열이 없으면 영역 열을 쓴다.</summary>
-    public int BlockColumn => Standard >= 0 ? Standard : Area;
+    /// <summary>
+    /// <b>평가 하나</b>를 나누는 기준 열 — <b>평가요소</b>다(사용자 확인 2026-08-22).
+    ///
+    /// 성취기준으로 나누면 안 된다: <b>한 평가에 성취기준이 여러 개</b>인 경우가 있어
+    /// 한 평가가 둘로 쪼개진다. 평가 하나는 잘함·보통·노력요함 <b>한 세트</b>를 갖는다 —
+    /// 세트가 세 벌이면 평가가 셋이고, 그 경계가 곧 평가요소 칸의 경계다.
+    ///
+    /// 평가요소 열이 없는 표는 성취기준으로, 그것도 없으면 영역으로 나눈다.
+    /// </summary>
+    public int BlockColumn => Element >= 0 ? Element : Standard >= 0 ? Standard : Area;
 
     /// <summary>
     /// 평가기준 열의 머리글 — <b>양식마다 이름이 다르다</b>(실측 2026-08-21).

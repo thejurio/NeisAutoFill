@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Evaluation;
+﻿using NeisAutoFill.Core.Evaluation;
 
 namespace NeisAutoFill.Tests;
 
@@ -104,6 +104,42 @@ public class EvalPlanParsingTests
 
         Assert.True(c.IsUsable);
         Assert.Equal(new EvalTableColumns(Area: 3, Standard: 1, Element: 4, Level: 6, Result: 7), c);
+    }
+
+    // ── 평가 하나를 나누는 기준 (사용자 확인 2026-08-22) ─────
+
+    /// <summary>
+    /// 평가 하나 = 잘함·보통·노력요함 <b>한 세트</b>. 그 경계는 <b>평가요소</b> 칸이다.
+    /// 성취기준으로 나누면 한 평가에 성취기준이 여러 개일 때 한 평가가 둘로 쪼개진다.
+    /// </summary>
+    [Fact]
+    public void 평가는_성취기준이_아니라_평가요소로_나눈다()
+    {
+        var c = EvalTableColumns.Detect(new[]
+            { "시기", "성취기준", "단원명", "평가 영역", "평가 요소", "수업․평가 방법", "", "평가 기준" });
+
+        Assert.Equal(c.Element, c.BlockColumn);
+        Assert.NotEqual(c.Standard, c.BlockColumn);
+    }
+
+    [Fact]
+    public void 평가요소_열이_없으면_성취기준으로_나눈다()
+    {
+        var c = EvalTableColumns.Detect(new[] { "영역", "성취기준", "", "평가기준" });
+
+        Assert.Equal(-1, c.Element);
+        Assert.Equal(c.Standard, c.BlockColumn);
+    }
+
+    [Fact]
+    public void 성취기준_열도_없으면_영역으로_나눈다()
+    {
+        // 학교자율시간 — 성취기준을 따로 쓰지 않는다
+        var c = EvalTableColumns.Detect(new[] { "시기", "평가 영역", "평가 방법", "", "평가 기준" });
+
+        Assert.Equal(-1, c.Element);
+        Assert.Equal(-1, c.Standard);
+        Assert.Equal(c.Area, c.BlockColumn);
     }
 
     [Fact]
