@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Evaluation;
+﻿using NeisAutoFill.Core.Evaluation;
 using NeisAutoFill.Core.Scale;
 using NeisAutoFill.Generator;
 using Xunit;
@@ -74,18 +74,26 @@ public class EvalPlanRealDocumentTests
         Assert.Equal("책 내용 간추리고 생각 나누기", entry.Element);
     }
 
-    /// <summary>한 영역에 성취기준이 여럿인 문서 — 버리지 않고 합치며, 합쳤다고 알린다.</summary>
+    /// <summary>한 영역에 평가가 여럿인 문서 — 줄이 그만큼 늘어나고, 진짜 영역명은 그대로 남는다.</summary>
     [Fact]
-    public void 성취기준이_여럿인_영역은_합치고_알린다()
+    public void 한_영역에_평가가_여럿이면_여러_줄로_나뉜다()
     {
         var result = Read("스쿨마스터.pdf");
         if (result is null) return;
 
         var social = result.Plans.Single(p => p.SubjectName == "사회");
-        var entry = social.Criteria[("한국사", "잘함")];
 
-        Assert.Equal(3, entry.Achievement!.Split('\n').Length);
-        Assert.Contains(result.Notes, n => n.Subject == "사회" && n.Text.Contains("성취기준이 3개"));
+        // '한국사' 한 영역에 평가가 셋 (선사·조선후기·일제강점기)
+        var korean = social.Domains
+            .Where(d => social.Criteria[(d, "잘함")].Area == "한국사").ToList();
+        Assert.Equal(3, korean.Count);
+
+        // 줄 이름은 겹치지 않고, 평가요소로 갈렸다
+        Assert.Equal(3, korean.Distinct().Count());
+        Assert.All(korean, d => Assert.StartsWith("한국사 · ", d));
+
+        // 평가마다 성취기준이 따로다 — 합쳐지지 않았다
+        Assert.Equal(3, korean.Select(d => social.Criteria[(d, "잘함")].Achievement).Distinct().Count());
     }
 
     /// <summary>교과를 못 가린 것(창체·학교자율시간)은 애초에 빠진다 — 사용자 결정 2026-08-21.</summary>

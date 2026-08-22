@@ -59,6 +59,31 @@ public class PlanWorkbookWriterTests : IDisposable
         Assert.Equal("[6국02-01]", loaded.Criteria[("읽기", "보통")].Achievement);
     }
 
+    /// <summary>한 영역에 평가가 둘이면 파일을 거쳐도 둘로 남아야 한다 (사용자 확인 2026-08-22).</summary>
+    [Fact]
+    public void 한_영역의_평가_둘이_왕복해도_둘로_남는다()
+    {
+        var scale = GradePresets.ThreeLevel;
+        var plan = new SubjectPlan("사회",
+            new[] { "한국사 · 선사 추론", "한국사 · 서민 문화" },
+            new Dictionary<(string, string), CriteriaEntry>
+            {
+                [("한국사 · 선사 추론", "잘함")] = new("가1", "[6사04-01]", "선사 추론", "한국사"),
+                [("한국사 · 선사 추론", "보통")] = new("나1", "[6사04-01]", "선사 추론", "한국사"),
+                [("한국사 · 서민 문화", "잘함")] = new("가2", "[6사05-02]", "서민 문화", "한국사"),
+                [("한국사 · 서민 문화", "보통")] = new("나2", "[6사05-02]", "서민 문화", "한국사"),
+            });
+
+        PlanWorkbookWriter.Write(_path, new[] { plan }, new List<(string, string)> { ("1", "홍") }, scale);
+        var loaded = Assert.Single(PlanWorkbookLoader.Load(_path, scale));
+
+        Assert.Equal(2, loaded.Domains.Count);
+        Assert.All(loaded.Domains, d => Assert.Equal("한국사", loaded.Criteria[(d, "잘함")].Area));
+        Assert.Equal(new[] { "[6사04-01]", "[6사05-02]" },
+            loaded.Domains.Select(d => loaded.Criteria[(d, "잘함")].Achievement));
+        Assert.Equal(new[] { "가1", "가2" }, loaded.Domains.Select(d => loaded.Criteria[(d, "잘함")].Text));
+    }
+
     [Fact]
     public void Round_trips_through_loader()
     {

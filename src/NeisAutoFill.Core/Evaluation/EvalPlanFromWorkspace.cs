@@ -26,7 +26,11 @@ public static class EvalPlanFromWorkspace
 
         foreach (var plan in plans)
         {
+            // 표의 한 줄 = 평가 하나. 나이스는 <b>영역 아래에 성취기준 여럿</b>을 받으므로
+            // 같은 영역의 평가들을 도로 한 영역으로 모은다 (사용자 확인 2026-08-22).
             var areas = new List<EvalArea>();
+            var byArea = new Dictionary<string, List<EvalStandard>>();
+            var order = new List<string>();
 
             foreach (var domain in plan.Domains)
             {
@@ -40,16 +44,23 @@ public static class EvalPlanFromWorkspace
 
                 if (criteria.Count == 0) continue;
 
-                // 성취기준·평가요소는 그 영역의 단계들이 함께 쓴다 — 처음 발견되는 값을 쓴다
+                // 성취기준·평가요소·영역은 그 줄의 단계들이 함께 쓴다 — 처음 발견되는 값을 쓴다
                 string First(Func<Models.CriteriaEntry, string?> pick) => levels
                     .Select(level => plan.Criteria.TryGetValue((domain, level), out var e) ? pick(e) : null)
                     .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim() ?? "";
 
-                areas.Add(new EvalArea(domain, new[]
+                var area = First(e => e.Area) is { Length: > 0 } a ? a : domain;
+
+                if (!byArea.TryGetValue(area, out var list))
                 {
-                    new EvalStandard(First(e => e.Achievement), First(e => e.Element), criteria),
-                }));
+                    byArea[area] = list = new List<EvalStandard>();
+                    order.Add(area);
+                }
+
+                list.Add(new EvalStandard(First(e => e.Achievement), First(e => e.Element), criteria));
             }
+
+            foreach (var area in order) areas.Add(new EvalArea(area, byArea[area]));
 
             if (areas.Count > 0) subjects.Add(new EvalSubjectPlan(plan.SubjectName, areas));
         }

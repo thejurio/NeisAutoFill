@@ -654,7 +654,9 @@ public sealed class PlanSubjectEdit : ObservableObject
         foreach (var domain in plan.Domains)
         {
             var row = Grid.NewRow();
-            row[DomainColumn] = domain;
+            // 표에는 <b>진짜 영역명</b>을 보여 준다 — 한 영역에 평가가 여럿이면 같은 이름이 여러 줄에 걸린다.
+            // (plan.Domains 의 값은 겹치지 않게 갈라 둔 키라 그대로 보여 주면 사용자가 못 알아본다)
+            row[DomainColumn] = First(plan, domain, e => e.Area) is { Length: > 0 } area ? area : domain;
             // 성취기준은 영역 내 등급들이 공유 — 첫 번째로 발견되는 값 사용
             row[AchievementColumn] = First(plan, domain, e => e.Achievement);
             row[ElementColumn] = First(plan, domain, e => e.Element);
@@ -680,27 +682,44 @@ public sealed class PlanSubjectEdit : ObservableObject
         return t;
     }
 
-    /// <summary>표 → SubjectPlan. 영역명 중복이면 error 와 함께 null.</summary>
+    /// <summary>
+    /// 표 → SubjectPlan. <b>한 줄이 평가 하나</b>다.
+    ///
+    /// 같은 영역이 여러 줄에 나와도 괜찮다(사용자 확인 2026-08-22) — 한 영역에 평가가 여럿일 수 있다.
+    /// 다만 성적표는 열 이름으로 평가를 구분하므로 <see cref="PlanKeys"/> 가 겹치지 않는 이름을 지어 주고,
+    /// 진짜 영역명은 <c>CriteriaEntry.Area</c> 에 남는다.
+    /// </summary>
     public SubjectPlan? BuildPlan(out string? error)
     {
-        var domains = new List<string>();
-        var criteria = new Dictionary<(string, string), CriteriaEntry>();
+        var rows = new List<(string Area, string Ach, string Elem, DataRow Row)>();
 
         foreach (DataRow row in Grid.Rows)
         {
-            var domain = (row[DomainColumn]?.ToString() ?? "").Trim();
-            if (domain == "") continue;   // 영역 없는 행은 무시 (새 행 등)
-            if (domains.Contains(domain)) { error = $"영역명 '{domain}'이(가) 중복됩니다."; return null; }
-            domains.Add(domain);
+            var area = (row[DomainColumn]?.ToString() ?? "").Trim();
+            if (area == "") continue;   // 영역 없는 행은 무시 (새 행 등)
 
-            var ach = (row[AchievementColumn]?.ToString() ?? "").Trim();
-            var elem = (row[ElementColumn]?.ToString() ?? "").Trim();
+            rows.Add((area,
+                (row[AchievementColumn]?.ToString() ?? "").Trim(),
+                (row[ElementColumn]?.ToString() ?? "").Trim(),
+                row));
+        }
+
+        var keys = PlanKeys.Build(rows.Select(r => (r.Area, r.Elem)).ToList());
+
+        var domains = new List<string>();
+        var criteria = new Dictionary<(string, string), CriteriaEntry>();
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var (area, ach, elem, row) = rows[i];
+            domains.Add(keys[i]);
+
             foreach (var level in _scale.Levels)
             {
                 var text = (row[level.Label]?.ToString() ?? "").Trim();
                 if (text != "")
-                    criteria[(domain, level.Label)] =
-                        new CriteriaEntry(text, ach == "" ? null : ach, elem == "" ? null : elem);
+                    criteria[(keys[i], level.Label)] = new CriteriaEntry(
+                        text, ach == "" ? null : ach, elem == "" ? null : elem, area);
             }
         }
 

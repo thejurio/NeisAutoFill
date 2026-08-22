@@ -49,7 +49,14 @@ public static class PlanWorkbookWriter
                     plan.Criteria.TryGetValue((domain, level.Label), out var entry);
                     // 영역은 각 영역 첫 행에만 (로더가 캐리포워드로 복원).
                     // 성취기준은 매 행에 — 로더의 캐리포워드가 이전 영역 값을 끌고 오지 않도록.
-                    if (firstOfDomain) { ws.Cell(r, 1).Value = domain; firstOfDomain = false; }
+                    // <b>평가마다</b> 그 첫 줄에 영역명을 적는다 — 같은 영역이 잇달아도 다시 적는다.
+                    // 로더는 "영역 칸이 채워져 있으면 새 평가"로 읽으므로, 이것이 평가의 경계 신호다.
+                    if (firstOfDomain)
+                    {
+                        ws.Cell(r, 1).Value = plan.Criteria
+                            .FirstOrDefault(kv => kv.Key.Domain == domain).Value?.Area ?? domain;
+                        firstOfDomain = false;
+                    }
                     ws.Cell(r, 2).Value = entry?.Achievement ?? "";
                     ws.Cell(r, 3).Value = entry?.Element ?? "";
                     ws.Cell(r, 4).Value = level.Label;

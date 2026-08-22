@@ -1,4 +1,5 @@
 ﻿using ClosedXML.Excel;
+using NeisAutoFill.Core.Evaluation;
 using NeisAutoFill.Core.Models;
 using NeisAutoFill.Core.Scale;
 
@@ -50,8 +51,9 @@ public static class PlanWorkbookLoader
             if (domCol < 0) domCol = 1;
             if (achCol < 0) achCol = 2;
 
-            var domains = new List<string>();
-            var criteria = new Dictionary<(string, string), CriteriaEntry>();
+            // 한 영역에 평가가 여럿일 수 있다 — <b>영역 칸이 채워진 줄이 새 평가의 시작</b>이다.
+            // (쓸 때 평가마다 그 첫 줄에만 영역명을 적는다.)
+            var items = new List<(string Area, string Elem, Dictionary<string, string> ByLevel, string Ach)>();
             string lastDom = "", lastAch = "", lastElem = "";
 
             for (int r = 2; r <= lastRow; r++)
@@ -60,7 +62,8 @@ public static class PlanWorkbookLoader
                 if (domVal != "" && !domVal.Contains("영역"))
                 {
                     lastDom = domVal;
-                    if (!domains.Contains(lastDom)) domains.Add(lastDom);
+                    lastAch = lastElem = "";
+                    items.Add((lastDom, "", new Dictionary<string, string>(), ""));
                 }
 
                 var achVal = cells[r, achCol];
@@ -71,6 +74,9 @@ public static class PlanWorkbookLoader
                     var elemVal = cells[r, elemCol];
                     if (elemVal != "" && !elemVal.Contains("요소")) lastElem = elemVal;
                 }
+
+                if (items.Count > 0)
+                    items[^1] = (items[^1].Area, lastElem, items[^1].ByLevel, lastAch);
 
                 // 등급 셀: 행 안에서 척도 라벨과 정확 일치하는 첫 셀
                 string grade = ""; int gradeCol = -1;
@@ -84,9 +90,24 @@ public static class PlanWorkbookLoader
                     for (int c = gradeCol + 1; c <= lastCol; c++)
                         if (cells[r, c] != "") { desc = cells[r, c]; break; }
 
-                if (lastDom != "" && desc != "")
-                    criteria[(lastDom, grade)] = new CriteriaEntry(
-                        desc, lastAch == "" ? null : lastAch, lastElem == "" ? null : lastElem);
+                if (items.Count > 0 && desc != "") items[^1].ByLevel[grade] = desc;
+            }
+
+            var keys = PlanKeys.Build(items.Select(i => (i.Area, i.Elem)).ToList());
+            var domains = new List<string>();
+            var criteria = new Dictionary<(string, string), CriteriaEntry>();
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                if (item.ByLevel.Count == 0) continue;
+
+                domains.Add(keys[i]);
+                foreach (var (grade, desc) in item.ByLevel)
+                    criteria[(keys[i], grade)] = new CriteriaEntry(desc,
+                        item.Ach == "" ? null : item.Ach,
+                        item.Elem == "" ? null : item.Elem,
+                        item.Area);
             }
 
             if (domains.Count > 0)
