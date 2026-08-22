@@ -20,7 +20,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <!-- 자동업데이트 버전 비교 기준 — 릴리스 때 올릴 것 (GitHub 릴리스 태그 v1.0.0 과 일치) -->
-    <Version>1.9.0</Version>
+    <Version>1.9.1</Version>
 
     <!-- 배포는 Velopack(설치형 Setup.exe + 포터블 zip). .NET 미설치 PC 대응은 publish 옵션(self-contained).
          ⚠ 단일 exe(PublishSingleFile)는 쓰지 않는다 — ① 67MB exe 가 매 릴리스 통째로 바뀌어 델타 업데이트가
