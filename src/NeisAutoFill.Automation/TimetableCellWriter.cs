@@ -1,4 +1,4 @@
-using Microsoft.Playwright;
+﻿using Microsoft.Playwright;
 using NeisAutoFill.Core.Timetable;
 
 namespace NeisAutoFill.Automation;
@@ -134,6 +134,16 @@ public sealed class TimetableCellWriter(IPage page)
             var after = await _reader.ReadCurrentWeekAsync();
             after.Cells.TryGetValue(cell, out afterText);
             afterText ??= "";
+
+            // <b>옆 칸이 바뀌었으면 즉시 멈춘다.</b> 지우기에만 있던 검사를 넣기에도 둔다 —
+            // 좌표가 미끄러져 다른 칸에 값이 들어가면, 재시도로 목표는 고쳐지지만
+            // <b>잘못 건드린 칸은 그대로 남아 함께 저장된다</b>(지적 2026-08-22).
+            if (Collateral(snapshot, after, cell) is { } hit)
+            {
+                await _reader.EnsureMenuClosedAsync();
+                return new(CellWriteOutcome.CollateralDamage,
+                    $"넣으려던 칸은 {cell.Period}교시인데 {hit.Period}교시가 바뀌었습니다. 저장하지 마세요.", afterText);
+            }
 
             if (Verify(afterText, target, catalog))
             {

@@ -1,4 +1,4 @@
-using NeisAutoFill.Automation;
+﻿using NeisAutoFill.Automation;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Evaluation;
 
@@ -38,7 +38,9 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
     /// <returns>준비됐으면 null, 아니면 사용자에게 보여 줄 이유</returns>
     public async Task<string?> PreflightAsync(CancellationToken ct = default)
     {
-        var gate = await session.EnsureReadyAsync(NeisTarget.ClassTimetable, null, ct);
+        // <b>화면을 옮기지 않는다.</b> 평가계획(안)관리로 가는 자동 이동 경로가 없어서
+        // EnsureReadyAsync 를 쓰면 엉뚱한 화면(시간표)으로 끌고 가 버린다 — 실제로 그랬다(2026-08-22).
+        var gate = await session.EnsureConnectedAsync(ct);
         if (gate is not null) return gate;
 
         var tools = Tools();

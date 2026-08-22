@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Media;
 using NeisAutoFill.App.Mvvm;
 using NeisAutoFill.Automation;
@@ -148,6 +148,24 @@ public sealed class NeisSessionController : ObservableObject
     /// <summary>연결만 빠르게 점검 — 안 붙어 있으면 안내 문구, 붙어 있으면 null.
     /// (화면 이동 없이 시작 가능 여부만 볼 때 — 이동까지 필요하면 EnsureReadyAsync)</summary>
     public string? ConnectCheck() => _engine.Connected ? null : NotConnectedMessage;
+
+    /// <summary>
+    /// <b>화면을 옮기지 않고</b> 연결·로그인만 확인한다.
+    ///
+    /// 나이스 메뉴로 가는 길이 없는 화면(평가계획(안)관리 등)에 쓴다 — 여기서 <see cref="EnsureReadyAsync"/> 를
+    /// 부르면 <b>사용자가 열어 둔 화면을 엉뚱한 데로 끌고 간다</b>(실제로 시간표로 옮겨 갔다, 2026-08-22).
+    /// </summary>
+    /// <returns>진행 가능하면 null, 아니면 사용자에게 보여 줄 이유</returns>
+    public async Task<string?> EnsureConnectedAsync(CancellationToken ct = default)
+    {
+        if (!_engine.Connected) return NotConnectedMessage;
+
+        var status = await _engine.DetectStatusAsync(ct);
+
+        return status.Kind is NeisScreenKind.Disconnected or NeisScreenKind.NotNeisTab or NeisScreenKind.LoggedOut
+            ? StatusMessage(status.Kind)
+            : null;
+    }
 
     /// <summary>입력 전 사전 점검 + 필요 시 화면 이동. 진행 가능하면 null, 사용자가 풀어야 하는
     /// 상황(로그인 안 됨·브라우저/탭)이면 안내 문구를 돌려준다 — 표시는 호출부 방식대로.
