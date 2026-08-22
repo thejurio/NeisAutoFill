@@ -1,4 +1,4 @@
-using Microsoft.Playwright;
+﻿using Microsoft.Playwright;
 using NeisAutoFill.Core.Evaluation;
 
 namespace NeisAutoFill.Automation;
@@ -148,8 +148,10 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
 
         await grid.FillChainAsync(edits, ct);
 
+        // NothingToSave 도 성공이다 — 이미 같은 값이 들어 있으면 나이스가 저장을 거절한다.
+        // 이걸 실패로 보면 <b>두 번째 실행부터 늘 멈춘다</b>(실측 2026-08-22).
         var save = await SaveAsync(inDialog: false, ct);
-        if (save.Outcome != EvalSaveOutcome.Saved)
+        if (save.Outcome is not (EvalSaveOutcome.Saved or EvalSaveOutcome.NothingToSave))
             throw new InvalidOperationException($"성취기준을 저장하지 못했습니다 — {save.Detail}");
 
         return todo.Count;
@@ -191,8 +193,10 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
 
         await grid.FillChainAsync(edits, ct);
 
+        // 여기가 실제로 걸렸다 — 국어를 두 번째로 넣자 "바뀐 것이 없어 저장하지 않았습니다" 로
+        // 멈췄다(실측 2026-08-22). 이미 들어가 있는 것은 다시 넣을 필요가 없을 뿐 실패가 아니다.
         var save = await SaveAsync(inDialog: false, ct);
-        if (save.Outcome != EvalSaveOutcome.Saved)
+        if (save.Outcome is not (EvalSaveOutcome.Saved or EvalSaveOutcome.NothingToSave))
             throw new InvalidOperationException($"평가기준을 저장하지 못했습니다 — {save.Detail}");
     }
 
