@@ -5,7 +5,7 @@
              FontFamily="{StaticResource UiFont}">
     <!--
         평가계획을 나이스 [평가계획(안)관리]에 넣는 화면. 따로 뜨던 창에서 [평가] 탭 안으로 옮겼다
-        (사용자 요청 2026-08-22). 자료는 [자료 준비]에 있는 것을 그대로 쓴다.
+        (사용자 요청 2026-08-22). 평가계획 탭에서 저장한 자료를 그대로 쓴다.
     -->
     <DockPanel Background="{StaticResource Panel2}">
             <!-- 아래 실행줄 -->
@@ -38,7 +38,8 @@
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button Style="{StaticResource GhostButtonLeft}" Content="모두"
-                                        Command="{Binding SelectAllCommand}" CommandParameter="all" Padding="10,4"/>
+                                        Command="{Binding SelectAllCommand}" CommandParameter="all" Padding="10,4"
+                                        ToolTip="선택한 교과를 나이스에서 차례로 바꾸고 조회한 뒤 입력합니다"/>
                                 <Button Style="{StaticResource GhostButtonRight}" Content="해제"
                                         Command="{Binding SelectAllCommand}" CommandParameter="none" Padding="10,4"/>
                             </StackPanel>
@@ -46,14 +47,14 @@
                                 <TextBlock FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}"
                                            Text="넣을 교과 고르기"/>
                                 <TextBlock Margin="0,3,0,0" FontSize="11.5" Foreground="{StaticResource Sub}"
-                                           Text="[자료 준비]의 평가계획을 그대로 넣습니다. 교과를 누르면 내용을 볼 수 있습니다."/>
+                                           Text="선택한 교과를 나이스에서 차례로 바꾸고 조회한 뒤 입력합니다. 교과를 누르면 내용을 볼 수 있습니다."/>
                             </StackPanel>
                         </DockPanel>
                     </Border>
 
                     <TextBlock DockPanel.Dock="Top" Margin="14,24" FontSize="12.5" TextWrapping="Wrap"
                                Foreground="{StaticResource Sub}"
-                               Text="[자료 준비]에 평가계획이 없습니다. 거기서 평가계획을 넣거나 문서를 불러온 뒤 다시 열어 주세요."
+                               Text="저장된 평가계획이 없습니다. [평가계획]에서 문서를 불러오고 내용을 확인한 뒤 다시 열어 주세요."
                                Visibility="{Binding HasPlans, Converter={StaticResource TrueToCollapsed}}"/>
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8"

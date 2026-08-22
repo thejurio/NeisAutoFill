@@ -40,7 +40,7 @@
                         </StackPanel>
                     </DockPanel>
                     <TextBlock DockPanel.Dock="Top" FontSize="11" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,4">
-                        <Run Text="행 = 평가영역. 마지막 빈 행에 입력하면 영역이 추가됩니다. 엑셀 표를 복사해 셀에서 Ctrl+V 로 붙여넣을 수 있습니다. 등급 열:"/>
+                        <Run Text="한 행 = 평가 하나. 같은 영역이 여러 행이어도 됩니다. 마지막 빈 행에 입력하면 평가가 추가됩니다. 엑셀 표를 복사해 셀에서 Ctrl+V로 붙여넣을 수 있습니다. 등급 열:"/>
                         <Run Text="{Binding ScaleSummary, Mode=OneWay}" FontWeight="SemiBold"/>
                     </TextBlock>
                     <TextBlock DockPanel.Dock="Top" Text="{Binding ImportStatus}" FontSize="11.5" FontWeight="SemiBold"

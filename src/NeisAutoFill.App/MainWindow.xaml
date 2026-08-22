@@ -392,7 +392,7 @@
                                 <StackPanel>
                                     <TextBlock Text="STEP 1" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Neis}"/>
                                     <TextBlock Text="📋 평가계획 넣기" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="0,3,0,4"/>
-                                    <TextBlock Text="평가계획서 파일(PDF/HWP)을 넣으면 AI가 자동으로 읽습니다. 명단은 [교과평가] 표에 붙여넣기 한 번이면 됩니다."
+                                    <TextBlock Text="평가계획서 파일(PDF/HWP/HWPX)을 넣으면 확인된 표 양식은 빠르게 읽고, 낯선 양식은 AI로 인식합니다. 명단은 [교과평가] 표에 한 번 붙여넣으면 됩니다."
                                                FontSize="12" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,12"/>
                                     <Button Style="{StaticResource PrimaryButton}" Content="시작하기" Command="{Binding PreparePlansCommand}" HorizontalAlignment="Left"/>
                                 </StackPanel>

@@ -28,7 +28,7 @@
             <Border DockPanel.Dock="Bottom" Padding="14,9" Background="White"
                     BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0">
                 <TextBlock FontSize="11.5" Foreground="{StaticResource Sub}" TextWrapping="Wrap"
-                           Text="[자료 준비]에 들어 있는 그대로입니다. 고치려면 [📁 자료 준비]에서 고쳐 주세요 — 고친 내용이 나이스로 들어갑니다."/>
+                           Text="[평가계획]에 저장된 내용입니다. 고치려면 [평가계획]에서 수정해 주세요. 수정한 내용이 나이스에 입력됩니다."/>
             </Border>
 
             <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14">
