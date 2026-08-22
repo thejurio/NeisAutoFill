@@ -352,7 +352,7 @@ public sealed class PlanEditorViewModel : ObservableObject
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Filter = "평가계획서 (Excel/PDF/HWP)|*.xlsx;*.xlsm;*.pdf;*.hwp;*.hwpx|모든 파일|*.*",
-            Title = "평가계획서 파일 선택 (엑셀=바로 / PDF·HWP=AI 인식)",
+            Title = "평가계획서 파일 선택 (PDF·HWP·엑셀)",
         };
         if (dlg.ShowDialog() != true) return;
         await ImportPlanFileAsync(dlg.FileName);

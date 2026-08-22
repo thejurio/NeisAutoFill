@@ -100,14 +100,14 @@
             <Border Background="White" BorderBrush="{StaticResource Neis}" BorderThickness="1.5" CornerRadius="12"
                     HorizontalAlignment="Center" VerticalAlignment="Center" Padding="34,26" MaxWidth="440">
                 <StackPanel>
-                    <TextBlock Text="🤖" FontSize="34" HorizontalAlignment="Center" Margin="0,0,0,10"/>
-                    <TextBlock Text="AI 가 평가계획서를 읽고 있어요" FontWeight="Bold" FontSize="14.5"
+                    <TextBlock Text="📄" FontSize="34" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                    <TextBlock Text="평가계획서를 읽고 있어요" FontWeight="Bold" FontSize="14.5"
                                Foreground="{StaticResource Ink}" HorizontalAlignment="Center"/>
                     <TextBlock Text="{Binding ImportStatus}" FontSize="11.5" Foreground="{StaticResource Sub}"
                                TextWrapping="Wrap" TextAlignment="Center" Margin="0,6,0,14"/>
                     <ProgressBar IsIndeterminate="True" Height="6" Width="260"
                                  Background="{StaticResource Panel}" Foreground="{StaticResource Neis}" BorderThickness="0"/>
-                    <TextBlock Text="문서 분량에 따라 수십 초가 걸릴 수 있습니다" FontSize="10.5" Foreground="#94A3B8"
+                    <TextBlock Text="아는 양식이면 금방 끝나고, 낯선 양식은 AI 인식으로 수십 초 걸릴 수 있습니다" FontSize="10.5" Foreground="#94A3B8"
                                HorizontalAlignment="Center" Margin="0,10,0,0"/>
                 </StackPanel>
             </Border>

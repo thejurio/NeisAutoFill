@@ -254,7 +254,7 @@
                                                     Visibility="{Binding PlanTabShowsUpload, Converter={StaticResource TrueToCollapsed}}">
                                             <Button Style="{StaticResource AccentGhostButton}" Content="📄 문서에서 가져오기"
                                                     Command="{Binding PlanEditor.ImportPlanCommand}" Margin="0,0,6,0"
-                                                    ToolTip="이지에듀·스쿨마스터 등 평가계획서(PDF/HWP/HWPX)를 넣으면 AI가 인식해 표에 채웁니다"/>
+                                                    ToolTip="평가계획서(PDF/HWP/HWPX)를 넣으면 표에 채웁니다.&#10;이지에듀·스쿨마스터 양식은 곧바로 읽고, 낯선 양식은 AI가 인식합니다."/>
                                             <Button Style="{StaticResource GhostButton}" Content="💾 저장 후 적용"
                                                     Command="{Binding SavePlanEditsCommand}"
                                                     ToolTip="작업공간의 평가계획서 파일에 기록하고 프로그램 전체에 반영합니다"/>
