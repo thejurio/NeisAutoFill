@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using NeisAutoFill.Core.Models;
 using NeisAutoFill.Core.Scale;
 
@@ -45,12 +45,14 @@ public static class PlanWorkbookLoader
             int domCol = FindHeader(cells, lastCol, h => h.Contains("영역"));
             int achCol = FindHeader(cells, lastCol, h => h.Contains("성취"));
             int descCol = FindHeader(cells, lastCol, h => h.Contains("내용") || h.Contains("서술"));
+            // 평가요소는 <b>있으면 읽고 없으면 넘어간다</b> — 이 칸이 없던 시절 파일도 그대로 열려야 한다
+            int elemCol = FindHeader(cells, lastCol, h => h.Contains("평가요소") || h.Contains("요소"));
             if (domCol < 0) domCol = 1;
             if (achCol < 0) achCol = 2;
 
             var domains = new List<string>();
             var criteria = new Dictionary<(string, string), CriteriaEntry>();
-            string lastDom = "", lastAch = "";
+            string lastDom = "", lastAch = "", lastElem = "";
 
             for (int r = 2; r <= lastRow; r++)
             {
@@ -63,6 +65,12 @@ public static class PlanWorkbookLoader
 
                 var achVal = cells[r, achCol];
                 if (achVal != "" && !achVal.Contains("성취")) lastAch = achVal;
+
+                if (elemCol > 0)
+                {
+                    var elemVal = cells[r, elemCol];
+                    if (elemVal != "" && !elemVal.Contains("요소")) lastElem = elemVal;
+                }
 
                 // 등급 셀: 행 안에서 척도 라벨과 정확 일치하는 첫 셀
                 string grade = ""; int gradeCol = -1;
@@ -78,7 +86,7 @@ public static class PlanWorkbookLoader
 
                 if (lastDom != "" && desc != "")
                     criteria[(lastDom, grade)] = new CriteriaEntry(
-                        desc, lastAch == "" ? null : lastAch);
+                        desc, lastAch == "" ? null : lastAch, lastElem == "" ? null : lastElem);
             }
 
             if (domains.Count > 0)

@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Models;
+﻿using NeisAutoFill.Core.Models;
 using NeisAutoFill.Core.Scale;
 using NeisAutoFill.Excel;
 using Xunit;
@@ -26,6 +26,38 @@ public class PlanWorkbookWriterTests : IDisposable
             [("읽기", "보통")] = new("내용을 파악하며 읽는다.", "[6국02-01]"),
             [("읽기", "노력요함")] = new("도움을 받아 읽는다.", "[6국02-01]"),
         });
+
+    /// <summary>평가요소는 나이스가 성취기준과 따로 요구하는 칸이라 파일에도 남아야 한다.</summary>
+    [Fact]
+    public void 평가요소도_왕복한다()
+    {
+        var scale = GradePresets.ThreeLevel;
+        var plan = new SubjectPlan("국어", new[] { "읽기" },
+            new Dictionary<(string, string), CriteriaEntry>
+            {
+                [("읽기", "잘함")] = new("주제를 파악하며 읽는다.", "[6국02-01]", "책 내용 간추리기"),
+                [("읽기", "보통")] = new("내용을 파악하며 읽는다.", "[6국02-01]", "책 내용 간추리기"),
+            });
+
+        PlanWorkbookWriter.Write(_path, new[] { plan }, new List<(string, string)> { ("1", "홍길동") }, scale);
+        var loaded = Assert.Single(PlanWorkbookLoader.Load(_path, scale));
+
+        Assert.Equal("책 내용 간추리기", loaded.Criteria[("읽기", "잘함")].Element);
+        Assert.Equal("책 내용 간추리기", loaded.Criteria[("읽기", "보통")].Element);
+    }
+
+    /// <summary>평가요소 칸이 없던 시절 파일도 그대로 열려야 한다 (없으면 null).</summary>
+    [Fact]
+    public void 평가요소가_없어도_읽힌다()
+    {
+        var scale = GradePresets.ThreeLevel;
+
+        PlanWorkbookWriter.Write(_path, new[] { SamplePlan() }, new List<(string, string)> { ("1", "홍") }, scale);
+        var loaded = Assert.Single(PlanWorkbookLoader.Load(_path, scale));
+
+        Assert.Null(loaded.Criteria[("읽기", "보통")].Element);
+        Assert.Equal("[6국02-01]", loaded.Criteria[("읽기", "보통")].Achievement);
+    }
 
     [Fact]
     public void Round_trips_through_loader()

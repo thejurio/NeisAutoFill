@@ -1,8 +1,9 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Data;
 using System.Windows.Input;
 using NeisAutoFill.App.Mvvm;
 using NeisAutoFill.Core;
+using NeisAutoFill.Core.Evaluation;
 using NeisAutoFill.Core.Models;
 using NeisAutoFill.Core.Scale;
 
@@ -378,12 +379,11 @@ public sealed class PlanEditorViewModel : ObservableObject
 
         var fileName = System.IO.Path.GetFileName(path);
         IsImporting = true;
-        ImportStatus = isAi
-            ? $"⏳ AI 가 '{fileName}' 을(를) 분석하는 중... (수십 초 걸릴 수 있습니다)"
-            : $"⏳ '{fileName}' 읽는 중...";
+        ImportStatus = $"⏳ '{fileName}' 읽는 중...";
+        IReadOnlyList<PlanNote> localNotes = Array.Empty<PlanNote>();
         try
         {
-            var progress = new Progress<string>(s => ImportStatus = $"⏳ {s}");
+            IProgress<string> progress = new Progress<string>(s => ImportStatus = $"⏳ {s}");
 
             // 전담 + AI: 한 파일에서 (학년·과목) 분리 인식 → 선택 → 학년별 파일로 저장 (F9 M4b)
             if (IsSubjectMode && isAi)
@@ -412,8 +412,25 @@ public sealed class PlanEditorViewModel : ObservableObject
             }
             else
             {
-                if (_importer is null) throw new InvalidOperationException("AI 가져오기를 사용할 수 없습니다.");
-                plans = await _importer(path, progress, SelectSubjectsAsync);   // 담임: 과목 선택 창
+                // <b>로컬 파서를 먼저 쓴다.</b> 실측한 세 양식(이지에듀 1·2학기·스쿨마스터)을
+                // 1초 안에 원문 그대로 읽는다 — AI 는 수십 초가 걸린다.
+                // 못 읽는 낯선 양식일 때만 AI 로 넘긴다(예비로 남겨 둔다).
+                var local = ReadLocally(path, progress);
+                if (local is not null)
+                {
+                    var picked = await SelectSubjectsAsync(local.Plans.Select(p => p.SubjectName).ToList());
+                    if (picked is null) throw new OperationCanceledException();
+
+                    var keep = picked.ToHashSet();
+                    plans = local.Plans.Where(p => keep.Contains(p.SubjectName)).ToList();
+                    localNotes = local.Notes.Where(n => keep.Contains(n.Subject)).ToList();
+                }
+                else
+                {
+                    if (_importer is null) throw new InvalidOperationException("AI 가져오기를 사용할 수 없습니다.");
+                    progress.Report($"AI 가 '{fileName}' 을(를) 분석하는 중... (수십 초 걸릴 수 있습니다)");
+                    plans = await _importer(path, progress, SelectSubjectsAsync);   // 담임: 과목 선택 창
+                }
             }
 
             Subjects.Clear();
@@ -421,6 +438,9 @@ public sealed class PlanEditorViewModel : ObservableObject
             SelectedSubject = Subjects.FirstOrDefault();
 
             SetWarnings(plans);
+            foreach (var note in localNotes)
+                RecognitionWarnings.Insert(0, new PlanWarningVm($"⚠ [{note.Subject}] {note.Text}", true));
+            OnPropertyChanged(nameof(HasWarnings));
             var warnN = RecognitionWarnings.Count(w => w.IsWarn);
             ImportStatus = warnN > 0
                 ? $"✔ {plans.Count}개 과목 인식 · ⚠ 확인 필요 {warnN}건 — 아래 목록의 과목을 표에서 확인하세요."
@@ -440,6 +460,30 @@ public sealed class PlanEditorViewModel : ObservableObject
     }
 
     /// <summary>담임: 인식된 과목 중 불러올 것을 고르는 선택 창. null = 취소.</summary>
+    /// <summary>
+    /// 로컬 파서로 읽어 본다. 못 읽으면 null — 그때만 AI 를 부른다.
+    /// <b>실패를 예외로 올리지 않는다</b>: 낯선 양식은 못 읽는 게 정상이고, 그 자리가 곧 AI 차례다.
+    /// </summary>
+    private PlanConversion? ReadLocally(string path, IProgress<string> progress)
+    {
+        try
+        {
+            progress.Report("문서에서 표를 읽는 중...");
+
+            // keepSpaces: 문장을 그대로 옮겨야 한다 — 끄면 띄어쓰기가 통째로 사라진다
+            var layout = NeisAutoFill.Generator.PdfLayoutExtractor.ExtractAny(path, keepSpaces: true);
+            var document = EvalPlanDocumentParser.Parse(layout);
+            var converted = EvalPlanToWorkspace.Convert(document, _scale);
+
+            return converted.Plans.Count > 0 ? converted : null;
+        }
+        catch (Exception ex)
+        {
+            Services.Diag.Swallow(ex, "평가계획 로컬 파싱");
+            return null;
+        }
+    }
+
     private Task<IReadOnlyList<string>?> SelectSubjectsAsync(IReadOnlyList<string> subjects) =>
         Task.FromResult(System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
@@ -585,6 +629,9 @@ public sealed class PlanSubjectEdit : ObservableObject
     public const string DomainColumn = "영역";
     public const string AchievementColumn = "성취기준";
 
+    /// <summary>나이스 [평가계획(안)관리]가 성취기준과 <b>따로</b> 요구하는 칸. 비면 빈 칸으로 들어간다.</summary>
+    public const string ElementColumn = "평가요소";
+
     private readonly GradeScale _scale;
 
     private string _name;
@@ -609,20 +656,26 @@ public sealed class PlanSubjectEdit : ObservableObject
             var row = Grid.NewRow();
             row[DomainColumn] = domain;
             // 성취기준은 영역 내 등급들이 공유 — 첫 번째로 발견되는 값 사용
-            row[AchievementColumn] = _scale.Levels
-                .Select(l => plan.Criteria.TryGetValue((domain, l.Label), out var e) ? e.Achievement : null)
-                .FirstOrDefault(a => !string.IsNullOrEmpty(a)) ?? "";
+            row[AchievementColumn] = First(plan, domain, e => e.Achievement);
+            row[ElementColumn] = First(plan, domain, e => e.Element);
             foreach (var level in _scale.Levels)
                 row[level.Label] = plan.Criteria.TryGetValue((domain, level.Label), out var e) ? e.Text : "";
             Grid.Rows.Add(row);
         }
     }
 
+    /// <summary>영역 안의 등급들이 공유하는 값 — 처음 발견되는 것을 쓴다.</summary>
+    private string First(SubjectPlan plan, string domain, Func<CriteriaEntry, string?> pick) =>
+        _scale.Levels
+            .Select(l => plan.Criteria.TryGetValue((domain, l.Label), out var e) ? pick(e) : null)
+            .FirstOrDefault(v => !string.IsNullOrEmpty(v)) ?? "";
+
     private static DataTable NewTable(GradeScale scale)
     {
         var t = new DataTable();
         t.Columns.Add(DomainColumn);
         t.Columns.Add(AchievementColumn);
+        t.Columns.Add(ElementColumn);
         foreach (var level in scale.Levels) t.Columns.Add(level.Label);
         return t;
     }
@@ -641,11 +694,13 @@ public sealed class PlanSubjectEdit : ObservableObject
             domains.Add(domain);
 
             var ach = (row[AchievementColumn]?.ToString() ?? "").Trim();
+            var elem = (row[ElementColumn]?.ToString() ?? "").Trim();
             foreach (var level in _scale.Levels)
             {
                 var text = (row[level.Label]?.ToString() ?? "").Trim();
                 if (text != "")
-                    criteria[(domain, level.Label)] = new CriteriaEntry(text, ach == "" ? null : ach);
+                    criteria[(domain, level.Label)] =
+                        new CriteriaEntry(text, ach == "" ? null : ach, elem == "" ? null : elem);
             }
         }
 
