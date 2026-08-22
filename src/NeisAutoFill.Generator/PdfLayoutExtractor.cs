@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Timetable;
+﻿using NeisAutoFill.Core.Timetable;
 using UglyToad.PdfPig;
 
 namespace NeisAutoFill.Generator;
@@ -60,7 +60,7 @@ public static class PdfLayoutExtractor
         const double Thin = 3, Long = 20;
         var rules = new List<DocumentRule>();
 
-        foreach (var path in page.ExperimentalAccess.Paths)
+        foreach (var path in page.Paths)
         {
             var box = path.GetBoundingRectangle();
             if (box is null) continue;
@@ -87,6 +87,11 @@ public static class PdfLayoutExtractor
 
         if (ext is ".hwp" or ".hwpx")
         {
+            // 한컴 COM 변환은 Windows 에서만 된다 — 이 프로그램 자체가 Windows 전용이지만
+            // 이 라이브러리는 net8.0 이라 컴파일러에게 그 사실을 알려 줘야 한다
+            if (!OperatingSystem.IsWindows())
+                throw new PlatformNotSupportedException("hwp·hwpx 변환은 Windows 에서만 됩니다 — PDF 로 저장해 넣어 주세요.");
+
             var pdf = PlanFileExtractor.HwpToPdf(path);
             try { return Extract(pdf, keepSpaces) with { FileName = Path.GetFileName(path) }; }
             finally { try { File.Delete(pdf); } catch { /* 임시파일 정리 실패는 무시 */ } }
