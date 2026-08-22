@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -94,6 +94,7 @@ public partial class PlanEditorWindow : Window
         {
             PlanSubjectEdit.DomainColumn => new DataGridLength(110),
             PlanSubjectEdit.AchievementColumn => new DataGridLength(220),
+            PlanSubjectEdit.ElementColumn => new DataGridLength(170),
             _ => new DataGridLength(1, DataGridLengthUnitType.Star),
         };
     }

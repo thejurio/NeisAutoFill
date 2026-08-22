@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Models;
+﻿using NeisAutoFill.Core.Models;
 using NeisAutoFill.Core.Scale;
 
 namespace NeisAutoFill.Core.Matching;
@@ -20,7 +20,18 @@ public static class StudentMatcher
         MatchMode Mode = MatchMode.ByName,
         string? FatalError = null);
 
-    public enum MatchMode { ByName, ByOrder }
+    /// <summary>
+    /// 화면 행과 내 자료를 짝짓는 방식.
+    ///
+    /// <list type="bullet">
+    ///   <item><b>ByName</b> — 학생 이름·번호와 영역명을 화면과 대조한다 (정확한 입력).</item>
+    ///   <item><b>ByOrder</b> — 학생은 이름으로 찾고 <b>영역만</b> 순서로 맞춘다
+    ///         (화면 영역명이 우리와 다르거나, 같은 영역에 평가가 여럿일 때).</item>
+    ///   <item><b>ByRowOrder</b> — 대조 없이 <b>화면에 뜬 순서 그대로</b> 넣는다 (빠른 입력).
+    ///         줄 수가 조금이라도 어긋나면 그 뒤가 통째로 밀리므로 <b>넣지 않고 멈춘다.</b></item>
+    /// </list>
+    /// </summary>
+    public enum MatchMode { ByName, ByOrder, ByRowOrder }
 
     /// <summary>이름 기반이 안전하지 않은 이유 (null 이면 이름 기반 OK).</summary>
     public static string? DetectNameProblem(
@@ -55,9 +66,12 @@ public static class StudentMatcher
         IReadOnlyDictionary<string, string>? areaMap = null,
         IReadOnlyDictionary<string, string>? nameMap = null)
     {
-        return mode == MatchMode.ByOrder
-            ? BuildByOrder(rowMap, students, scale, excelAreas, nameMap)
-            : BuildByName(rowMap, students, scale, areaMap, nameMap);
+        return mode switch
+        {
+            MatchMode.ByRowOrder => BuildByRowOrder(rowMap, students, scale, excelAreas),
+            MatchMode.ByOrder => BuildByOrder(rowMap, students, scale, excelAreas, nameMap),
+            _ => BuildByName(rowMap, students, scale, areaMap, nameMap),
+        };
     }
 
     // ── 이름 기반 ─────────────────────────────
@@ -151,6 +165,54 @@ public static class StudentMatcher
             }
         }
         return new MatchResult(todo.OrderBy(t => t.RowIndex).ToList(), skipped, MatchMode.ByOrder);
+    }
+
+    // ── 줄 순서 기반 (빠른 입력) ────────────────
+
+    /// <summary>
+    /// <b>대조 없이 화면 순서대로</b> 넣는다. 화면 줄이 (학생 수 × 영역 수)와 정확히 같을 때만 한다 —
+    /// 한 명이라도 빠지거나 더 있으면 그 뒤가 통째로 밀려 <b>엉뚱한 학생에게 성적이 들어간다.</b>
+    /// 그래서 어긋나면 조용히 넘기지 않고 <b>아무것도 넣지 않고 멈춘다</b>(사용자 요청 2026-08-22).
+    /// </summary>
+    private static MatchResult BuildByRowOrder(
+        IReadOnlyDictionary<int, RowMeta> rowMap,
+        IReadOnlyList<Student> students,
+        GradeScale scale,
+        IReadOnlyList<string> excelAreas)
+    {
+        var todo = new List<GradeTask>();
+        var skipped = new List<SkipItem>();
+
+        var rows = rowMap.Keys.OrderBy(k => k)
+            .Select(i => (Idx: i, Meta: rowMap[i]))
+            .Where(r => r.Meta.Name is not null)
+            .ToList();
+
+        var need = students.Count * excelAreas.Count;
+        if (rows.Count != need)
+            return new MatchResult(todo, skipped, MatchMode.ByRowOrder,
+                $"빠른 입력을 멈췄습니다 — 화면 {rows.Count}줄이 명단 {students.Count}명 × 영역 " +
+                $"{excelAreas.Count}개 = {need}줄과 다릅니다. 순서대로 넣으면 엉뚱한 학생에게 들어갑니다. " +
+                "명단을 화면과 맞추거나 [정확한 입력]으로 바꿔 주세요.");
+
+        for (var i = 0; i < students.Count; i++)
+            for (var k = 0; k < excelAreas.Count; k++)
+            {
+                var (idx, meta) = rows[(i * excelAreas.Count) + k];
+                var area = excelAreas[k];
+                var screenArea = meta.Area ?? "";
+
+                if (area == "")   // 사용자가 이 위치는 입력 제외 (부분 선택)
+                {
+                    skipped.Add(new SkipItem(meta.No ?? "", meta.Name!, screenArea, "사용자 제외 (순서)"));
+                    continue;
+                }
+
+                var target = (students[i].Grades.TryGetValue(area, out var g) ? g : "")?.Trim() ?? "";
+                AddTaskOrSkip(todo, skipped, idx, meta.No ?? "", meta.Name!, screenArea, target, scale);
+            }
+
+        return new MatchResult(todo.OrderBy(t => t.RowIndex).ToList(), skipped, MatchMode.ByRowOrder);
     }
 
     // ── 공통 헬퍼 ─────────────────────────────

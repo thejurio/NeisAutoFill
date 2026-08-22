@@ -1,4 +1,4 @@
-namespace NeisAutoFill.Generator;
+﻿namespace NeisAutoFill.Generator;
 
 /// <summary>
 /// 생성기 설정. settings.json 으로 영속화.
@@ -31,6 +31,13 @@ public sealed record GeneratorOptions
 
     /// <summary>자동클릭 속도: fast(현재 기본)/normal/slow — 느린 PC 안정용.</summary>
     public string ClickSpeed { get; init; } = "fast";
+
+    /// <summary>
+    /// <b>빠른 입력</b> — 화면의 학생 이름·영역명을 대조하지 않고 <b>뜬 순서 그대로</b> 넣는다.
+    /// 확인 창이 안 뜨는 대신, 줄 수가 어긋나면 아무것도 넣지 않고 멈춘다.
+    /// 기본은 꺼짐(정확한 입력) — 성적은 틀리면 안 되는 자리다.
+    /// </summary>
+    public bool FastInput { get; init; } = false;
 
     /// <summary>나이스 접속 지역 (교육청 코드, 기본 전북).</summary>
     public string NeisRegionCode { get; init; } = "jbe";

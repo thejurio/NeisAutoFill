@@ -657,6 +657,10 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             _planEditorVm = NewPlanEditor();
+
+            // 문서를 읽어 오면 곧바로 저장·반영한다 — 사용자가 단추를 한 번 더 누를 이유가 없다
+            _planEditorVm.Imported += () => ApplyPlanEdits();
+
             OnPropertyChanged(nameof(PlanEditor));
         }
         catch (Exception ex)
@@ -1287,7 +1291,7 @@ public sealed class MainViewModel : ObservableObject
 
     // 매칭 확인 창구 — 분석·단계별 창·배치 이름 매핑 캐시를 전담 (R8, Helpers/MatchSession)
     private Helpers.MatchSession? _matchSession;
-    private Helpers.MatchSession MatchSession => _matchSession ??= new Helpers.MatchSession(Log);
+    private Helpers.MatchSession MatchSession => _matchSession ??= new Helpers.MatchSession(Log, () => _generatorSettings.Options.FastInput);
 
     private Func<MatchContext, Task<MatchDecision?>> BuildResolveMatch(SubjectSheet sheet, bool batch = false) =>
         MatchSession.ForGrades(sheet, batch);

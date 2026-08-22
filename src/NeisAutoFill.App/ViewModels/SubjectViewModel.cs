@@ -1,6 +1,7 @@
 ﻿using System.Data;
 using System.Windows.Input;
 using NeisAutoFill.App.Mvvm;
+using NeisAutoFill.Core.Evaluation;
 using NeisAutoFill.Core.Models;
 
 namespace NeisAutoFill.App.ViewModels;
@@ -29,15 +30,22 @@ public sealed class SubjectViewModel : ObservableObject
     public NeisAutoFill.Core.ClassRef? OwnerClass { get; }
 
     public IReadOnlyList<string> Areas => _areas;
-    public string AreasText => "영역: " + string.Join(", ", _areas);
+    public string AreasText => "영역: " + string.Join(", ", _areas.Select(PlanKeys.NameOf));
     public DataTable Grid { get; }
     public DataView GridView => Grid.DefaultView;
 
     /// <summary>표시 헤더(영역명·번호·이름·특기사항)를 실제 DataTable 컬럼명으로. 영역이면 안전ID, 나머지는 그대로.</summary>
     public string DataColumnOf(string header) => _colByArea.TryGetValue(header, out var id) ? id : header;
 
-    /// <summary>DataTable 컬럼명(안전ID 등)을 표시 헤더로. 영역 컬럼ID면 영역명, 나머지는 그대로.</summary>
-    public string HeaderOf(string column) => _areaByCol.TryGetValue(column, out var area) ? area : column;
+    /// <summary>
+    /// DataTable 컬럼명(안전ID 등)을 <b>화면에 보일 이름</b>으로.
+    ///
+    /// 한 영역에 평가가 여럿이면 속으로는 <c>한국사#2</c> 처럼 구분하지만
+    /// <b>사람에게는 언제나 진짜 영역명</b>을 보인다 — 나이스 화면도 그렇게 보인다(사용자 확인 2026-08-22).
+    /// 그래서 같은 머리글이 여러 열에 걸릴 수 있고, 열을 가릴 때는 머리글을 쓰면 안 된다.
+    /// </summary>
+    public string HeaderOf(string column) =>
+        _areaByCol.TryGetValue(column, out var area) ? PlanKeys.NameOf(area) : column;
 
     /// <summary>이 컬럼명이 영역(등급) 컬럼인지.</summary>
     public bool IsAreaColumn(string column) => _areaByCol.ContainsKey(column);

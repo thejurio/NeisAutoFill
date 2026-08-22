@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Models;
+﻿using NeisAutoFill.Core.Models;
 using NeisAutoFill.Core.Scale;
 
 namespace NeisAutoFill.Automation.Abstractions;
@@ -131,5 +131,6 @@ public interface INeisEngine
         int maxBytes,
         IProgress<ProgressInfo> progress,
         CancellationToken ct = default,
-        Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null);
+        Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null,
+        bool byOrder = false);
 }

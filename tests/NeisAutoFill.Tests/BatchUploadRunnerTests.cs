@@ -1,4 +1,4 @@
-using NeisAutoFill.Automation;
+﻿using NeisAutoFill.Automation;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Models;
 using NeisAutoFill.Core.Scale;
@@ -44,7 +44,7 @@ public class BatchUploadRunnerTests
         public Task<string> InspectDomAsync(CancellationToken ct = default) => throw new NotImplementedException();
         public Task<NarrativeReport> RunNarrativesAsync(string subjectName, IReadOnlyList<NarrativeEntry> entries,
             bool dryRun, int maxBytes, IProgress<ProgressInfo> progress, CancellationToken ct = default,
-            Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null)
+            Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null, bool byOrder = false)
             => throw new NotImplementedException();
     }
 
