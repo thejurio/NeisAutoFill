@@ -35,7 +35,7 @@ public sealed class EvalScreenReader(IPage page)
     /// (조회는 그리드가 잠잠해질 때까지, 저장은 상자가 뜰 때까지).
     /// 예전 900ms 는 교과·단계마다 여러 번 걸려 그 자체로 수십 초를 먹었다.
     /// </summary>
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan QueryWait = TimeSpan.FromSeconds(4);
 
     /// <summary>지금 평가계획(안)관리 화면인가.</summary>
@@ -150,13 +150,13 @@ public sealed class EvalScreenReader(IPage page)
 
         while (DateTime.UtcNow < deadline)
         {
-            await Task.Delay(60, ct);
+            await Task.Delay(30, ct);
 
             var now = await page.EvaluateAsync<int>(Count);
             stable = now == last ? stable + 1 : 0;
             last = now;
 
-            if (stable >= 3) return;   // 세 번 연달아 같으면 다 받았다
+            if (stable >= 2) return;   // 두 번 연달아 같으면 다 받았다 (최소 ~90ms)
         }
     }
 
@@ -234,6 +234,20 @@ public sealed class EvalScreenReader(IPage page)
           const d = [...document.querySelectorAll('[role=dialog]')].filter(vis).pop();
           return d ? (d.innerText || '').replace(/\s+/g, ' ').trim() : null;
         }");
+
+    /// <summary>대화상자가 뜰 때까지 기다린다. 떴으면 그 글, 안 뜨면 null.</summary>
+    public async Task<string?> WaitForDialogAsync(TimeSpan limit, CancellationToken ct = default)
+    {
+        var deadline = DateTime.UtcNow + limit;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await DialogTextAsync() is { } text) return text;
+            await Task.Delay(30, ct);
+        }
+
+        return null;
+    }
 
     /// <summary>대화상자의 단추를 누른다 (확인·취소·닫기). 진짜 마우스로 누른다.</summary>
     public async Task<bool> ClickDialogAsync(string text)

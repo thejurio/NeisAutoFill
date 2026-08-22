@@ -48,7 +48,7 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(700);
 
     /// <summary>다시 볼 때까지의 간격.</summary>
-    private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(40);
+    private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(25);
 
     /// <summary>
     /// 이 머리글이 있는 그리드를 찾는 스크립트 조각.

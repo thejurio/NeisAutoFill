@@ -40,7 +40,7 @@ public sealed record EvalSaveResult(
 public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
 {
     /// <summary>단추 클릭이 먹히도록 두는 짧은 틈. 진짜 기다림은 폴링이 맡는다.</summary>
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(350);
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(150);
     private static readonly TimeSpan ServerWait = TimeSpan.FromSeconds(6);
 
     /// <summary>저장하겠느냐고 묻는 상자.</summary>
@@ -158,6 +158,68 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
         return todo.Count;
     }
 
+    // ── 걸음 1'. 성취기준 — 엑셀 일괄업로드 ────────────────
+
+    /// <summary>
+    /// [일괄업로드]로 성취기준을 <b>한 번에</b> 올린다 (E8, 사용자 결정 2026-08-22).
+    ///
+    /// 칸을 하나씩 눌러 넣던 길([영역명관리] → [행추가] → 칸마다 입력)을 대신한다 —
+    /// 교과당 수십 번의 클릭이 <b>파일 하나</b>로 줄어든다.
+    ///
+    /// <b>샘플엑셀은 받지 않는다.</b> 양식은 이미 알고 있다(시트 <c>empty0</c>,
+    /// 1행 <c>영역명 │ 성취기준 │ 평가요소</c>) — 그대로 만들어 올린다.
+    ///
+    /// 파일 선택 창은 <b>Playwright 가 가로챈다</b>. OS 창이 뜨면 자동화가 멈추므로
+    /// 반드시 <c>RunAndWaitForFileChooserAsync</c> 안에서 단추를 눌러야 한다.
+    /// </summary>
+    /// <param name="excelPath">올릴 엑셀 경로 (호출자가 만들고 지운다)</param>
+    /// <returns>대화상자가 읽어들인 줄 수</returns>
+    public async Task<int> UploadStandardsAsync(string excelPath, CancellationToken ct = default)
+    {
+        if (!await reader.ClickAsync("일괄업로드"))
+            throw new InvalidOperationException("[일괄업로드]를 누를 수 없습니다. 조회를 먼저 하세요.");
+
+        // 창이 뜨는 것을 <b>보고</b> 넘어간다 — 고정 대기를 깔면 그만큼 늘 버린다
+        if (await reader.WaitForDialogAsync(ServerWait / 2, ct) is null)
+            throw new InvalidOperationException("일괄업로드 창이 열리지 않았습니다.");
+
+        try
+        {
+            var chooser = await page.RunAndWaitForFileChooserAsync(async () =>
+            {
+                if (!await reader.ClickDialogAsync("엑셀업로드"))
+                    throw new InvalidOperationException("[엑셀업로드]를 누르지 못했습니다.");
+            });
+
+            await chooser.SetFilesAsync(excelPath);
+
+            // 읽어들인 줄이 나타날 때까지 — 파일을 넘겼다고 읽힌 것은 아니다
+            var grid = new ClxGridEditor(page, "영역명");
+            var deadline = DateTime.UtcNow + ServerWait;
+            var read = 0;
+
+            while (DateTime.UtcNow < deadline)
+            {
+                read = await grid.RowCountAsync();
+                if (read > 0) break;
+                await Task.Delay(30, ct);
+            }
+
+            if (read == 0)
+                throw new InvalidOperationException("엑셀을 올렸지만 읽어들인 줄이 없습니다.");
+
+            var save = await SaveAsync(inDialog: true, ct, label: "일괄저장");
+            if (save.Outcome is not (EvalSaveOutcome.Saved or EvalSaveOutcome.NothingToSave))
+                throw new InvalidOperationException($"일괄저장에 실패했습니다 — {save.Detail}");
+
+            return read;
+        }
+        finally
+        {
+            await reader.ClickDialogAsync("닫기");
+        }
+    }
+
     // ── 걸음 2. 평가기준 ───────────────────────────────────
 
     /// <summary>
@@ -179,7 +241,7 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
         var grid = reader.Criteria;
         var deadline = DateTime.UtcNow + ServerWait;
         while (await grid.RowCountAsync() < count && DateTime.UtcNow < deadline)
-            await Task.Delay(60, ct);
+            await Task.Delay(30, ct);
 
         if (await grid.RowCountAsync() < count)
             throw new InvalidOperationException(
@@ -250,13 +312,15 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
     /// <b>저장은 편집 중인 칸을 먼저 확정해 준다</b> — 연쇄 입력의 마지막 칸이 이때 들어간다.
     /// 다만 바뀐 것이 없으면 나이스가 거절하고, 그러면 그 칸은 확정되지 않는다.
     /// </summary>
-    public async Task<EvalSaveResult> SaveAsync(bool inDialog, CancellationToken ct = default)
+    /// <param name="label">저장 단추의 글자. 일괄업로드 창은 <c>일괄저장</c> 이다.</param>
+    public async Task<EvalSaveResult> SaveAsync(
+        bool inDialog, CancellationToken ct = default, string label = "저장")
     {
         var seen = new List<string>();
 
         var clicked = inDialog
-            ? await reader.ClickDialogAsync("저장")
-            : await reader.ClickAsync("저장");
+            ? await reader.ClickDialogAsync(label)
+            : await reader.ClickAsync(label);
 
         if (!clicked) return new(EvalSaveOutcome.CannotSave, "[저장]을 누를 수 없습니다.", seen);
 
@@ -316,7 +380,7 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
             var text = await reader.DialogTextAsync();
             if (text is not null && text != previous) return text;
 
-            await Task.Delay(80, ct);
+            await Task.Delay(30, ct);
         }
 
         return null;

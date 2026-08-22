@@ -1,6 +1,8 @@
 ﻿using NeisAutoFill.Automation;
 using NeisAutoFill.Automation.Abstractions;
+using System.IO;
 using NeisAutoFill.Core.Evaluation;
+using NeisAutoFill.Excel;
 
 namespace NeisAutoFill.App.Services;
 
@@ -38,9 +40,9 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
     /// <returns>준비됐으면 null, 아니면 사용자에게 보여 줄 이유</returns>
     public async Task<string?> PreflightAsync(CancellationToken ct = default)
     {
-        // <b>화면을 옮기지 않는다.</b> 평가계획(안)관리로 가는 자동 이동 경로가 없어서
-        // EnsureReadyAsync 를 쓰면 엉뚱한 화면(시간표)으로 끌고 가 버린다 — 실제로 그랬다(2026-08-22).
-        var gate = await session.EnsureConnectedAsync(ct);
+        // 평가계획(안)관리 화면으로 <b>스스로 찾아간다</b>(2026-08-22).
+        // 한때 여기서 시간표 목적지를 불러 사용자가 열어 둔 화면을 끌고 가 버렸다 — 목적지를 제대로 넣었다.
+        var gate = await session.EnsureReadyAsync(NeisTarget.EvalPlan, null, ct);
         if (gate is not null) return gate;
 
         var tools = Tools();
@@ -74,18 +76,30 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
             if (await FocusSubjectAsync(tools.Reader, plan.Subject, ct) is { } blocked)
                 return new(plan.Subject, 0, 0, 0, blocked);
 
-            progress?.Report(new($"{plan.Subject} — 영역명을 등록하고 있어요…"));
-            var areas = await tools.Writer.RegisterAreasAsync(plan.Areas.Select(a => a.Name), ct);
-            ct.ThrowIfCancellationRequested();
+            // 화면에 이미 올라간 것은 빼고 올린다 — 나이스 일괄업로드는 덮어쓰지 않고 <b>더한다</b>(E-004).
+            var already = await ReadStandardsAsync(tools.Reader);
+            var pending = EvalUploadRows.Pending(EvalUploadRows.Of(plan), already);
 
-            progress?.Report(new($"{plan.Subject} — 성취기준을 넣고 있어요…"));
-            var rows = plan.Areas
-                .SelectMany(a => a.Standards.Select(s => (a.Name, s.Standard, s.Element)))
-                .ToList();
+            if (pending.Count == 0)
+                return new(plan.Subject, 0, 0, 0);
 
-            var added = await tools.Writer.AddStandardsAsync(rows, ct);
+            progress?.Report(new($"{plan.Subject} — 성취기준 {pending.Count}건을 올리고 있어요…"));
 
-            return new(plan.Subject, areas.Count, added, 0);
+            // 샘플엑셀은 받지 않는다. 양식을 이미 알고 있으니 그대로 만들어 올리고 <b>바로 지운다</b>.
+            var file = Path.Combine(Path.GetTempPath(), $"eval_{Guid.NewGuid():N}.xlsx");
+            int added;
+            try
+            {
+                EvalUploadWorkbook.Write(file, pending);
+                added = await tools.Writer.UploadStandardsAsync(file, ct);
+            }
+            finally
+            {
+                try { if (File.Exists(file)) File.Delete(file); }
+                catch (Exception ex) { Services.Diag.Swallow(ex, "일괄업로드 임시파일 정리"); }
+            }
+
+            return new(plan.Subject, 0, added, 0);
         }
         catch (OperationCanceledException) { return new(plan.Subject, 0, 0, 0, "중지했습니다."); }
         catch (Exception ex) { return new(plan.Subject, 0, 0, 0, ex.Message); }
@@ -183,6 +197,22 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
         // 조회할 때 "변경사항이 반영되지 않았습니다" 가 뜨면 확인을 눌러 버린다
         for (var i = 0; i < 3 && await reader.DialogTextAsync() is not null; i++)
             await reader.ClickDialogAsync("확인");
+    }
+
+    /// <summary>지금 화면에 올라와 있는 (영역명, 성취기준) 쌍.</summary>
+    private static async Task<IReadOnlyList<(string Area, string Standard)>> ReadStandardsAsync(
+        EvalScreenReader reader)
+    {
+        var grid = reader.Standards;
+        var areaColumn = await grid.ColumnAsync("영역명");
+        var standardColumn = await grid.ColumnAsync("성취기준");
+        if (areaColumn < 0 || standardColumn < 0) return Array.Empty<(string, string)>();
+
+        var rows = new List<(string, string)>();
+        for (var r = 0; r < await grid.RowCountAsync(); r++)
+            rows.Add((await grid.CellAsync(r, areaColumn), await grid.CellAsync(r, standardColumn)));
+
+        return rows;
     }
 
     /// <summary>그 성취기준이 화면 몇 번째 줄인지. 없으면 -1.</summary>

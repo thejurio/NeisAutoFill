@@ -178,6 +178,10 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             // 도착 판정은 두 표기에 모두 걸리는 "학급시간표" 로 한다.
             NeisTarget.ClassTimetable =>
                 ("학급시간표관리", new[] { "학급시간표관리 3단계", "학급시간표관리" }, System.Array.Empty<string>(), "학급시간표관리", "학급시간표"),
+            // 학급담임 → 평가계획 → 평가계획(안)관리 (실측 2026-08-22). 옆에 '(반별)' 이 있으니
+            // 도착 판정은 괄호까지 붙은 온전한 이름으로 한다.
+            NeisTarget.EvalPlan =>
+                ("평가계획(안)관리", new[] { "평가계획(안)관리 3단계", "평가계획(안)관리" }, System.Array.Empty<string>(), "평가계획(안)관리", "평가계획(안)관리"),
             _ => ("교과평가", new[] { "교과평가" }, System.Array.Empty<string>(), "교과평가", "교과평가"),
         };
 
@@ -185,11 +189,14 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         // 제목만으로 판단한다 (그리드 요구하면 조회 전엔 영영 도착으로 안 잡힘).
         if ((await ReadScreenTitleAsync()).Contains(title)) return true;
 
-        // 2단계 메뉴가 목적지마다 다르다: 평가·서술문은 [학생평가], 시간표는 [시간표관리]
-        var secondName = target == NeisTarget.ClassTimetable ? "시간표관리" : "학생평가";
-        var secondLabels = target == NeisTarget.ClassTimetable
-            ? new[] { "시간표관리 2단계", "시간표관리" }
-            : new[] { "학생평가 2단계", "학생평가" };
+        // 2단계 메뉴가 목적지마다 다르다: 평가·서술문은 [학생평가], 시간표는 [시간표관리], 평가계획은 [평가계획]
+        var secondName = target switch
+        {
+            NeisTarget.ClassTimetable => "시간표관리",
+            NeisTarget.EvalPlan => "평가계획",
+            _ => "학생평가",
+        };
+        var secondLabels = new[] { $"{secondName} 2단계", secondName };
 
         var steps = new List<(string name, string[] labels)>
         {
