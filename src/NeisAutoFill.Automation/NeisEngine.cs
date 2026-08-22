@@ -216,7 +216,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
                     progress?.Report(new($"'{name}' 메뉴를 찾지 못해 이동을 멈췄어요"));
                     return false;
                 }
-                await Task.Delay(800, ct);           // 하위 메뉴/화면 렌더 대기
+                // 고정 대기를 두지 않는다 — 다음 단계의 ClickMenuLabelAsync 가 그 라벨이
+                // 나타날 때까지 스스로 기다린다. 800ms × 단계 수가 순전한 낭비였다.
             }
 
             // 도착 확인 — 화면 제목(app-tit)만으로 판별. 서술문 화면은 조회를 눌러야 그리드가 뜨므로
@@ -225,8 +226,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
             while (DateTime.UtcNow < deadline)
             {
                 ct.ThrowIfCancellationRequested();
-                if ((await ReadScreenTitleAsync()).Contains(title)) { await Task.Delay(500, ct); return true; }
-                await Task.Delay(600, ct);
+                if ((await ReadScreenTitleAsync()).Contains(title)) return true;
+                await Task.Delay(80, ct);
             }
             progress?.Report(new($"{screenName} 화면 확인이 안 돼요 (제목이 바뀌지 않음)"));
         }
@@ -691,12 +692,21 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
     private async Task DismissAlertsAsync(CancellationToken ct = default)
     {
         if (_page is null) return;
-        for (int i = 0; i < 3; i++)   // 겹친 대화상자 대비 최대 3개
+
+        // <b>누른 것과 닫힌 것은 다르다.</b> 예전엔 누르고 300ms 뒤 다음으로 갔는데,
+        // 안 닫힌 알림이 화면을 덮으면 그다음 클릭이 통째로 헛돈다 —
+        // 평가계획에서 실제로 그렇게 멈췄다(2026-08-22). 여기도 같은 구조라 함께 고친다.
+        for (int i = 0; i < 4; i++)   // 겹친 대화상자 대비
         {
             var yes = await WaitDialogYesButtonAsync(TimeSpan.FromMilliseconds(250), ct);
-            if (yes is null) return;
-            try { await yes.ClickAsync(new LocatorClickOptions { Timeout = 2000 }); } catch { return; }
-            await Task.Delay(300, ct);
+            if (yes is null) return;   // 남은 알림 없음 — 정상 종료
+
+            try { await yes.ClickAsync(new LocatorClickOptions { Timeout = 2000 }); }
+            catch { return; }
+
+            // 그 단추가 사라지는 것을 보고 다음으로
+            await Wait.UntilAsync(async () => !await yes.IsVisibleAsync().ConfigureAwait(false),
+                TimeSpan.FromMilliseconds(1200), ct);
         }
     }
 

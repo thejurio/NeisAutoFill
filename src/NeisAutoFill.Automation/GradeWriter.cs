@@ -149,9 +149,39 @@ public sealed class GradeWriter(IPage page, GridScroller scroller, ComboBoxDrive
                 EngineDiag.Swallow(ex, $"등급 설정({task.Area}→{task.TargetGrade})");   // 상세는 diag.txt 로
             }
 
-            if (attempt == 1) await Task.Delay(Timings.RetryDelay, ct);
+            // 다시 해 보기 전에 <b>남은 알림을 치운다</b> — 알림이 화면을 덮고 있으면
+            // 몇 번을 다시 해도 같은 자리에서 막힌다(평가계획에서 겪은 것과 같은 종류, 2026-08-22).
+            if (attempt == 1)
+            {
+                await DismissAlerts(ct);
+                await Task.Delay(Timings.RetryDelay, ct);
+            }
         }
         return (false, why);
+    }
+
+    /// <summary>
+    /// 떠 있는 알림을 치운다 — <b>닫힌 것을 보고</b> 넘어간다.
+    /// 알림이 화면을 덮고 있으면 다시 해 봐야 같은 자리에서 막힌다.
+    /// </summary>
+    private async Task DismissAlerts(CancellationToken ct)
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            var yes = page.Locator(NeisSelectors.DialogButton)
+                .Filter(new LocatorFilterOptions { HasTextRegex = new System.Text.RegularExpressions.Regex("^(확인|예)$") });
+
+            if (await yes.CountAsync() == 0) return;
+
+            var first = yes.First;
+            if (!await first.IsVisibleAsync()) return;
+
+            try { await first.ClickAsync(new LocatorClickOptions { Timeout = 2000 }); }
+            catch { return; }
+
+            await Wait.UntilAsync(async () => !await first.IsVisibleAsync(),
+                TimeSpan.FromMilliseconds(1200), ct);
+        }
     }
 
     private async Task<ILocator?> GetFreshComboAsync(ILocator grid, int idx)
