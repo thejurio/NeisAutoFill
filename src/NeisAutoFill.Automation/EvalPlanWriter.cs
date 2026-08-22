@@ -378,11 +378,16 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
     {
         var deadline = DateTime.UtcNow + ServerWait;
 
+        string? last = null;
+
         while (DateTime.UtcNow < deadline)
         {
             var text = await reader.AlertTextAsync();
-            if (text is not null && text != previous) return text;
 
+            // 새 상자이면서 <b>글이 안정된</b> 것만 받는다 — 뜨는 도중에 읽으면 본문이 비어 있다
+            if (text is not null && text != previous && text == last) return text;
+
+            last = text;
             await Task.Delay(30, ct);
         }
 

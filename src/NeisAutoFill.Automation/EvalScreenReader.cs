@@ -299,18 +299,28 @@ public sealed class EvalScreenReader(IPage page)
         return true;
     }
 
-    /// <summary>알림이 뜰 때까지 기다린다. 떴으면 그 글, 안 뜨면 null.</summary>
+    /// <summary>
+    /// 알림이 뜨고 <b>글까지 다 채워질 때까지</b> 기다린다. 안 뜨면 null.
+    ///
+    /// <b>뜨자마자 읽으면 안 된다.</b> 상자는 제목·단추가 먼저 그려지고 본문이 나중에 채워진다 —
+    /// 그 틈에 읽어서 <c>"알림 확인"</c> 만 얻고 "모르는 대화상자"로 멈춘 적이 있다(실측 2026-08-22).
+    /// 그래서 <b>같은 글이 두 번 연달아 읽힐 때</b>까지 본다.
+    /// </summary>
     public async Task<string?> WaitForAlertAsync(TimeSpan limit, CancellationToken ct = default)
     {
         var deadline = DateTime.UtcNow + limit;
+        string? last = null;
 
         while (DateTime.UtcNow < deadline)
         {
-            if (await AlertTextAsync() is { } text) return text;
+            var now = await AlertTextAsync();
+            if (now is not null && now == last) return now;
+
+            last = now;
             await Task.Delay(30, ct);
         }
 
-        return null;
+        return last;
     }
 
     /// <summary>대화상자가 뜰 때까지 기다린다. 떴으면 그 글, 안 뜨면 null.</summary>
