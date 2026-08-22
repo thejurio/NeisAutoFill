@@ -39,7 +39,8 @@ public sealed record EvalSaveResult(
 /// </summary>
 public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
 {
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(900);
+    /// <summary>단추 클릭이 먹히도록 두는 짧은 틈. 진짜 기다림은 폴링이 맡는다.</summary>
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan ServerWait = TimeSpan.FromSeconds(6);
 
     /// <summary>저장하겠느냐고 묻는 상자.</summary>
@@ -174,7 +175,12 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
         if (!await PickLevelCountAsync(count, ct))
             throw new InvalidOperationException($"[단계선택]에서 {count}단계를 고르지 못했습니다.");
 
+        // 단계를 고르면 그만큼 줄이 생긴다 — <b>줄이 나올 때까지만</b> 기다린다(고정 2초를 걷어냈다).
         var grid = reader.Criteria;
+        var deadline = DateTime.UtcNow + ServerWait;
+        while (await grid.RowCountAsync() < count && DateTime.UtcNow < deadline)
+            await Task.Delay(60, ct);
+
         if (await grid.RowCountAsync() < count)
             throw new InvalidOperationException(
                 $"평가기준 줄이 {await grid.RowCountAsync()}개뿐입니다 ({count}개가 나와야 합니다).");
@@ -228,7 +234,7 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
         if (item is null) return false;
 
         await page.Mouse.ClickAsync(item[0], item[1]);
-        await Task.Delay(ServerWait / 3, ct);
+        await Task.Delay(Settle, ct);
 
         return true;
     }

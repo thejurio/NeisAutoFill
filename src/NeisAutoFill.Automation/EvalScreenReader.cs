@@ -30,7 +30,12 @@ public sealed record EvalScope(string SchoolYear, string Semester, string Grade,
 /// </summary>
 public sealed class EvalScreenReader(IPage page)
 {
-    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(900);
+    /// <summary>
+    /// 단추를 누른 뒤 <b>클릭이 먹히도록</b> 두는 짧은 틈. 진짜 기다림은 폴링이 맡는다
+    /// (조회는 그리드가 잠잠해질 때까지, 저장은 상자가 뜰 때까지).
+    /// 예전 900ms 는 교과·단계마다 여러 번 걸려 그 자체로 수십 초를 먹었다.
+    /// </summary>
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(350);
     private static readonly TimeSpan QueryWait = TimeSpan.FromSeconds(4);
 
     /// <summary>지금 평가계획(안)관리 화면인가.</summary>
