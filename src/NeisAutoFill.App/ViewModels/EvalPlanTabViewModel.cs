@@ -180,8 +180,7 @@ public sealed class EvalPlanTabViewModel : ObservableObject
     }
 
     /// <summary>한 단계에서 고른 교과를 차례로 돈다. 끝까지 갔으면 true.</summary>
-    /// <summary>이번 실행에서 무엇이 끝났고 어디서 멈췄는지 — 끝나고 사용자에게 보여 준다.</summary>
-    private readonly List<EvalSubjectResult> _results = new();
+    /// <summary>어디서 왜 멈췄는지. null 이면 끝까지 갔다.</summary>
     private string? _stopped;
 
     private async Task<bool> RunStepAsync(
@@ -206,7 +205,6 @@ public sealed class EvalPlanTabViewModel : ObservableObject
             row.Failed = false;
 
             var result = await run(row.Plan, _cancel.Token);
-            _results.Add(result);
 
             row.Result = result.Describe();
             row.Failed = !result.Ok;
@@ -233,7 +231,6 @@ public sealed class EvalPlanTabViewModel : ObservableObject
 
         try
         {
-            _results.Clear();
             _stopped = null;
 
             var blocked = await _session.PreflightAsync(_cancel.Token);
@@ -267,35 +264,24 @@ public sealed class EvalPlanTabViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 끝나고 <b>무슨 일이 있었는지 창으로 알린다.</b>
+    /// 끝나고 <b>한 줄로</b> 알린다.
     ///
-    /// 로그만 남기면 사용자는 끝난 줄도, 막힌 줄도 모른다 — 등급·서술문은 결과 창이 뜨는데
-    /// 평가계획만 조용했다(사용자 지적 2026-08-22).
+    /// 몇 건을 넣었는지는 사용자가 알 필요 없다(지적 2026-08-22) — 끝났는지, 막혔으면 왜인지만 알면 된다.
+    /// 자세한 것은 로그에 남아 있다.
     /// </summary>
     private void Report()
     {
-        var standards = _results.Sum(r => r.Standards);
-        var criteria = _results.Sum(r => r.Criteria);
-        var subjects = _results.Select(r => r.Subject).Distinct().Count();
-
-        var did = $"교과 {subjects}개 · 성취기준 {standards}건 · 평가기준 {criteria}건";
-
-        // <b>주인 창을 반드시 넘긴다.</b> 안 넘기면 상자가 메인 창 뒤나 엉뚱한 자리에 떠서,
-        // 사용자에게는 "단추가 이유 없이 꺼져 있다"로만 보인다(지적 2026-08-22).
+        // <b>주인 창을 반드시 넘긴다.</b> 안 넘기면 상자가 메인 창 뒤에 떠서,
+        // 사용자에게는 "단추가 이유 없이 꺼져 있다"로만 보인다.
         var owner = Application.Current?.MainWindow;
 
         if (_stopped is null)
         {
-            Show(owner,
-                $"평가계획을 나이스에 넣었습니다.\n\n{did}\n\n나이스 화면에서 값을 확인해 주세요.",
-                "평가계획 입력 완료", MessageBoxImage.Information);
+            Show(owner, "작업을 완료했습니다.", "평가계획 입력", MessageBoxImage.Information);
             return;
         }
 
-        Show(owner,
-            $"{_stopped}\n\n거기까지 넣은 것: {did}\n\n고친 뒤 다시 [입력 시작]을 누르면 " +
-            "이미 들어간 것은 건너뛰고 이어서 넣습니다.",
-            "평가계획 입력 중단", MessageBoxImage.Warning);
+        Show(owner, _stopped, "평가계획 입력 중단", MessageBoxImage.Warning);
     }
 
     /// <summary>주인 창 위에 띄운다 — 주인이 없으면 그냥 띄운다(디자이너·시험 상황).</summary>
