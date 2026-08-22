@@ -1,4 +1,4 @@
-<Window x:Class="NeisAutoFill.App.MainWindow"
+﻿<Window x:Class="NeisAutoFill.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:NeisAutoFill.App.ViewModels"
@@ -280,7 +280,7 @@
                                 <!-- U4: 한 줄 — 일괄 입력(좌) + 성취기준·나이스 입력(우). U3: 미연결 시 입력 비활성 -->
                                 <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="False">
                                     <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="☑ 전체 선택" Padding="10,5" Margin="0,0,10,0" Click="SelectAllCells_Click"
-                                            ToolTip="표의 모든 칸을 선택합니다.&#10;💡 학생 이름을 클릭하면 그 학생 전체, 영역 제목을 클릭하면 그 영역 전체가 선택됩니다 (Ctrl+클릭 = 선택 추가)"/>
+                                            ToolTip="표의 모든 칸을 선택합니다.&#10;💡 학생 이름을 클릭하면 그 학생 전체, 영역 제목을 클릭하면 그 영역 전체가 선택됩니다 (Ctrl+클릭 = 선택 추가)&#10;💡 이름을 두 번 누르면 이름을 고칠 수 있습니다."/>
                                     <TextBlock DockPanel.Dock="Left" Text="일괄 입력:" VerticalAlignment="Center" Foreground="{StaticResource Sub}" FontSize="12" Margin="0,0,8,0"/>
                                     <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding DataContext.BulkGradeLabels, RelativeSource={RelativeSource AncestorType=Window}}" VerticalAlignment="Center">
                                         <ItemsControl.ItemsPanel>
@@ -295,7 +295,7 @@
                                     </ItemsControl>
                                     <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="지우기" Padding="10,5" Margin="0,0,6,0" Click="BulkClear_Click"/>
 
-                                    <!-- 명단도 이 표에서 고친다 — 번호·이름 칸을 바로 누르면 된다 -->
+                                    <!-- 명단도 이 표에서 고친다 — 번호는 한 번, 이름은 두 번 누르면 고쳐진다 -->
                                     <Border DockPanel.Dock="Left" Width="1" Background="{StaticResource Line}" Margin="6,3,10,3"/>
                                     <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="＋ 학생" Padding="10,5" Margin="0,0,4,0"
                                             Click="AddStudent_Click"

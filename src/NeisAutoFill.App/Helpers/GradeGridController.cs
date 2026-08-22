@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -186,6 +186,17 @@ public sealed class GradeGridController(MainViewModel main)
         if (FindAncestor<DataGridCell>(e.OriginalSource) is { } cell &&
             cell.Column?.Header?.ToString() == "이름" && cell.DataContext is DataRowView row)
         {
+            // <b>한 번 = 그 학생 전체 선택, 두 번 = 이름 고치기.</b>
+            // 한 번 누르기로 가로 한 줄이 잡히는 건 자주 쓰는 기능이라 그대로 두고,
+            // 이름을 고칠 길만 두 번 누르기로 따로 냈다(사용자 요청 2026-08-22).
+            if (e.ClickCount >= 2)
+            {
+                grid.CurrentCell = new DataGridCellInfo(row, cell.Column);
+                grid.BeginEdit();
+                e.Handled = true;
+                return;
+            }
+
             grid.Focus();
             if (!additive) grid.SelectedCells.Clear();
             foreach (var col in grid.Columns)
