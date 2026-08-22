@@ -203,27 +203,45 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>드래그앤드롭된 평가계획 문서(pdf/hwp/hwpx) → 편집 창 열고 AI 가져오기 시작.</summary>
     public void ImportPlanDocument(string path) => OpenPlanEditor(path);
 
+    // 담임 import: 과목 목록 인식 → 선택 콜백 → 고른 과목만 (F9 M4b)
+    private Task<IReadOnlyList<SubjectPlan>> ImportPlansAsync(string path, IProgress<string> progress,
+        Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>? select) =>
+        new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
+            .ImportAsync(path, _scales.Active, progress, select);
+
+    // 전담 import: (학년·과목) 단위 인식 → 선택 콜백 → 학년별 세트 (F9 M4b)
+    private Task<IReadOnlyList<Generator.GasPlanImporter.GradePlanSet>> ImportPlanUnitsAsync(
+        string path, IProgress<string> progress,
+        Func<IReadOnlyList<NeisAutoFill.Core.PlanUnit>, Task<IReadOnlyList<NeisAutoFill.Core.PlanUnit>?>>? select) =>
+        new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
+            .ImportUnitsAsync(path, _scales.Active, progress, select);
+
+    /// <summary>
+    /// 편집표 속을 하나 만든다 — [평가계획] 탭과 [자료 준비] 창이 같은 것을 쓴다.
+    /// 메인에서 보던 과목·반이 기본으로 잡힌다.
+    /// </summary>
+    private PlanEditorViewModel NewPlanEditor()
+    {
+        // 전담: 반별 명단·학년별 계획을 직접 저장(SubjectModeStore) — 담임 워크스페이스 저장 안 탐
+        if (_profiles.IsSubjectMode)
+            return new PlanEditorViewModel(Array.Empty<SubjectPlan>(), Array.Empty<(string, string)>(),
+                _scales.Active, ImportPlansAsync, new SubjectModeStore(_scales.Active),
+                SelectedSubject?.OwnerClass, ImportPlanUnitsAsync, _currentSubject);
+
+        // 담임: 명단 없으면 열린 성적파일 명단 재사용
+        var roster = _workspace.Roster;
+        if (roster.Count == 0 && Subjects.Count > 0)
+            roster = Subjects[0].Snapshot().Students.Select(s => (s.No, s.Name)).ToList();
+
+        return new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active, ImportPlansAsync,
+            initialSubject: SelectedSubject?.SubjectName);
+    }
+
     private void OpenPlanEditor(string? importPath = null)
     {
-        // 담임 import: 과목 목록 인식 → 선택 콜백 → 고른 과목만 (F9 M4b)
-        Task<IReadOnlyList<SubjectPlan>> Importer(string path, IProgress<string> progress,
-            Func<IReadOnlyList<string>, Task<IReadOnlyList<string>?>>? select) =>
-            new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
-                .ImportAsync(path, _scales.Active, progress, select);
-
-        // 전담 import: (학년·과목) 단위 인식 → 선택 콜백 → 학년별 세트 (F9 M4b)
-        Task<IReadOnlyList<Generator.GasPlanImporter.GradePlanSet>> UnitImporter(string path, IProgress<string> progress,
-            Func<IReadOnlyList<NeisAutoFill.Core.PlanUnit>, Task<IReadOnlyList<NeisAutoFill.Core.PlanUnit>?>>? select) =>
-            new Generator.GasPlanImporter(AppHttp.Long, _generatorSettings.Options)
-                .ImportUnitsAsync(path, _scales.Active, progress, select);
-
-        // 전담: 자료 준비가 반별 명단·학년별 계획을 직접 저장(SubjectModeStore) — 담임 워크스페이스 저장 안 탐
         if (_profiles.IsSubjectMode)
         {
-            var store = new SubjectModeStore(_scales.Active);
-            // 메인에서 보던 반 탭(예: 3-2)과 과목(예: 실과)을 자료준비 기본값으로 — 안에서 학년·반·과목 전환 가능
-            var svm = new PlanEditorViewModel(Array.Empty<SubjectPlan>(), Array.Empty<(string, string)>(),
-                _scales.Active, Importer, store, SelectedSubject?.OwnerClass, UnitImporter, _currentSubject);
+            var svm = NewPlanEditor();
             var swin = new PlanEditorWindow(svm) { Owner = Application.Current.MainWindow };
             if (importPath is not null) swin.Loaded += async (_, _) => await svm.ImportPlanFileAsync(importPath);
             swin.ShowDialog();
@@ -232,14 +250,7 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        // 담임(기존): 명단 없으면 열린 성적파일 명단 재사용
-        var roster = _workspace.Roster;
-        if (roster.Count == 0 && Subjects.Count > 0)
-            roster = Subjects[0].Snapshot().Students.Select(s => (s.No, s.Name)).ToList();
-
-        // 메인에서 보던 과목을 자료준비에서 바로 그 과목 시트로 보이게 (담임도)
-        var vm = new PlanEditorViewModel(_workspace.Plans, roster, _scales.Active, Importer,
-            initialSubject: SelectedSubject?.SubjectName);
+        var vm = NewPlanEditor();
         var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
         if (importPath is not null)
             win.Loaded += async (_, _) => await vm.ImportPlanFileAsync(importPath);
@@ -605,6 +616,100 @@ public sealed class MainViewModel : ObservableObject
     public ICommand LaunchEdgeCommand { get; }
     public ICommand OpenExcelCommand { get; }
 
+
+    // ── 평가계획 탭 (계획 편집표 ↔ 나이스 올리기) ──────────────
+
+    private PlanEditorViewModel? _planEditorVm;
+
+    /// <summary>평가계획 편집표의 속. 그 탭을 처음 열 때 만들어진다.</summary>
+    public PlanEditorViewModel? PlanEditor => _planEditorVm;
+
+    private bool _planTabShowsUpload;
+
+    /// <summary>평가계획 탭이 지금 <b>올리기 화면</b>을 보이고 있나 (아니면 편집표).</summary>
+    public bool PlanTabShowsUpload
+    {
+        get => _planTabShowsUpload;
+        private set => SetProperty(ref _planTabShowsUpload, value);
+    }
+
+    /// <summary>
+    /// 평가계획 탭을 열 때 부른다. 편집표 속을 만들고, 항상 <b>편집표부터</b> 보여 준다.
+    /// </summary>
+    public void PreparePlanEditor()
+    {
+        PlanTabShowsUpload = false;
+
+        if (_planEditorVm is not null) return;
+
+        try
+        {
+            _planEditorVm = NewPlanEditor();
+            OnPropertyChanged(nameof(PlanEditor));
+        }
+        catch (Exception ex)
+        {
+            Log($"평가계획 편집표 준비 오류: {ex.Message}");
+            ShowError(ex.ToString());
+        }
+    }
+
+    /// <summary>
+    /// [나이스에 올리기]. <b>먼저 저장해서 반영한 뒤</b> 올리기 화면으로 넘어간다 —
+    /// 여기서 고친 내용이 그대로 나이스에 들어가야 하기 때문이다(사용자 요청 2026-08-22).
+    /// </summary>
+    public ICommand ShowPlanUploadCommand => _showPlanUpload ??= new RelayCommand(() =>
+    {
+        if (!ApplyPlanEdits()) return;
+
+        EvalPlan.Refresh();
+        PlanTabShowsUpload = true;
+    });
+    private ICommand? _showPlanUpload;
+
+    /// <summary>[← 계획 편집] — 올리기 화면에서 편집표로 되돌아간다.</summary>
+    public ICommand ShowPlanEditCommand => _showPlanEdit ??=
+        new RelayCommand(() => PlanTabShowsUpload = false);
+    private ICommand? _showPlanEdit;
+
+    public ICommand SavePlanEditsCommand => _savePlanEdits ??= new RelayCommand(() => ApplyPlanEdits());
+    private ICommand? _savePlanEdits;
+
+    /// <summary>
+    /// 편집표의 내용을 작업공간 파일에 저장하고 프로그램 전체에 반영한다.
+    ///
+    /// <b>명단은 편집표가 아니라 [교과평가] 표에서 가져온다.</b> 명단을 고치는 곳은 이제 그 표 하나뿐이라,
+    /// 편집표가 들고 있는 (열 때 떠 온) 옛 명단으로 덮어쓰면 방금 고친 명단이 날아간다.
+    /// </summary>
+    public bool ApplyPlanEdits()
+    {
+        if (_planEditorVm is null) return false;
+
+        if (_profiles.IsSubjectMode)
+        {
+            _planEditorVm.SaveSubjectMode();
+            Log("전담 평가계획 저장 완료");
+            return true;
+        }
+
+        var built = _planEditorVm.Build(out var error);
+        if (built is null) { ShowError(error ?? "편집 내용을 읽지 못했습니다."); return false; }
+
+        var roster = Subjects.Count > 0
+            ? Subjects[0].Snapshot().Students.Select(s => (s.No, s.Name)).ToList()
+            : built.Value.Roster.ToList();
+
+        var (savedPath, saveError) = _workspace.SavePlan(built.Value.Plans, roster);
+        if (saveError is not null)
+        {
+            ShowError($"평가계획 저장 실패: {saveError}\n(파일이 엑셀에서 열려 있으면 닫고 다시 시도하세요)");
+            return false;
+        }
+
+        Log($"평가계획 저장: {Path.GetFileName(savedPath!)}");
+        LoadPlan(savedPath!);   // 저장본을 다시 읽어 반영 (엑셀 직접 수정과 같은 경로)
+        return true;
+    }
 
     /// <summary>
     /// 교과학습(세특) 화면의 속. 처음 <b>그 탭을 열 때</b> 만들어진다 —

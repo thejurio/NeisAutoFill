@@ -225,7 +225,7 @@ public partial class MainWindow : Window
 
         switch ((EvalTabs.SelectedItem as TabItem)?.Header as string)
         {
-            case "평가계획": vm.EvalPlan.Refresh(); break;
+            case "평가계획": vm.PreparePlanEditor(); break;
             case "교과학습": vm.PrepareGenerator(); break;
         }
     }

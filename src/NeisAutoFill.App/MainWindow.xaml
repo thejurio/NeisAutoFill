@@ -234,12 +234,51 @@
 
                       <!-- 평가 안의 세 갈래 (사용자 결정 2026-08-22).
                            창을 오가지 않고 여기서 다 끝낸다: 등급 매기기 → 계획 올리기 → 서술문. -->
+                      <!-- 일 순서대로 왼쪽부터 놓되(계획 → 평가 → 서술문), 처음 보이는 곳은
+                           자료가 이미 떠 있는 [교과평가]다 — 늘 여기서 일을 시작한다. -->
                       <TabControl x:Name="EvalTabs" Style="{StaticResource SectionTabControl}"
-                                  BorderThickness="0" Background="White" Padding="0"
+                                  BorderThickness="0" Background="White" Padding="0" SelectedIndex="1"
                                   SelectionChanged="EvalTabs_SelectionChanged">
                         <TabControl.ItemContainerStyle>
                             <Style TargetType="TabItem" BasedOn="{StaticResource SectionTab}"/>
                         </TabControl.ItemContainerStyle>
+
+                        <!-- 평가계획: 계획 편집표가 기본, [나이스에 올리기]를 누르면 올리기 화면으로 -->
+                        <TabItem Header="평가계획">
+                            <DockPanel Background="White">
+                                <Border DockPanel.Dock="Top" Background="White" Padding="14,8"
+                                        BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1">
+                                    <DockPanel LastChildFill="False">
+                                        <!-- 편집 중일 때의 도구 -->
+                                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal"
+                                                    Visibility="{Binding PlanTabShowsUpload, Converter={StaticResource TrueToCollapsed}}">
+                                            <Button Style="{StaticResource AccentGhostButton}" Content="📄 문서에서 가져오기"
+                                                    Command="{Binding PlanEditor.ImportPlanCommand}" Margin="0,0,6,0"
+                                                    ToolTip="이지에듀·스쿨마스터 등 평가계획서(PDF/HWP/HWPX)를 넣으면 AI가 인식해 표에 채웁니다"/>
+                                            <Button Style="{StaticResource GhostButton}" Content="💾 저장 후 적용"
+                                                    Command="{Binding SavePlanEditsCommand}"
+                                                    ToolTip="작업공간의 평가계획서 파일에 기록하고 프로그램 전체에 반영합니다"/>
+                                        </StackPanel>
+                                        <Button DockPanel.Dock="Right" Style="{StaticResource PrimaryButton}" Content="🚀 나이스에 올리기"
+                                                Command="{Binding ShowPlanUploadCommand}" Padding="16,6"
+                                                Visibility="{Binding PlanTabShowsUpload, Converter={StaticResource TrueToCollapsed}}"
+                                                ToolTip="저장해서 반영한 뒤 나이스 [평가계획(안)관리] 에 넣는 화면으로 넘어갑니다"/>
+
+                                        <!-- 올리기 화면일 때 -->
+                                        <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="← 계획 편집"
+                                                Command="{Binding ShowPlanEditCommand}" Padding="12,6"
+                                                Visibility="{Binding PlanTabShowsUpload, Converter={StaticResource BoolToVis}}"/>
+                                    </DockPanel>
+                                </Border>
+
+                                <Grid>
+                                    <views:PlanEditView DataContext="{Binding PlanEditor}"
+                                                        Visibility="{Binding DataContext.PlanTabShowsUpload, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource TrueToCollapsed}}"/>
+                                    <views:EvalPlanView DataContext="{Binding EvalPlan}"
+                                                        Visibility="{Binding DataContext.PlanTabShowsUpload, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}"/>
+                                </Grid>
+                            </DockPanel>
+                        </TabItem>
 
                         <TabItem Header="교과평가">
                       <DockPanel Background="White">
@@ -385,11 +424,6 @@
                 </Border>
                         </Grid>
                       </DockPanel>
-                        </TabItem>
-
-                        <!-- 평가계획 → 나이스 [평가계획(안)관리] 에 넣기 -->
-                        <TabItem Header="평가계획">
-                            <views:EvalPlanView DataContext="{Binding EvalPlan}"/>
                         </TabItem>
 
                         <!-- 교과학습발달상황(세특) 생성·입력 -->
