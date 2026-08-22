@@ -288,22 +288,37 @@ public sealed class GradeGridController(MainViewModel main)
             main.Log(value == "" ? $"선택 셀 {applied}개 지움" : $"선택 셀 {applied}개 → '{value}' (Ctrl+Z 로 취소 가능)");
     }
 
-    /// <summary>클립보드 표 붙여넣기. 등급 셀은 척도 라벨만 허용. Ctrl+Z 한 번에 되돌려짐.</summary>
+    /// <summary>
+    /// 클립보드 표 붙여넣기. 등급 셀은 척도 라벨만 허용. Ctrl+Z 한 번에 되돌려짐.
+    ///
+    /// <b>명단(번호·이름)도 받는다.</b> 번호나 이름 칸에서 붙여넣으면 학급 명단을 통째로 넣을 수 있고,
+    /// 표보다 자료가 길면 모자란 만큼 <b>모든 과목에</b> 학생을 더한다(사용자 요청 2026-08-22).
+    /// 등급 칸에서 시작한 붙여넣기는 줄을 늘리지 않는다 — 이름 없는 학생이 생기면 안 되기 때문이다.
+    /// </summary>
     private void Paste(DataGrid grid)
     {
         if (grid.DataContext is not SubjectViewModel vm) return;
         vm.BeginBulkEdit();
-        int applied, skipped;
+        int applied, skipped, added = 0;
         try
         {
             (applied, skipped) = DataGridClipboard.Paste(grid, vm.Grid,
                 validate: (header, value) =>
+                    header is "번호" or "이름" ||   // 명단 칸은 값을 가리지 않는다
                     header == SubjectViewModel.NoteColumn || value == "" || main.GradeLabels.Contains(value),
-                resolveColumn: vm.DataColumnOf);   // 영역 헤더 → 안전 컬럼ID
+                resolveColumn: vm.DataColumnOf,   // 영역 헤더 → 안전 컬럼ID
+                grow: (need, startHeader) =>
+                {
+                    if (startHeader is not ("번호" or "이름")) return;
+                    for (int i = 0; i < need; i++) if (main.AddStudent() >= 0) added++;
+                },
+                dropHeaderRow: true);
         }
         finally { vm.EndBulkEdit(); }
         if (applied == 0 && skipped == 0) return;
-        main.Log($"붙여넣기: {applied}셀 적용" + (skipped > 0 ? $", {skipped}셀 건너뜀 (허용외 등급·읽기전용)" : ""));
+        main.Log($"붙여넣기: {applied}셀 적용"
+            + (added > 0 ? $", 학생 {added}명 추가" : "")
+            + (skipped > 0 ? $", {skipped}셀 건너뜀 (허용외 등급·읽기전용)" : ""));
     }
 
     // ── 이름 없이 생긴 줄 되돌리기 ────────────────

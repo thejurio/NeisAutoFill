@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Windows;
 using System.Windows.Controls;
 using NeisAutoFill.Core;
@@ -14,11 +14,18 @@ public static class DataGridClipboard
     /// <param name="validate">(헤더, 값) → 허용 여부. null 이면 전부 허용.</param>
     /// <param name="allowGrow">붙여넣을 행이 표보다 많으면 새 행 추가 (명단·계획 편집용).</param>
     /// <param name="resolveColumn">표시 헤더 → 실제 DataTable 컬럼명 변환 (영역명↔안전ID). null 이면 헤더=컬럼명.</param>
+    /// <param name="grow">
+    /// (모자란 줄 수, 붙여넣기 시작 칸의 헤더) → 줄 늘리기. <c>allowGrow</c> 와 달리 <b>이 표 밖에서</b>
+    /// 늘려야 할 때 쓴다 — 명단은 모든 과목 표에 같이 늘어나야 하기 때문이다.
+    /// </param>
+    /// <param name="dropHeaderRow">첫 줄이 컬럼 제목과 똑같으면 떼어 낸다 (엑셀에서 제목까지 복사한 경우).</param>
     public static (int Applied, int Skipped) Paste(
         DataGrid grid, DataTable table,
         Func<string, string, bool>? validate = null,
         bool allowGrow = false,
-        Func<string, string>? resolveColumn = null)
+        Func<string, string>? resolveColumn = null,
+        Action<int, string>? grow = null,
+        bool dropHeaderRow = false)
     {
         string Col(string header) => resolveColumn?.Invoke(header) ?? header;
 
@@ -65,6 +72,18 @@ public static class DataGridClipboard
         // 화면 컬럼 순서(DisplayIndex) → 헤더 문자열 (= DataTable 컬럼명)
         var columns = grid.Columns.OrderBy(c => c.DisplayIndex).ToList();
 
+        // 엑셀에서 제목줄까지 함께 복사하는 일이 잦다 — 제목과 똑같은 첫 줄은 데이터가 아니다
+        if (dropHeaderRow && rows.Length > 1 && IsHeaderRow(rows[0], columns, startCol))
+        {
+            rows = rows.Skip(1).ToArray();
+            if (rows.Length == 0) return (0, 0);
+        }
+
+        // 표보다 긴 자료면 먼저 줄을 늘린다 (늘릴 수 없으면 아래에서 그냥 건너뛴다)
+        if (grow is not null && startRow + rows.Length > table.Rows.Count && startCol < columns.Count)
+            grow(startRow + rows.Length - table.Rows.Count,
+                 columns[startCol].Header?.ToString() ?? "");
+
         int applied = 0, skipped = 0;
         for (int r = 0; r < rows.Length; r++)
         {
@@ -92,5 +111,19 @@ public static class DataGridClipboard
             }
         }
         return (applied, skipped);
+    }
+
+    /// <summary>붙여넣을 첫 줄이 컬럼 제목 그대로인가 (칸 하나라도 어긋나면 아니다).</summary>
+    private static bool IsHeaderRow(string[] row, List<DataGridColumn> columns, int startCol)
+    {
+        if (row.Length == 0) return false;
+
+        for (int c = 0; c < row.Length; c++)
+        {
+            int i = startCol + c;
+            if (i >= columns.Count) return false;
+            if ((columns[i].Header?.ToString() ?? "").Trim() != row[c].Trim()) return false;
+        }
+        return true;
     }
 }
