@@ -216,6 +216,18 @@ public partial class MainWindow : Window
 
     private void AddStudent_Click(object sender, RoutedEventArgs e) => _gradeGrid.AddStudent();
 
+    /// <summary>
+    /// 표가 처리하지 않고 올라온 Ctrl+Z (= 초점이 표 밖에 있다). 글자를 치는 중이면 건드리지 않는다.
+    /// </summary>
+    private void Window_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Z || Keyboard.Modifiers != ModifierKeys.Control) return;
+        if (Keyboard.FocusedElement is TextBox or ComboBox or PasswordBox) return;
+
+        _gradeGrid.UndoActive();
+        e.Handled = true;
+    }
+
 
     private void BulkAssign_Click(object sender, RoutedEventArgs e)
     {

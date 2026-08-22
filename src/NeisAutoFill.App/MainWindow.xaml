@@ -5,7 +5,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="NEIS 교과평가 자동입력기" Height="840" Width="1280" MinWidth="1060" MinHeight="700"
         Icon="app.ico" WindowStyle="None" ResizeMode="CanResize"
-        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver" Closing="Window_Closing"
+        AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver" Closing="Window_Closing" KeyDown="Window_KeyDown"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="40" ResizeBorderThickness="6"

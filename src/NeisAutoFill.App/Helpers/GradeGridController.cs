@@ -95,6 +95,12 @@ public sealed class GradeGridController(MainViewModel main)
     /// <summary>단추로 학생 더하기 — 표 맨 아랫줄 Enter 와 같은 일을 한다.</summary>
     public void AddStudent() { if (_active is not null) AddStudentRow(_active); }
 
+    /// <summary>
+    /// 표 밖에 초점이 있을 때 온 Ctrl+Z. 표 안에서 온 것은 이미 처리되고 여기까지 오지 않는다.
+    /// 명단을 지우고 다른 곳을 눌러 버리면 되돌릴 길이 없었다(2026-08-22).
+    /// </summary>
+    public void UndoActive() { if (_active is not null) Undo(_active); }
+
     // ── 일괄 입력 바 (버튼) ─────────────────────
 
     public void BulkAssign(string label) { if (_active is not null) ApplyToSelected(_active, label); }
@@ -296,13 +302,18 @@ public sealed class GradeGridController(MainViewModel main)
         }
     }
 
-    /// <summary>고른 칸 가운데 번호·이름 칸이 있는 줄 번호들. 없으면 빈 목록.</summary>
+    /// <summary>
+    /// 고른 칸 가운데 번호·이름 칸이 있는 줄 번호들. 없으면 빈 목록.
+    /// 번호는 <b>표(DataTable) 기준</b>이다 — 화면 정렬이 바뀌어도 엉뚱한 학생을 지우지 않는다.
+    /// </summary>
     private static List<int> SelectedStudentRows(DataGrid grid) => grid.SelectedCells
         .Where(c => c.IsValid && c.Item is DataRowView &&
                     c.Column?.Header?.ToString() is "번호" or "이름")
-        .Select(c => grid.Items.IndexOf(c.Item))
+        .Select(c => TableIndex((DataRowView)c.Item))
         .Where(i => i >= 0)
         .Distinct().OrderBy(i => i).ToList();
+
+    private static int TableIndex(DataRowView view) => view.Row.Table.Rows.IndexOf(view.Row);
 
     /// <summary>고른 학생들을 <b>모든 과목에서</b> 뺀다. 뺐으면 true.</summary>
     private bool RemoveSelectedStudents(DataGrid grid)
@@ -313,8 +324,23 @@ public sealed class GradeGridController(MainViewModel main)
         grid.CommitEdit(DataGridEditingUnit.Row, true);
         _pending = null;   // 임시 줄을 직접 빼는 경우 — 이중으로 지우지 않게
 
+        var column = grid.CurrentCell.Column
+                     ?? grid.Columns.FirstOrDefault(c => c.Header?.ToString() == "번호");
+        var at = rows[0];
+
         var removed = main.RemoveStudents(rows);
         if (removed == 0) return false;
+
+        // <b>지운 뒤에도 표에 초점을 남긴다.</b> Ctrl+Z 는 이 표의 PreviewKeyDown 으로만 오는데,
+        // 오른쪽 단추 메뉴로 지우면 초점이 표 밖으로 나가 되돌리기가 먹히지 않았다(2026-08-22).
+        grid.UpdateLayout();
+        if (grid.Items.Count > 0 && column is not null)
+        {
+            grid.CurrentCell = new DataGridCellInfo(grid.Items[Math.Min(at, grid.Items.Count - 1)], column);
+            grid.SelectedCells.Clear();
+            grid.SelectedCells.Add(grid.CurrentCell);
+        }
+        grid.Focus();
 
         main.Log($"학생 {removed}명을 명단에서 뺐습니다 (Ctrl+Z 로 되돌릴 수 있습니다)");
         return true;
@@ -335,7 +361,10 @@ public sealed class GradeGridController(MainViewModel main)
             return;
         }
 
-        if (cells is not null && cells.Undo()) main.Log("↩ 실행 취소");
+        if (cells is not null && cells.Undo()) { main.Log("↩ 실행 취소"); return; }
+
+        // 조용히 아무 일도 안 하면 고장으로 보인다 — 되돌릴 게 없으면 없다고 말한다
+        main.Log("되돌릴 것이 없습니다.");
     }
 
     /// <summary>선택된 영역(등급) 셀에 값 일괄 적용. 특기사항은 지우기만 허용. Ctrl+Z 한 번에 되돌려짐.</summary>
@@ -421,7 +450,7 @@ public sealed class GradeGridController(MainViewModel main)
             if (commit) grid.CommitEdit(DataGridEditingUnit.Row, true);
             else grid.CancelEdit(DataGridEditingUnit.Row);
 
-            var index = grid.Items.IndexOf(row);
+            var index = TableIndex(row);
             if (index < 0 || !IsNameless(row)) return;
 
             main.RemoveStudents(new[] { index }, undoable: false);
