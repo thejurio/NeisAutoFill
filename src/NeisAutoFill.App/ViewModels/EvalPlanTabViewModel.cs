@@ -280,17 +280,28 @@ public sealed class EvalPlanTabViewModel : ObservableObject
 
         var did = $"교과 {subjects}개 · 성취기준 {standards}건 · 평가기준 {criteria}건";
 
+        // <b>주인 창을 반드시 넘긴다.</b> 안 넘기면 상자가 메인 창 뒤나 엉뚱한 자리에 떠서,
+        // 사용자에게는 "단추가 이유 없이 꺼져 있다"로만 보인다(지적 2026-08-22).
+        var owner = Application.Current?.MainWindow;
+
         if (_stopped is null)
         {
-            MessageBox.Show(
+            Show(owner,
                 $"평가계획을 나이스에 넣었습니다.\n\n{did}\n\n나이스 화면에서 값을 확인해 주세요.",
-                "평가계획 입력 완료", MessageBoxButton.OK, MessageBoxImage.Information);
+                "평가계획 입력 완료", MessageBoxImage.Information);
             return;
         }
 
-        MessageBox.Show(
+        Show(owner,
             $"{_stopped}\n\n거기까지 넣은 것: {did}\n\n고친 뒤 다시 [입력 시작]을 누르면 " +
             "이미 들어간 것은 건너뛰고 이어서 넣습니다.",
-            "평가계획 입력 중단", MessageBoxButton.OK, MessageBoxImage.Warning);
+            "평가계획 입력 중단", MessageBoxImage.Warning);
+    }
+
+    /// <summary>주인 창 위에 띄운다 — 주인이 없으면 그냥 띄운다(디자이너·시험 상황).</summary>
+    private static void Show(Window? owner, string text, string title, MessageBoxImage icon)
+    {
+        if (owner is null) MessageBox.Show(text, title, MessageBoxButton.OK, icon);
+        else MessageBox.Show(owner, text, title, MessageBoxButton.OK, icon);
     }
 }
