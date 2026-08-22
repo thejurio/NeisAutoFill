@@ -22,6 +22,21 @@ public sealed class GradeGridController(MainViewModel main)
         RebuildMenu(grid);
         grid.ContextMenuOpening += (_, _) => RebuildMenu(grid);   // 척도 변경 대응 — 열 때마다 재구성
 
+        // 오른쪽 단추로는 WPF 가 칸을 고르지 않는다 — 메뉴가 무엇을 대상으로 하는지 보이도록 직접 고른다.
+        // 이미 고른 칸 위에서 눌렀으면 그 선택을 그대로 둔다(엑셀과 같은 방식).
+        grid.PreviewMouseRightButtonDown += (_, e) =>
+        {
+            if (FindAncestor<DataGridCell>(e.OriginalSource) is not { Column: not null } cell ||
+                cell.DataContext is not DataRowView row) return;
+
+            if (grid.SelectedCells.Any(c => ReferenceEquals(c.Item, row) &&
+                                            ReferenceEquals(c.Column, cell.Column))) return;
+
+            grid.SelectedCells.Clear();
+            grid.CurrentCell = new DataGridCellInfo(row, cell.Column);
+            grid.SelectedCells.Add(grid.CurrentCell);
+        };
+
         // 이름 없이 생긴 줄은 그 줄을 벗어나는 순간 없앤다 (아래 _pending 설명)
         grid.CurrentCellChanged += (_, _) =>
         {
@@ -161,14 +176,15 @@ public sealed class GradeGridController(MainViewModel main)
 
         if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control)
         {
-            if (grid.DataContext is SubjectViewModel vz && vz.Undo()) main.Log("↩ 실행 취소");
+            Undo(grid);
             e.Handled = true;
             return;
         }
 
         if (e.Key == Key.Delete)
         {
-            ApplyToSelected(grid, "");
+            // 번호·이름 칸이 잡혀 있으면 그 학생을 명단에서 뺀다. 등급 칸이면 지금까지대로 값만 지운다.
+            if (!RemoveSelectedStudents(grid)) ApplyToSelected(grid, "");
             e.Handled = true;
             return;
         }
@@ -259,9 +275,67 @@ public sealed class GradeGridController(MainViewModel main)
             menu.Items.Add(item);
         }
         menu.Items.Add(new Separator());
-        var clear = new MenuItem { Header = "선택 셀 지우기", InputGestureText = "Del" };
-        clear.Click += (_, _) => ApplyToSelected(grid, "");
-        menu.Items.Add(clear);
+
+        // 번호·이름 칸을 고른 채 열었으면 '지우기'는 값이 아니라 <b>학생을 빼는</b> 일이 된다
+        var students = SelectedStudentRows(grid);
+        if (students.Count > 0)
+        {
+            var drop = new MenuItem
+            {
+                Header = $"학생 {students.Count}명 명단에서 빼기",
+                InputGestureText = "Del",
+            };
+            drop.Click += (_, _) => RemoveSelectedStudents(grid);
+            menu.Items.Add(drop);
+        }
+        else
+        {
+            var clear = new MenuItem { Header = "선택 셀 지우기", InputGestureText = "Del" };
+            clear.Click += (_, _) => ApplyToSelected(grid, "");
+            menu.Items.Add(clear);
+        }
+    }
+
+    /// <summary>고른 칸 가운데 번호·이름 칸이 있는 줄 번호들. 없으면 빈 목록.</summary>
+    private static List<int> SelectedStudentRows(DataGrid grid) => grid.SelectedCells
+        .Where(c => c.IsValid && c.Item is DataRowView &&
+                    c.Column?.Header?.ToString() is "번호" or "이름")
+        .Select(c => grid.Items.IndexOf(c.Item))
+        .Where(i => i >= 0)
+        .Distinct().OrderBy(i => i).ToList();
+
+    /// <summary>고른 학생들을 <b>모든 과목에서</b> 뺀다. 뺐으면 true.</summary>
+    private bool RemoveSelectedStudents(DataGrid grid)
+    {
+        var rows = SelectedStudentRows(grid);
+        if (rows.Count == 0) return false;
+
+        grid.CommitEdit(DataGridEditingUnit.Row, true);
+        _pending = null;   // 임시 줄을 직접 빼는 경우 — 이중으로 지우지 않게
+
+        var removed = main.RemoveStudents(rows);
+        if (removed == 0) return false;
+
+        main.Log($"학생 {removed}명을 명단에서 뺐습니다 (Ctrl+Z 로 되돌릴 수 있습니다)");
+        return true;
+    }
+
+    /// <summary>
+    /// Ctrl+Z. 칸 편집과 명단 조작 가운데 <b>더 최근 것</b>을 되돌린다 —
+    /// 둘은 따로 쌓이므로 한 곳에서 뽑은 번호표로 차례를 가린다.
+    /// </summary>
+    private void Undo(DataGrid grid)
+    {
+        var cells = grid.DataContext as SubjectViewModel;
+        var roster = main.RosterUndoSeq;
+
+        if (roster is not null && (cells?.UndoSeq is not { } seq || roster > seq))
+        {
+            if (main.UndoRoster() is { } what) main.Log($"↩ {what}");
+            return;
+        }
+
+        if (cells is not null && cells.Undo()) main.Log("↩ 실행 취소");
     }
 
     /// <summary>선택된 영역(등급) 셀에 값 일괄 적용. 특기사항은 지우기만 허용. Ctrl+Z 한 번에 되돌려짐.</summary>
@@ -310,7 +384,7 @@ public sealed class GradeGridController(MainViewModel main)
                 grow: (need, startHeader) =>
                 {
                     if (startHeader is not ("번호" or "이름")) return;
-                    for (int i = 0; i < need; i++) if (main.AddStudent() >= 0) added++;
+                    if (main.AddStudents(need) >= 0) added = need;   // Ctrl+Z 한 번에 되돌려지도록 한 묶음
                 },
                 dropHeaderRow: true);
         }
@@ -350,7 +424,7 @@ public sealed class GradeGridController(MainViewModel main)
             var index = grid.Items.IndexOf(row);
             if (index < 0 || !IsNameless(row)) return;
 
-            main.RemoveStudent(index);
+            main.RemoveStudents(new[] { index }, undoable: false);
         }
         finally { _dropping = false; }
     }

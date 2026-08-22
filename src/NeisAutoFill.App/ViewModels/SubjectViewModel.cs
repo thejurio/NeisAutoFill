@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Windows.Input;
 using NeisAutoFill.App.Mvvm;
 using NeisAutoFill.Core.Models;
@@ -86,7 +86,7 @@ public sealed class SubjectViewModel : ObservableObject
             if (_applyingUndo || e.Row is null || e.Column is null) return;
             var entry = (e.Row, e.Column.ColumnName, e.Row[e.Column]);
             if (_batch is not null) _batch.Add(entry);
-            else _undo.Push(new() { entry });
+            else _undo.Push((_main.NextEditSeq(), new() { entry }));
         };
 
         Grid.ColumnChanged += (_, e) =>
@@ -132,16 +132,20 @@ public sealed class SubjectViewModel : ObservableObject
     public void MarkSaved() => IsDirty = false;
 
     // ── 실행 취소 (Ctrl+Z) ────────────────────
-    private readonly Stack<List<(DataRow Row, string Col, object? Old)>> _undo = new();
+    // 번호표(Seq)는 MainViewModel 에서 뽑는다 — 명단 되돌리기와 어느 쪽이 더 최근인지 가리기 위해서다
+    private readonly Stack<(long Seq, List<(DataRow Row, string Col, object? Old)> Items)> _undo = new();
     private List<(DataRow Row, string Col, object? Old)>? _batch;
     private bool _applyingUndo;
+
+    /// <summary>가장 최근 편집의 번호표. 되돌릴 게 없으면 null.</summary>
+    public long? UndoSeq => _undo.Count == 0 ? null : _undo.Peek().Seq;
 
     /// <summary>일괄 작업(붙여넣기·일괄 지정) 시작 — 이후 변경이 한 번의 Ctrl+Z 로 되돌려진다.</summary>
     public void BeginBulkEdit() => _batch = new();
 
     public void EndBulkEdit()
     {
-        if (_batch is { Count: > 0 }) _undo.Push(_batch);
+        if (_batch is { Count: > 0 }) _undo.Push((_main.NextEditSeq(), _batch));
         _batch = null;
     }
 
@@ -149,7 +153,7 @@ public sealed class SubjectViewModel : ObservableObject
     public bool Undo()
     {
         if (_undo.Count == 0) return false;
-        var batch = _undo.Pop();
+        var batch = _undo.Pop().Items;
         _applyingUndo = true;
         try
         {

@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -808,46 +808,140 @@ public sealed class MainViewModel : ObservableObject
         finally { _spreadingRoster = false; }
     }
 
+    // ── 명단 되돌리기 (Ctrl+Z) ──────────────────
+    //
+    // 칸 값 고치기는 과목마다 따로 되돌리지만(SubjectViewModel), 명단은 <b>모든 과목이 함께</b>
+    // 늘고 줄어서 여기서 한 벌로 기억한다. 어느 쪽이 더 최근인지는 <b>한 곳에서 뽑은 번호표</b>로 가린다.
+    private long _editSeq;
+
+    /// <summary>되돌리기 차례를 정할 번호표를 하나 뽑는다.</summary>
+    public long NextEditSeq() => ++_editSeq;
+
+    /// <summary>되돌릴 명단 조작 하나. 더한 것이면 <c>Rows</c> 가 null, 뺀 것이면 그때 값이 들어 있다.</summary>
+    /// <param name="Indexes">건드린 줄 번호 (오름차순)</param>
+    /// <param name="Rows">[줄][과목] 순서로 떠 둔 값</param>
+    private sealed record RosterUndo(
+        long Seq, IReadOnlyList<int> Indexes, IReadOnlyList<IReadOnlyList<object?[]>>? Rows);
+
+    private readonly Stack<RosterUndo> _rosterUndo = new();
+
+    /// <summary>가장 최근 명단 조작의 번호표. 되돌릴 게 없으면 null.</summary>
+    public long? RosterUndoSeq => _rosterUndo.Count == 0 ? null : _rosterUndo.Peek().Seq;
+
     /// <summary>
     /// 학생 한 명을 <b>모든 과목 표에</b> 더한다. 표 맨 아래 칸에서 Enter 를 치면 불린다.
     /// </summary>
     /// <returns>새로 생긴 줄 번호</returns>
-    public int AddStudent()
+    public int AddStudent() => AddStudents(1);
+
+    /// <summary>학생 여러 명을 한꺼번에 더한다 — 되돌리기는 한 번에 묶인다(명단 붙여넣기).</summary>
+    /// <returns>마지막으로 생긴 줄 번호. 과목이 없으면 -1.</returns>
+    public int AddStudents(int count)
     {
-        if (Subjects.Count == 0) return -1;
+        if (Subjects.Count == 0 || count <= 0) return -1;
+
+        var first = Subjects[0].Grid.Rows.Count;
 
         _spreadingRoster = true;
         try
         {
             foreach (var subject in Subjects)
-            {
-                var row = subject.Grid.NewRow();
-                row["번호"] = (subject.Grid.Rows.Count + 1).ToString();
-                row["이름"] = "";
-                subject.Grid.Rows.Add(row);
-            }
+                for (int i = 0; i < count; i++)
+                {
+                    var row = subject.Grid.NewRow();
+                    row["번호"] = (subject.Grid.Rows.Count + 1).ToString();
+                    row["이름"] = "";
+                    subject.Grid.Rows.Add(row);
+                }
         }
         finally { _spreadingRoster = false; }
 
+        _rosterUndo.Push(new(NextEditSeq(), Enumerable.Range(first, count).ToList(), null));
         NotifyGradesEdited();
 
         return Subjects[0].Grid.Rows.Count - 1;
     }
 
     /// <summary>학생 한 명을 <b>모든 과목 표에서</b> 뺀다.</summary>
-    public void RemoveStudent(int rowIndex)
+    public void RemoveStudent(int rowIndex) => RemoveStudents(new[] { rowIndex });
+
+    /// <summary>
+    /// 학생 여러 명을 <b>모든 과목 표에서</b> 뺀다. 지우기 전에 값을 떠 두어 Ctrl+Z 로 그 자리에 돌아온다.
+    /// </summary>
+    /// <param name="undoable">false 면 되돌리기에 남기지 않는다 (이름 없이 생긴 임시 줄 취소).</param>
+    /// <returns>실제로 뺀 학생 수</returns>
+    public int RemoveStudents(IEnumerable<int> rowIndexes, bool undoable = true)
     {
-        if (Subjects.Count == 0 || rowIndex < 0) return;
+        if (Subjects.Count == 0) return 0;
+
+        var indexes = rowIndexes
+            .Where(i => i >= 0 && i < Subjects[0].Grid.Rows.Count)
+            .Distinct().OrderBy(i => i).ToList();
+        if (indexes.Count == 0) return 0;
+
+        var saved = indexes
+            .Select(i => (IReadOnlyList<object?[]>)Subjects
+                .Select(s => i < s.Grid.Rows.Count ? s.Grid.Rows[i].ItemArray : Array.Empty<object?>())
+                .ToList())
+            .ToList();
 
         _spreadingRoster = true;
         try
         {
             foreach (var subject in Subjects)
-                if (rowIndex < subject.Grid.Rows.Count) subject.Grid.Rows.RemoveAt(rowIndex);
+                foreach (var i in indexes.OrderByDescending(x => x))
+                    if (i < subject.Grid.Rows.Count) subject.Grid.Rows.RemoveAt(i);
         }
         finally { _spreadingRoster = false; }
 
+        if (undoable) _rosterUndo.Push(new(NextEditSeq(), indexes, saved));
+        else DropTopAddIfMatches(indexes);
+
         NotifyGradesEdited();
+
+        return indexes.Count;
+    }
+
+    /// <summary>방금 더한 줄을 도로 뺐다면 그 '더하기'도 되돌리기 목록에서 지운다 — 없던 일이 되어야 한다.</summary>
+    private void DropTopAddIfMatches(IReadOnlyList<int> indexes)
+    {
+        if (_rosterUndo.Count == 0) return;
+
+        var top = _rosterUndo.Peek();
+        if (top.Rows is null && top.Indexes.SequenceEqual(indexes)) _rosterUndo.Pop();
+    }
+
+    /// <summary>가장 최근 명단 조작을 되돌린다. 되돌린 게 없으면 null, 있으면 사람이 읽을 설명.</summary>
+    public string? UndoRoster()
+    {
+        if (_rosterUndo.Count == 0) return null;
+
+        var op = _rosterUndo.Pop();
+
+        _spreadingRoster = true;
+        try
+        {
+            if (op.Rows is null)
+            {
+                foreach (var subject in Subjects)
+                    foreach (var i in op.Indexes.OrderByDescending(x => x))
+                        if (i < subject.Grid.Rows.Count) subject.Grid.Rows.RemoveAt(i);
+
+                return $"학생 {op.Indexes.Count}명 추가 취소";
+            }
+
+            for (int k = 0; k < op.Indexes.Count; k++)
+                for (int s = 0; s < Subjects.Count && s < op.Rows[k].Count; s++)
+                {
+                    var table = Subjects[s].Grid;
+                    var row = table.NewRow();
+                    if (op.Rows[k][s].Length == table.Columns.Count) row.ItemArray = op.Rows[k][s];
+                    table.Rows.InsertAt(row, Math.Min(op.Indexes[k], table.Rows.Count));
+                }
+
+            return $"학생 {op.Indexes.Count}명 삭제 취소";
+        }
+        finally { _spreadingRoster = false; NotifyGradesEdited(); }
     }
 
     public void NotifyGradesEdited()
