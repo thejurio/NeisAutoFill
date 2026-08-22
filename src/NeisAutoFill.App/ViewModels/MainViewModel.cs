@@ -779,6 +779,77 @@ public sealed class MainViewModel : ObservableObject
     // ── 자동 저장 ──────────────────────────────
 
     /// <summary>성적 표 편집 알림 (SubjectViewModel 에서 호출) — 디바운스 타이머 재시작.</summary>
+    /// <summary>명단을 퍼뜨리는 중인가 — 되돌이 반영을 막는다.</summary>
+    private bool _spreadingRoster;
+
+    /// <summary>
+    /// 명단 한 칸(번호·이름)이 바뀌면 <b>모든 과목 표에 같이</b> 반영한다.
+    ///
+    /// 명단은 과목마다 따로가 아니라 학급 하나의 것이다. 한 과목에서만 고치면
+    /// 과목마다 다른 명단이 되어 나이스에 <b>엉뚱한 학생</b>이 들어간다.
+    /// 줄 번호로 맞춘다 — 모든 과목 표가 같은 명단으로 같은 순서에 만들어진다.
+    /// </summary>
+    public void SpreadRoster(SubjectViewModel source, int rowIndex, string column, string value)
+    {
+        if (_spreadingRoster || rowIndex < 0) return;
+
+        _spreadingRoster = true;
+        try
+        {
+            foreach (var subject in Subjects)
+            {
+                if (ReferenceEquals(subject, source)) continue;
+                if (rowIndex >= subject.Grid.Rows.Count) continue;
+
+                var row = subject.Grid.Rows[rowIndex];
+                if ((row[column]?.ToString() ?? "") != value) row[column] = value;
+            }
+        }
+        finally { _spreadingRoster = false; }
+    }
+
+    /// <summary>
+    /// 학생 한 명을 <b>모든 과목 표에</b> 더한다. 표 맨 아래 칸에서 Enter 를 치면 불린다.
+    /// </summary>
+    /// <returns>새로 생긴 줄 번호</returns>
+    public int AddStudent()
+    {
+        if (Subjects.Count == 0) return -1;
+
+        _spreadingRoster = true;
+        try
+        {
+            foreach (var subject in Subjects)
+            {
+                var row = subject.Grid.NewRow();
+                row["번호"] = (subject.Grid.Rows.Count + 1).ToString();
+                row["이름"] = "";
+                subject.Grid.Rows.Add(row);
+            }
+        }
+        finally { _spreadingRoster = false; }
+
+        NotifyGradesEdited();
+
+        return Subjects[0].Grid.Rows.Count - 1;
+    }
+
+    /// <summary>학생 한 명을 <b>모든 과목 표에서</b> 뺀다.</summary>
+    public void RemoveStudent(int rowIndex)
+    {
+        if (Subjects.Count == 0 || rowIndex < 0) return;
+
+        _spreadingRoster = true;
+        try
+        {
+            foreach (var subject in Subjects)
+                if (rowIndex < subject.Grid.Rows.Count) subject.Grid.Rows.RemoveAt(rowIndex);
+        }
+        finally { _spreadingRoster = false; }
+
+        NotifyGradesEdited();
+    }
+
     public void NotifyGradesEdited()
     {
         _autoSaveTimer.Stop();

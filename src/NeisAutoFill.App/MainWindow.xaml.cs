@@ -135,8 +135,9 @@ public partial class MainWindow : Window
 
         if (name is "번호" or "이름")
         {
-            ((DataGridTextColumn)e.Column).IsReadOnly = true;
+            // 명단도 여기서 고친다 — 고치면 <b>모든 과목에 같이</b> 반영된다(SubjectViewModel).
             e.Column.CanUserSort = false;
+            e.Column.Width = name == "번호" ? 54 : 92;
             return;
         }
 
@@ -212,6 +213,10 @@ public partial class MainWindow : Window
 
     private void GradeGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
         _gradeGrid.OnPreviewMouseLeftButtonDown((DataGrid)sender, e);
+
+    private void AddStudent_Click(object sender, RoutedEventArgs e) => _gradeGrid.AddStudent();
+
+    private void RemoveStudent_Click(object sender, RoutedEventArgs e) => _gradeGrid.RemoveStudent();
 
     private void BulkAssign_Click(object sender, RoutedEventArgs e)
     {

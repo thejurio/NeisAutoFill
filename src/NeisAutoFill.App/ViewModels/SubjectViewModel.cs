@@ -89,10 +89,16 @@ public sealed class SubjectViewModel : ObservableObject
             else _undo.Push(new() { entry });
         };
 
-        Grid.ColumnChanged += (_, _) =>
+        Grid.ColumnChanged += (_, e) =>
         {
             IsDirty = true;                // 사용자 편집 감지 (실행취소 적용도 편집)
             _main.NotifyGradesEdited();    // 디바운스 자동 저장 예약
+
+            // <b>명단은 과목마다 따로가 아니다.</b> 한 과목에서 이름을 고치면 모든 과목이 같이 바뀌어야 한다 —
+            // 안 그러면 과목마다 다른 명단이 되어 나이스에 엉뚱한 학생이 들어간다.
+            if (e.Column?.ColumnName is "번호" or "이름")
+                _main.SpreadRoster(this, Grid.Rows.IndexOf(e.Row), e.Column.ColumnName,
+                                   e.Row[e.Column]?.ToString() ?? "");
         };
 
         RunCommand = new AsyncRelayCommand(() => _main.RunSubjectAsync(Snapshot(), dryRun: false, OwnerClass));

@@ -23,6 +23,54 @@ public sealed class GradeGridController(MainViewModel main)
         grid.ContextMenuOpening += (_, _) => RebuildMenu(grid);   // 척도 변경 대응 — 열 때마다 재구성
     }
 
+    // ── 명단 (번호·이름) ────────────────────────
+
+    /// <summary>지금 고르고 있는 칸이 표의 <b>맨 아랫줄</b>인가.</summary>
+    private static bool OnLastRow(DataGrid grid)
+    {
+        if (grid.Items.Count == 0) return false;
+
+        var row = grid.CurrentCell.Item;
+
+        return row is not null && ReferenceEquals(row, grid.Items[^1]);
+    }
+
+    /// <summary>학생 한 명을 더하고 그 줄 <b>이름 칸</b>으로 옮겨 간다 — 바로 이어서 칠 수 있게.</summary>
+    public void AddStudentRow(DataGrid grid)
+    {
+        grid.CommitEdit(DataGridEditingUnit.Row, true);
+
+        if (main.AddStudent() < 0) return;
+
+        grid.UpdateLayout();
+        if (grid.Items.Count == 0) return;
+
+        var last = grid.Items[^1];
+        var nameColumn = grid.Columns.FirstOrDefault(c => c.Header?.ToString() == "이름");
+        if (nameColumn is null) return;
+
+        grid.ScrollIntoView(last, nameColumn);
+        grid.CurrentCell = new DataGridCellInfo(last, nameColumn);
+        grid.SelectedCells.Clear();
+        grid.SelectedCells.Add(grid.CurrentCell);
+        grid.BeginEdit();
+    }
+
+    /// <summary>단추로 학생 더하기 — 표 맨 아랫줄 Enter 와 같은 일을 한다.</summary>
+    public void AddStudent() { if (_active is not null) AddStudentRow(_active); }
+
+    /// <summary>고른 줄의 학생을 <b>모든 과목에서</b> 뺀다. 고른 줄이 없으면 아무 일도 하지 않는다.</summary>
+    public void RemoveStudent()
+    {
+        if (_active is null) return;
+
+        var index = _active.Items.IndexOf(_active.CurrentCell.Item);
+        if (index < 0) return;
+
+        _active.CommitEdit(DataGridEditingUnit.Row, true);
+        main.RemoveStudent(index);
+    }
+
     // ── 일괄 입력 바 (버튼) ─────────────────────
 
     public void BulkAssign(string label) { if (_active is not null) ApplyToSelected(_active, label); }
@@ -52,6 +100,16 @@ public sealed class GradeGridController(MainViewModel main)
 
     public void OnPreviewKeyDown(DataGrid grid, KeyEventArgs e)
     {
+        // <b>맨 아랫줄에서 Enter = 학생 한 명 더.</b>
+        // 아래로 내려갈 자리가 없는 곳이라, 거기서 Enter 는 "다음 줄을 만든다"로 읽는 것이 자연스럽다.
+        // 셀을 고치는 중(TextBox)에도 통해야 해서 아래 조기 반환보다 먼저 본다.
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && OnLastRow(grid))
+        {
+            AddStudentRow(grid);
+            e.Handled = true;
+            return;
+        }
+
         // 셀 편집기(콤보·텍스트박스) 안에서 입력 중이면 개입하지 않는다
         if (e.OriginalSource is TextBox or ComboBox) return;
 
