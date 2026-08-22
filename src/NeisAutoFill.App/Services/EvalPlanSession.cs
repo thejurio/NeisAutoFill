@@ -56,12 +56,11 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
     }
 
     /// <summary>
-    /// 교과 하나를 통째로 넣는다.
+    /// <b>걸음 ①</b> — 성취기준관리 화면에서 교과 하나의 영역명·성취기준을 넣는다.
     ///
-    /// <b>시작할 때 조회를 한 번 누른다</b> — 앞선 시도가 남긴 빈 행이 있으면 저장이 막히는데,
-    /// 조회가 그것을 버려 준다(실측 2026-08-21).
+    /// 단계 전환은 <see cref="EnterAsync"/> 로 <b>한 번만</b> 하고, 여기서는 교과만 바꾼다.
     /// </summary>
-    public async Task<EvalSubjectResult> RunSubjectAsync(
+    public async Task<EvalSubjectResult> RunStandardsAsync(
         EvalSubjectPlan plan,
         IProgress<ProgressInfo>? progress = null,
         CancellationToken ct = default)
@@ -69,30 +68,45 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
         var tools = Tools();
         if (tools is null) return new(plan.Subject, 0, 0, 0, "브라우저에 연결되어 있지 않습니다.");
 
-        var reader = tools.Reader;
-        var writer = tools.Writer;
-
         try
         {
-            // ① 영역명 — 성취기준에서 고를 수 있으려면 먼저 등록돼 있어야 한다
-            progress?.Report(new($"{plan.Subject} — 영역명을 등록하고 있어요…"));
-            await GoAsync(reader, EvalStep.Standards, ct);
+            progress?.Report(new($"{plan.Subject} — 나이스 교과를 바꾸고 있어요…"));
+            if (await FocusSubjectAsync(tools.Reader, plan.Subject, ct) is { } blocked)
+                return new(plan.Subject, 0, 0, 0, blocked);
 
-            var areas = await writer.RegisterAreasAsync(plan.Areas.Select(a => a.Name), ct);
+            progress?.Report(new($"{plan.Subject} — 영역명을 등록하고 있어요…"));
+            var areas = await tools.Writer.RegisterAreasAsync(plan.Areas.Select(a => a.Name), ct);
             ct.ThrowIfCancellationRequested();
 
-            // ② 성취기준
             progress?.Report(new($"{plan.Subject} — 성취기준을 넣고 있어요…"));
-
             var rows = plan.Areas
                 .SelectMany(a => a.Standards.Select(s => (a.Name, s.Standard, s.Element)))
                 .ToList();
 
-            var added = await writer.AddStandardsAsync(rows, ct);
-            ct.ThrowIfCancellationRequested();
+            var added = await tools.Writer.AddStandardsAsync(rows, ct);
 
-            // ③ 평가기준 — 성취기준을 하나씩 골라 가며
-            await GoAsync(reader, EvalStep.Criteria, ct);
+            return new(plan.Subject, areas.Count, added, 0);
+        }
+        catch (OperationCanceledException) { return new(plan.Subject, 0, 0, 0, "중지했습니다."); }
+        catch (Exception ex) { return new(plan.Subject, 0, 0, 0, ex.Message); }
+    }
+
+    /// <summary>
+    /// <b>걸음 ②</b> — 성취기준(평가기준)관리 화면에서 교과 하나의 단계별 평가기준을 넣는다.
+    /// </summary>
+    public async Task<EvalSubjectResult> RunCriteriaAsync(
+        EvalSubjectPlan plan,
+        IProgress<ProgressInfo>? progress = null,
+        CancellationToken ct = default)
+    {
+        var tools = Tools();
+        if (tools is null) return new(plan.Subject, 0, 0, 0, "브라우저에 연결되어 있지 않습니다.");
+
+        try
+        {
+            progress?.Report(new($"{plan.Subject} — 나이스 교과를 바꾸고 있어요…"));
+            if (await FocusSubjectAsync(tools.Reader, plan.Subject, ct) is { } blocked)
+                return new(plan.Subject, 0, 0, 0, blocked);
 
             var all = plan.Areas.SelectMany(a => a.Standards).ToList();
             var done = 0;
@@ -103,32 +117,68 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
                 progress?.Report(new(
                     $"{plan.Subject} — 평가기준 {done + 1}/{all.Count}", done + 1, all.Count));
 
-                var row = await FindRowAsync(reader, standard.Standard);
+                var row = await FindRowAsync(tools.Reader, standard.Standard);
                 if (row < 0)
-                    return new(plan.Subject, areas.Count, added, done,
+                    return new(plan.Subject, 0, 0, done,
                         $"넣은 성취기준을 화면에서 찾지 못했습니다 — {Short(standard.Standard)}");
 
-                await writer.WriteCriteriaAsync(row, standard.Criteria, ct);
+                await tools.Writer.WriteCriteriaAsync(row, standard.Criteria, ct);
                 done++;
             }
 
-            return new(plan.Subject, areas.Count, added, done);
+            return new(plan.Subject, 0, 0, done);
         }
-        catch (OperationCanceledException)
-        {
-            return new(plan.Subject, 0, 0, 0, "중지했습니다.");
-        }
-        catch (Exception ex)
-        {
-            return new(plan.Subject, 0, 0, 0, ex.Message);
-        }
+        catch (OperationCanceledException) { return new(plan.Subject, 0, 0, 0, "중지했습니다."); }
+        catch (Exception ex) { return new(plan.Subject, 0, 0, 0, ex.Message); }
     }
+
+    /// <summary>그 단계 화면으로 옮긴다. 교과를 돌기 전에 <b>한 번만</b> 부른다.</summary>
+    public async Task<string?> EnterAsync(EvalStep step, CancellationToken ct = default)
+    {
+        var tools = Tools();
+        if (tools is null) return "브라우저에 연결되어 있지 않습니다.";
+
+        try
+        {
+            await GoAsync(tools.Reader, step, ct);
+            return null;
+        }
+        catch (Exception ex) { return ex.Message; }
+    }
+
+    /// <summary>
+    /// 나이스 교과를 목표로 바꾸고 조회한다. 막히면 사용자에게 보여 줄 이유, 되면 null.
+    ///
+    /// <b>단계를 바꾸면 교과가 첫 항목으로 되돌아간다</b>(실측 2026-08-22: 평가기준 화면으로 옮기자
+    /// 교과가 국어로 되돌아가, 도덕 성취기준을 국어 화면에서 찾다 멈췄다).
+    /// 그래서 단계마다·교과마다 여기서 다시 고르고 <b>화면 표시값까지 대조한다</b>.
+    /// </summary>
+    private async Task<string?> FocusSubjectAsync(
+        EvalScreenReader reader, string subject, CancellationToken ct)
+    {
+        var selected = await EvalPlanSubjectSelector.SelectAndVerifyAsync(engine, subject, ct);
+        if (!selected.Ok) return selected.Message;
+
+        if (!await reader.QueryAsync(ct)) return "[조회]를 누르지 못했습니다.";
+
+        for (var i = 0; i < 3 && await reader.DialogTextAsync() is not null; i++)
+            await reader.ClickDialogAsync("확인");
+
+        Scope = await reader.ReadScopeAsync();
+        if (Scope is null || !string.Equals(Scope.Subject.Trim(), subject.Trim(), StringComparison.Ordinal))
+            return $"화면 교과는 '{Scope?.Subject ?? "읽지 못함"}'인데 입력 대상은 '{subject}'입니다. 입력하지 않고 멈췄습니다.";
+
+        return null;
+    }
+
 
     /// <summary>단계로 옮기고 조회한다. 남아 있던 미저장 행은 조회가 버려 준다.</summary>
     private static async Task GoAsync(EvalScreenReader reader, EvalStep step, CancellationToken ct)
     {
-        await reader.GoToAsync(step);
-        await reader.QueryAsync(ct);
+        if (!await reader.GoToAsync(step))
+            throw new InvalidOperationException("평가계획 입력 단계를 선택하지 못했습니다.");
+        if (!await reader.QueryAsync(ct))
+            throw new InvalidOperationException("평가계획 화면에서 [조회]를 누르지 못했습니다.");
 
         // 조회할 때 "변경사항이 반영되지 않았습니다" 가 뜨면 확인을 눌러 버린다
         for (var i = 0; i < 3 && await reader.DialogTextAsync() is not null; i++)

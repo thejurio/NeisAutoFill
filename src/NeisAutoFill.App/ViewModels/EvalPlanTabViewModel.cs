@@ -1,6 +1,7 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using NeisAutoFill.App.Mvvm;
 using NeisAutoFill.App.Services;
+using NeisAutoFill.Automation;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Evaluation;
 using NeisAutoFill.Core.Models;
@@ -177,6 +178,36 @@ public sealed class EvalPlanTabViewModel : ObservableObject
         _log("중지했습니다.");
     }
 
+    /// <summary>한 단계에서 고른 교과를 차례로 돈다. 끝까지 갔으면 true.</summary>
+    private async Task<bool> RunStepAsync(
+        EvalStep step, string label, IReadOnlyList<EvalSubjectRow> chosen,
+        Func<EvalSubjectPlan, CancellationToken, Task<EvalSubjectResult>> run)
+    {
+        var blocked = await _session.EnterAsync(step, _cancel!.Token);
+        if (blocked is not null) { _log($"{label} 화면으로 옮기지 못했습니다 — {blocked}"); return false; }
+
+        _log($"── {label} 단계 — 교과 {chosen.Count}개");
+
+        foreach (var row in chosen)
+        {
+            if (_cancel.IsCancellationRequested) return false;
+
+            row.Result = $"{label} 넣는 중…";
+            row.Failed = false;
+
+            var result = await run(row.Plan, _cancel.Token);
+
+            row.Result = result.Describe();
+            row.Failed = !result.Ok;
+            _log(result.Describe());
+
+            // 한 교과가 막히면 다음으로 넘어가지 않는다 — 무엇이 잘못됐는지 먼저 봐야 한다
+            if (!result.Ok) return false;
+        }
+
+        return true;
+    }
+
     private async Task RunAsync()
     {
         var chosen = Subjects.Where(s => s.Selected).ToList();
@@ -190,24 +221,20 @@ public sealed class EvalPlanTabViewModel : ObservableObject
             var blocked = await _session.PreflightAsync(_cancel.Token);
             if (blocked is not null) { _log(blocked); return; }
 
-            _log($"{_session.Scope} 화면에 넣습니다 — 교과 {chosen.Count}개");
+            var scope = _session.Scope!;
+            _log($"{scope.SchoolYear}학년도 {scope.Semester}학기 {scope.Grade}학년에서 " +
+                 $"교과 {chosen.Count}개를 자동으로 바꿔 가며 넣습니다.");
 
-            foreach (var row in chosen)
-            {
-                if (_cancel.IsCancellationRequested) break;
+            // <b>단계 하나에서 전 교과를 돌고, 그다음 단계로 넘어간다</b>(사용자 결정 2026-08-22).
+            //
+            // 교과마다 두 단계를 오가면 단계 전환이 교과 수의 두 배만큼 일어나고, 전환마다
+            // 조회와 대기가 붙어 느리다. 게다가 <b>단계를 바꾸면 교과가 첫 항목으로 되돌아가</b>
+            // 엉뚱한 교과 화면에서 찾다 멈추는 사고가 실제로 났다.
+            if (!await RunStepAsync(EvalStep.Standards, "성취기준", chosen,
+                    (p, ct) => _session.RunStandardsAsync(p, _progress, ct))) return;
 
-                row.Result = "넣는 중…";
-                row.Failed = false;
-
-                var result = await _session.RunSubjectAsync(row.Plan, _progress, _cancel.Token);
-
-                row.Result = result.Describe();
-                row.Failed = !result.Ok;
-                _log(result.Describe());
-
-                // 한 교과가 막히면 다음으로 넘어가지 않는다 — 무엇이 잘못됐는지 먼저 봐야 한다
-                if (!result.Ok) break;
-            }
+            if (!await RunStepAsync(EvalStep.Criteria, "평가기준", chosen,
+                    (p, ct) => _session.RunCriteriaAsync(p, _progress, ct))) return;
         }
         finally
         {

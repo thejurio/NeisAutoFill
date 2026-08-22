@@ -1,4 +1,4 @@
-using Microsoft.Playwright;
+﻿using Microsoft.Playwright;
 
 namespace NeisAutoFill.Automation;
 
@@ -117,14 +117,42 @@ public sealed class EvalScreenReader(IPage page)
         return true;
     }
 
-    /// <summary>조회를 누른다. 이걸 해야 편집 단추가 켜진다.</summary>
+    /// <summary>
+    /// 조회를 누른다. 이걸 해야 편집 단추가 켜진다.
+    ///
+    /// <b>고정 대기를 쓰지 않는다.</b> 예전엔 무조건 4초를 깔았는데, 교과마다 단계마다 부르는 자리라
+    /// 그것만으로 1분 넘게 버렸다. 지금은 <b>그리드가 조용해질 때까지</b>만 본다 —
+    /// 줄 수가 두 번 연달아 같으면 다 받은 것으로 본다(시간표에서 쓴 것과 같은 방식).
+    /// </summary>
     public async Task<bool> QueryAsync(CancellationToken ct = default)
     {
         if (!await ClickAsync("조회")) return false;
 
-        await Task.Delay(QueryWait, ct);
+        await SettledAsync(ct);
 
         return true;
+    }
+
+    /// <summary>그리드 줄 수가 잠잠해질 때까지. 오래 걸리면 <see cref="QueryWait"/> 에서 끊는다.</summary>
+    private async Task SettledAsync(CancellationToken ct)
+    {
+        const string Count = "() => [...document.querySelectorAll('div.cl-grid[role=grid]')]"
+                             + ".reduce((n, g) => n + g.querySelectorAll('div.cl-grid-row[data-rowindex]').length, 0)";
+
+        var deadline = DateTime.UtcNow + QueryWait;
+        var last = -1;
+        var stable = 0;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(60, ct);
+
+            var now = await page.EvaluateAsync<int>(Count);
+            stable = now == last ? stable + 1 : 0;
+            last = now;
+
+            if (stable >= 3) return;   // 세 번 연달아 같으면 다 받았다
+        }
     }
 
     /// <summary>글자로 단추를 누른다. 꺼져 있으면 누르지 않고 false 를 돌려준다.</summary>

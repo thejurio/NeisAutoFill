@@ -1,4 +1,4 @@
-using Microsoft.Playwright;
+﻿using Microsoft.Playwright;
 
 namespace NeisAutoFill.Automation;
 
@@ -44,7 +44,11 @@ public sealed record CellMismatch(int Row, int Column, string Wanted, string Act
 /// </summary>
 public sealed class ClxGridEditor(IPage page, string headerWord)
 {
+    /// <summary>일이 끝나길 기다리는 <b>최대</b> 시간. 대개 훨씬 빨리 끝난다.</summary>
     private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(700);
+
+    /// <summary>다시 볼 때까지의 간격.</summary>
+    private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(40);
 
     /// <summary>
     /// 이 머리글이 있는 그리드를 찾는 스크립트 조각.
@@ -137,7 +141,11 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
             if (next is null) continue;
 
             await page.Mouse.ClickAsync(next[0], next[1]);
-            await Task.Delay(Settle, ct);
+
+            // 방금 칸이 <b>확정된 것을 눈으로 보고</b> 넘어간다 — 클릭 성공은 확정 성공이 아니다
+            var wrote = edits[i];
+            await UntilAsync(async () => Same(await CellAsync(wrote.Row, wrote.Column), wrote.Value),
+                Settle, ct);
         }
     }
 
@@ -155,7 +163,7 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
             if (!await ListOpenAsync())
             {
                 await page.Mouse.ClickAsync(at[0], at[1]);
-                await Task.Delay(Settle, ct);
+                await UntilAsync(ListOpenAsync, Settle, ct);   // 목록이 뜨면 바로
             }
 
             await PickAsync(edit.Value, ct);
@@ -164,7 +172,11 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
         }
 
         await page.Mouse.DblClickAsync(at[0], at[1]);
-        await Task.Delay(Settle, ct);
+
+        // 편집기가 열릴 때까지만 기다린다 — 열리자마자 넘어간다
+        await UntilAsync(() => page.EvaluateAsync<bool>(
+            "() => !!document.activeElement && ['INPUT','TEXTAREA'].includes(document.activeElement.tagName)"),
+            Settle, ct);
 
         // <b>편집기 종류에 따라 확정 방법이 다르다</b>(실측 2026-08-21).
         //   INPUT    한 줄 칸(영역명 등) — Enter 가 확정한다
@@ -175,16 +187,39 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
             "() => document.activeElement && document.activeElement.tagName === 'INPUT'");
 
         await page.Keyboard.PressAsync("Control+a");
-        await Task.Delay(120, ct);
         await page.Keyboard.InsertTextAsync(edit.Value);
-        await Task.Delay(300, ct);
+
+        // 편집기에 글자가 들어간 것을 확인하면 바로 넘어간다 (고정 420ms → 대개 한 번에 참)
+        await UntilAsync(() => page.EvaluateAsync<bool>(
+            "(v) => !!document.activeElement && (document.activeElement.value || '') === v", edit.Value),
+            Settle, ct);
 
         if (!oneLine) return false;
 
         await page.Keyboard.PressAsync("Enter");
-        await Task.Delay(Settle, ct);
+        await UntilAsync(async () => Same(await CellAsync(edit.Row, edit.Column), edit.Value), Settle, ct);
 
         return true;
+    }
+
+    /// <summary>
+    /// 조건이 참이 될 때까지 <b>짧게 여러 번</b> 본다. 고정 대기 대신 쓴다.
+    ///
+    /// 시간표에서 배운 것을 그대로 옮겼다: 고정 700ms 를 깔면 칸마다 그만큼 버리는데
+    /// 실제로는 대개 50~150ms 면 끝난다. <b>일이 끝난 순간 넘어가고</b>, 안 끝나면 그때 기다린다.
+    /// </summary>
+    private static async Task<bool> UntilAsync(
+        Func<Task<bool>> done, TimeSpan limit, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow + limit;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await done()) return true;
+            await Task.Delay(Poll, ct);
+        }
+
+        return false;
     }
 
     /// <summary>고를 수 있는 목록이 지금 떠 있는가.</summary>
@@ -208,7 +243,9 @@ public sealed class ClxGridEditor(IPage page, string headerWord)
         if (at is null) throw new InvalidOperationException($"목록에서 '{option}' 을 찾지 못했습니다.");
 
         await page.Mouse.ClickAsync(at[0], at[1]);
-        await Task.Delay(Settle, ct);
+
+        // 목록이 닫히면 고른 것이다
+        await UntilAsync(async () => !await ListOpenAsync(), Settle, ct);
     }
 
     /// <summary>
