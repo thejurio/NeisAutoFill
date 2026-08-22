@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Timetable;
+﻿using NeisAutoFill.Core.Timetable;
 
 namespace NeisAutoFill.Tests;
 
@@ -67,7 +67,9 @@ public class TimetableCatalogTests
     public void 지문은_메뉴_순서와_무관하다()
     {
         var a = 만들기(메뉴);
-        var b = 만들기(메뉴.Reverse());
+        // AsEnumerable 을 꼭 거친다 — 배열에 그냥 .Reverse() 를 쓰면 새 SDK 에서는
+        // Span 용 Reverse(제자리 뒤집기, void)로 붙어 컴파일이 깨진다(CI 실패 2026-08-22).
+        var b = 만들기(메뉴.AsEnumerable().Reverse());
 
         Assert.Equal(a.Fingerprint, b.Fingerprint);
     }
