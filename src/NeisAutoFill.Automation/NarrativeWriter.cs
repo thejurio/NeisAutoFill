@@ -1,4 +1,4 @@
-using Microsoft.Playwright;
+﻿using Microsoft.Playwright;
 using NeisAutoFill.Core;
 using NeisAutoFill.Core.Matching;
 using NeisAutoFill.Core.Models;
@@ -76,7 +76,8 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
         Action<int, int> progressCount,
         CancellationToken ct,
         Func<IReadOnlyDictionary<int, (string? No, string? Name)>,
-             Task<IReadOnlyDictionary<string, string>?>>? resolveNameMap = null)
+             Task<IReadOnlyDictionary<string, string>?>>? resolveNameMap = null,
+        bool byOrder = false)
     {
         // 1) 대상 그리드·행 지도 (스크롤 훑기로 전 행 수집)
         var (gridIndex, rowMap) = await BuildRowMapAsync(log, ct)
@@ -89,7 +90,8 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
 
         // 2) 매칭 — 이름이 달라 자동 매칭 안 되는 학생은 사용자 매핑(확인 창)으로 연결 (등급과 동일)
         IReadOnlyDictionary<string, string>? nameMap = null;
-        if (resolveNameMap is not null)
+        if (byOrder) log("빠른 입력 — 화면에 뜬 순서 그대로 넣습니다 (이름 대조 없음).");
+        else if (resolveNameMap is not null)
         {
             nameMap = await resolveNameMap(rowMap);
             if (nameMap is null)   // 사용자 취소
@@ -102,7 +104,9 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
             }
         }
 
-        var (todo, skipped) = NarrativeMatcher.Build(rowMap, entries, nameMap);
+        var (todo, skipped) = byOrder
+            ? NarrativeMatcher.BuildByOrder(rowMap, entries)
+            : NarrativeMatcher.Build(rowMap, entries, nameMap);
         var skippedList = skipped.ToList();
 
         var done = new List<NarrativeEntry>();

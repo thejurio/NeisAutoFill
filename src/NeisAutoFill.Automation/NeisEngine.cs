@@ -1,4 +1,4 @@
-using Microsoft.Playwright;
+﻿using Microsoft.Playwright;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Matching;
 using NeisAutoFill.Core.Models;
@@ -773,7 +773,8 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         int maxBytes,
         IProgress<ProgressInfo> progress,
         CancellationToken ct = default,
-        Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null)
+        Func<MatchContext, Task<MatchDecision?>>? resolveMatch = null,
+        bool byOrder = false)
     {
         var page = RequirePage();
         void Log(string m) => progress.Report(new ProgressInfo(m));
@@ -790,7 +791,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         // 확인 창 콜백(등급과 동일 타입)을 서술문 매칭용 nameMap 으로 어댑트
         Func<IReadOnlyDictionary<int, (string? No, string? Name)>,
              Task<IReadOnlyDictionary<string, string>?>>? resolveNameMap = null;
-        if (resolveMatch is not null)
+        if (resolveMatch is not null && !byOrder)   // 빠른 입력은 대조 자체를 하지 않는다
         {
             resolveNameMap = async rowMap =>
             {
@@ -805,7 +806,7 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
         var writer = new NarrativeWriter(page, _scroller!);
         return await writer.RunAsync(entries, dryRun, maxBytes, Log,
-            (i, t) => progress.Report(new ProgressInfo("", i, t)), ct, resolveNameMap);
+            (i, t) => progress.Report(new ProgressInfo("", i, t)), ct, resolveNameMap, byOrder);
     }
 
     private IPage RequirePage() =>

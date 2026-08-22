@@ -515,7 +515,8 @@ public sealed class GeneratorViewModel : ObservableObject
                 var subjectEntries = allBySubject[subject];
                 var report = await _engine.RunNarrativesAsync(
                     subject, subjectEntries, dryRun: false, _settings.Options.MaxNarrativeBytes,
-                    progress, _uploadCts!.Token, BuildNarrativeResolveMatch(subjectEntries, batch: true));
+                    progress, _uploadCts!.Token, BuildNarrativeResolveMatch(subjectEntries, batch: true),
+                    byOrder: _settings.Options.FastInput);
                 return new Automation.BatchUploadRunner.SubjectResult(
                     report.Done.Count, report.Failed, report.Skipped.Count,
                     report.Skipped.Any(s => s.Reason == "사용자 취소"));
@@ -586,7 +587,7 @@ public sealed class GeneratorViewModel : ObservableObject
 
                 var report = await _engine.RunNarrativesAsync(
                     subject, pc.Entries, dryRun: false, _settings.Options.MaxNarrativeBytes,
-                    progress, ct, BuildNarrativeResolveMatch(pc.Entries));
+                    progress, ct, BuildNarrativeResolveMatch(pc.Entries), byOrder: _settings.Options.FastInput);
                 // 나이스 [저장]은 러너가 검증 통과 시 일관되게 누른다 (여기서 또 누르면 이중 저장 → 실패)
                 return new Automation.BatchUploadRunner.SubjectResult(
                     report.Done.Count, report.Failed, report.Skipped.Count,
@@ -854,7 +855,7 @@ public sealed class GeneratorViewModel : ObservableObject
 
     // 매칭 확인 창구 — 분석·단계별 창·배치 이름 매핑 캐시를 전담 (R8, Helpers/MatchSession)
     private Helpers.MatchSession? _matchSession;
-    private Helpers.MatchSession MatchSession => _matchSession ??= new Helpers.MatchSession(_mainLog);
+    private Helpers.MatchSession MatchSession => _matchSession ??= new Helpers.MatchSession(_mainLog, () => _settings.Options.FastInput);
 
     private Func<Automation.Abstractions.MatchContext, Task<Automation.Abstractions.MatchDecision?>>
         BuildNarrativeResolveMatch(IReadOnlyList<NarrativeEntry> entries, bool batch = false) =>
@@ -934,7 +935,7 @@ public sealed class GeneratorViewModel : ObservableObject
             var report = await _engine.RunNarrativesAsync(
                 SelectedSubject, entries, dryRun,
                 _settings.Options.MaxNarrativeBytes, progress, ct,
-                BuildNarrativeResolveMatch(entries));
+                BuildNarrativeResolveMatch(entries), byOrder: _settings.Options.FastInput);
 
             foreach (var s in items)
             {

@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Models;
+﻿using NeisAutoFill.Core.Models;
 
 namespace NeisAutoFill.Core.Matching;
 
@@ -13,6 +13,33 @@ public static class NarrativeMatcher
     public sealed record MatchResult(
         IReadOnlyList<Item> Todo,
         IReadOnlyList<SkipItem> Skipped);
+
+    /// <summary>
+    /// <b>대조 없이 화면 순서대로</b> 짝짓는다 (빠른 입력). 화면 줄 수와 서술문 수가 같을 때만 한다 —
+    /// 하나라도 어긋나면 그 뒤가 통째로 밀려 <b>엉뚱한 학생에게 서술문이 들어간다</b>.
+    /// 어긋나면 아무것도 넣지 않고 사유만 돌려준다(사용자 요청 2026-08-22).
+    /// </summary>
+    public static MatchResult BuildByOrder(
+        IReadOnlyDictionary<int, (string? No, string? Name)> rowMap,
+        IReadOnlyList<NarrativeEntry> entries)
+    {
+        var rows = rowMap.Keys.OrderBy(k => k)
+            .Select(i => (Idx: i, rowMap[i].No, rowMap[i].Name))
+            .Where(r => r.Name is not null)
+            .ToList();
+
+        if (rows.Count != entries.Count)
+            return new MatchResult(Array.Empty<Item>(), new[]
+            {
+                new SkipItem("", "", "",
+                    $"빠른 입력을 멈췄습니다 — 화면 {rows.Count}명과 서술문 {entries.Count}건이 다릅니다. " +
+                    "순서대로 넣으면 엉뚱한 학생에게 들어갑니다. [정확한 입력]으로 바꿔 주세요."),
+            });
+
+        return new MatchResult(
+            rows.Select((r, i) => new Item(r.Idx, entries[i])).ToList(),
+            Array.Empty<SkipItem>());
+    }
 
     /// <param name="nameMap">사용자 매핑(확인 창): 화면 성명 → 내 자료 성명 ("" = 제외). 이름이 달라 자동 매칭 안 될 때.</param>
     public static MatchResult Build(

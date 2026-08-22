@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using NeisAutoFill.App.Mvvm;
 using NeisAutoFill.App.Services;
 using NeisAutoFill.Core;
@@ -34,6 +34,8 @@ public sealed class SettingsViewModel : ObservableObject
         _speedFast = o.ClickSpeed is not ("normal" or "slow");
         _speedNormal = o.ClickSpeed == "normal";
         _speedSlow = o.ClickSpeed == "slow";
+        _inputFast = o.FastInput;
+        _inputVerify = !o.FastInput;
     }
 
     /// <summary>평가 단계 탭 (기존 척도 편집기 재사용 — 단계 수·이름·AI 뉘앙스).</summary>
@@ -69,6 +71,16 @@ public sealed class SettingsViewModel : ObservableObject
     public bool SpeedFast { get => _speedFast; set => SetProperty(ref _speedFast, value); }
     public bool SpeedNormal { get => _speedNormal; set => SetProperty(ref _speedNormal, value); }
     public bool SpeedSlow { get => _speedSlow; set => SetProperty(ref _speedSlow, value); }
+
+    // ── 나이스 입력 방식 ───────────────────
+    private bool _inputVerify = true;
+    private bool _inputFast;
+
+    /// <summary>정확한 입력 — 화면의 학생 이름·영역명을 대조하고, 어긋나면 확인 창을 띄운다.</summary>
+    public bool InputVerify { get => _inputVerify; set => SetProperty(ref _inputVerify, value); }
+
+    /// <summary>빠른 입력 — 대조 없이 화면에 뜬 순서 그대로. 줄 수가 어긋나면 넣지 않고 멈춘다.</summary>
+    public bool InputFast { get => _inputFast; set => SetProperty(ref _inputFast, value); }
 
     // ── 학급 모드 (담임/전담) ──────────────
     private bool _subjectMode;
@@ -108,12 +120,14 @@ public sealed class SettingsViewModel : ObservableObject
         if (!TryNonNegative(MaxDomains, out var domains)) return "최대 영역 수는 0 이상의 숫자여야 합니다 (0 = 전체).";
 
         var speed = SpeedSlow ? "slow" : SpeedNormal ? "normal" : "fast";
+        var fastInput = InputFast;
         var scale = ScaleLarge ? 1.3 : ScaleMedium ? 1.15 : 1.0;
         _settings.Options = _settings.Options with
         {
             TargetChars = chars,
             MaxDomains = domains,
             TonePrompt = TonePrompt.Trim(),
+            FastInput = fastInput,
             ShowNarrativeQuality = ShowNarrativeQuality,
             NeisRegionCode = SelectedRegion.Code,
             ClickSpeed = speed,

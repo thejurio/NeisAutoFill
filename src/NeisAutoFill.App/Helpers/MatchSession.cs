@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using NeisAutoFill.App.ViewModels;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Matching;
@@ -17,10 +17,19 @@ namespace NeisAutoFill.App.Helpers;
 internal sealed class MatchSession
 {
     private readonly Action<string> _log;
+    private readonly Func<bool> _fastInput;
     private IReadOnlyDictionary<string, string>? _nameMap;   // 화면이름→엑셀이름 ("" = 입력 안 함)
     private IReadOnlyDictionary<string, string>? _acceptedSubjects;   // 프로그램 과목 → 사용자가 매핑한 화면 과목
 
-    public MatchSession(Action<string> log) => _log = log;
+    /// <param name="fastInput">
+    /// <b>빠른 입력</b>이면 대조도 확인 창도 없이 <b>화면 순서 그대로</b> 넣는다 (설정, 기본 꺼짐).
+    /// 줄 수가 어긋나면 매칭 단계에서 멈추므로 조용히 틀리게 들어가지는 않는다.
+    /// </param>
+    public MatchSession(Action<string> log, Func<bool>? fastInput = null)
+    {
+        _log = log;
+        _fastInput = fastInput ?? (() => false);
+    }
 
     /// <summary>배치 시작 시 호출 — 이름 매핑 캐시를 비운다 (첫 대상에서 새로 받음).</summary>
     public void Reset() { _nameMap = null; _acceptedSubjects = null; }
@@ -39,6 +48,12 @@ internal sealed class MatchSession
     public Func<MatchContext, Task<MatchDecision?>> ForGrades(SubjectSheet sheet, bool batch = false) => ctx =>
         Application.Current.Dispatcher.InvokeAsync(() =>
         {
+            if (_fastInput())
+            {
+                _log("빠른 입력 — 화면에 뜬 순서 그대로 넣습니다 (이름·영역 대조 없음).");
+                return new MatchDecision(StudentMatcher.MatchMode.ByRowOrder);
+            }
+
             var issues = MatchAnalyzer.Analyze(
                 ctx.ScreenSubject, ctx.TargetSubject, ctx.RowMap, sheet.Students, sheet.Areas);
             bool subjectOk = SubjectPreAccepted(ctx);   // 선택 창에서 이미 매핑한 과목이면 안 묻는다
