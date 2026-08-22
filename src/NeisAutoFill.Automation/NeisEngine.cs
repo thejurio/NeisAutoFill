@@ -207,6 +207,20 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         if (tabLabels.Length > 0) steps.Add((screenName, tabLabels));   // 교과평가만 하위 탭
 
         progress?.Report(new($"{screenName} 화면으로 이동하고 있어요…"));
+
+        // 한 번 실패하면 <b>처음부터 한 번 더</b>. 사용자가 "다시 누르면 된다" 던 그 일을 프로그램이 한다
+        // — 첫 이동에서만 메뉴가 덜 펴져 엉뚱한 항목을 누르는 일이 있었다(실측 2026-08-22).
+        for (var round = 0; round < 2; round++)
+            if (await TryNavigateAsync(steps, title, progress, ct)) return true;
+
+        progress?.Report(new($"{screenName} 화면 확인이 안 돼요 (제목이 바뀌지 않음)"));
+        return false;
+    }
+
+    private async Task<bool> TryNavigateAsync(
+        List<(string name, string[] labels)> steps, string title,
+        IProgress<ProgressInfo>? progress, CancellationToken ct)
+    {
         try
         {
             foreach (var (name, labels) in steps)
@@ -222,14 +236,9 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
 
             // 도착 확인 — 화면 제목(app-tit)만으로 판별. 서술문 화면은 조회를 눌러야 그리드가 뜨므로
             // 도착 판정에 그리드를 요구하면 안 된다 (조회는 호출부가 이어서 누른다).
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(12);
-            while (DateTime.UtcNow < deadline)
-            {
-                ct.ThrowIfCancellationRequested();
-                if ((await ReadScreenTitleAsync()).Contains(title)) return true;
-                await Task.Delay(80, ct);
-            }
-            progress?.Report(new($"{screenName} 화면 확인이 안 돼요 (제목이 바뀌지 않음)"));
+            return await Wait.UntilAsync(
+                async () => (await ReadScreenTitleAsync()).Contains(title),
+                TimeSpan.FromSeconds(12), ct);
         }
         catch { /* 실패는 false — 호출부가 안내 */ }
         return false;
@@ -243,13 +252,24 @@ public sealed class NeisEngine(EngineOptions options) : INeisEngine, IAsyncDispo
         // 상호작용 요소 우선(a/menuitem/tab/link) → 없으면 wrapper(li) 폴백
         var selectors = new[] { "a, [role='menuitem'], [role='tab'], [role='link']", "li" };
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(6);
+
+        // <b>정확히 같은 글자를 먼저</b> 본 뒤에 '포함'으로 넓힌다.
+        // '평가계획' 은 '평가계획(안)관리'·'(반별)' 에도 걸려, 포함만 쓰면 엉뚱한 항목을 누른다
+        // (실측 2026-08-22: 첫 이동이 실패하고 다시 누르면 되는 증상).
+        var exact = labels.Select(l => new LocatorFilterOptions
+        {
+            HasTextRegex = new System.Text.RegularExpressions.Regex(
+                "^\\s*" + System.Text.RegularExpressions.Regex.Escape(l) + "\\s*$"),
+        }).ToList();
+        var loose = labels.Select(l => new LocatorFilterOptions { HasText = l }).ToList();
+
         while (DateTime.UtcNow < deadline)
         {
             ct.ThrowIfCancellationRequested();
             foreach (var sel in selectors)
-            foreach (var label in labels)
+            foreach (var (filter, label) in exact.Concat(loose).Zip(labels.Concat(labels)))
             {
-                var loc = _page!.Locator(sel).Filter(new LocatorFilterOptions { HasText = label });
+                var loc = _page!.Locator(sel).Filter(filter);
                 int n = await loc.CountAsync();
                 for (int i = 0; i < n; i++)
                 {
