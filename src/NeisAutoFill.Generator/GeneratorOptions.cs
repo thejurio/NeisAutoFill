@@ -45,6 +45,12 @@ public sealed record GeneratorOptions
     /// <summary>자동업데이트용 GitHub 저장소 ("owner/repo"). 비우면 업데이트 확인 안 함.</summary>
     public string UpdateRepo { get; init; } = "thejurio/NeisAutoFill";
 
+    /// <summary>
+    /// 시작할 때 새 버전을 자동으로 확인할지. 기본 켜짐.
+    /// 꺼도 설정창의 [지금 확인]으로 언제든 직접 확인할 수 있다 — 업데이트 자체를 막는 값이 아니다.
+    /// </summary>
+    public bool AutoUpdateCheck { get; init; } = true;
+
     /// <summary>❓ 도움말 페이지 URL. 비우면(기본) 프로그램에 내장된 사용설명서.html 을 연다.</summary>
     public string HelpUrl { get; init; } = "";
 

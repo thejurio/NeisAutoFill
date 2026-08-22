@@ -14,11 +14,14 @@ public sealed class SettingsViewModel : ObservableObject
 {
     private readonly GeneratorSettingsStore _settings;
     private readonly ProfileStore _profiles;
+    private readonly UpdateService _update;
 
-    public SettingsViewModel(IScaleStore scales, GeneratorSettingsStore settings, ProfileStore profiles)
+    public SettingsViewModel(IScaleStore scales, GeneratorSettingsStore settings, ProfileStore profiles,
+        UpdateService update)
     {
         _settings = settings;
         _profiles = profiles;
+        _update = update;
         _subjectMode = profiles.IsSubjectMode;
         Scale = new ScaleEditorViewModel(scales);
 
@@ -36,6 +39,7 @@ public sealed class SettingsViewModel : ObservableObject
         _speedSlow = o.ClickSpeed == "slow";
         _inputFast = o.FastInput;
         _inputVerify = !o.FastInput;
+        _autoUpdate = o.AutoUpdateCheck;
     }
 
     /// <summary>평가 단계 탭 (기존 척도 편집기 재사용 — 단계 수·이름·AI 뉘앙스).</summary>
@@ -50,6 +54,13 @@ public sealed class SettingsViewModel : ObservableObject
 
     private string _tonePrompt;
     public string TonePrompt { get => _tonePrompt; set => SetProperty(ref _tonePrompt, value); }
+
+    private bool _autoUpdate;
+    /// <summary>시작할 때 새 버전 자동 확인. 꺼도 [지금 확인]은 쓸 수 있다.</summary>
+    public bool AutoUpdateCheck { get => _autoUpdate; set => SetProperty(ref _autoUpdate, value); }
+
+    /// <summary>설정창 [지금 확인] — 결과(최신/새 버전/실패)를 반드시 알린다.</summary>
+    public Task CheckUpdateAsync(System.Windows.Window? owner) => _update.CheckNowAsync(owner);
 
     private bool _showQuality;
     /// <summary>서술문 품질 점검(바이트 표시·복붙 의심 경고) 표시 여부.</summary>
@@ -129,6 +140,7 @@ public sealed class SettingsViewModel : ObservableObject
             TonePrompt = TonePrompt.Trim(),
             FastInput = fastInput,
             ShowNarrativeQuality = ShowNarrativeQuality,
+            AutoUpdateCheck = AutoUpdateCheck,
             NeisRegionCode = SelectedRegion.Code,
             ClickSpeed = speed,
             UiScale = scale,

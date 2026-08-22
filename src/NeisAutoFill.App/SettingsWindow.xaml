@@ -102,6 +102,14 @@
                                             HorizontalAlignment="Left"/>
                                 </StackPanel>
 
+                                <TextBlock Text="소프트웨어 업데이트" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,20,0,0"/>
+                                <TextBlock Text="새 버전이 나오면 바뀐 부분만 내려받아 설치합니다." FontSize="11.5"
+                                           Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                                <Button Style="{StaticResource GhostButton}" Content="🔄 지금 확인"
+                                        Click="CheckUpdate_Click" HorizontalAlignment="Left"/>
+                                <CheckBox Content="시작할 때 자동으로 확인" IsChecked="{Binding AutoUpdateCheck}"
+                                          FontSize="12" Margin="0,8,0,0"/>
+
                                 <TextBlock Text="초기화" FontWeight="Bold" FontSize="12.5" Foreground="{StaticResource Ink}" Margin="0,20,0,4"/>
                                 <TextBlock Text="처음 실행 상태로 되돌립니다. 되돌릴 수 없어요." FontSize="11.5"
                                            Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,6"

@@ -67,6 +67,27 @@ public partial class SettingsWindow : Window
         AppReset.RestartApp();
     }
 
+    /// <summary>
+    /// [지금 확인] — 누른 동안 단추를 잠가 두 번 눌리지 않게 하고, 결과는 UpdateService 가 알린다.
+    /// 자동 확인을 꺼둔 사용자도 이 길로는 언제든 받을 수 있다.
+    /// </summary>
+    private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        var button = (System.Windows.Controls.Button)sender;
+        var label = button.Content;
+        button.IsEnabled = false;
+        button.Content = "확인 중...";
+        try
+        {
+            await _vm.CheckUpdateAsync(this);
+        }
+        finally
+        {
+            button.Content = label;
+            button.IsEnabled = true;
+        }
+    }
+
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
         var confirm = MessageBox.Show(

@@ -34,6 +34,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly NarrativeMirror _narrativeMirror;
     private readonly WorkspaceService _workspace;   // 자료 파일 수명 전담 (경로·IO·계획/명단 상태)
     private readonly ProfileStore _profiles;        // 학급 모드(담임/전담)
+    private readonly UpdateService _update;         // 설정창 [지금 확인]에 넘겨준다
 
     public MainViewModel(INeisEngine engine, IScaleStore scales,
         GeneratorSettingsStore generatorSettings, NarrativeStore narratives,
@@ -43,7 +44,8 @@ public sealed class MainViewModel : ObservableObject
         ProfileStore profiles,
         NeisSessionController session,
         TimetableSession timetable,
-        EvalPlanSession evalPlan)
+        EvalPlanSession evalPlan,
+        UpdateService update)
     {
         _session = session;
         _timetable = timetable;
@@ -57,6 +59,7 @@ public sealed class MainViewModel : ObservableObject
         _workspace = workspace;
         _engineOptions = engineOptions;
         _profiles = profiles;
+        _update = update;
 
         _generationQueue.Log += Log;      // 배치 시작·완료·중지를 메인 로그에도
         _generationQueue.StateChanged += () => OnPropertyChanged(nameof(GenerationStatus));
@@ -586,7 +589,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void OpenScaleEditor()
     {
-        var win = new SettingsWindow(new SettingsViewModel(_scales, _generatorSettings, _profiles))
+        var win = new SettingsWindow(new SettingsViewModel(_scales, _generatorSettings, _profiles, _update))
         {
             Owner = Application.Current.MainWindow,
         };

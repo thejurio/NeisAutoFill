@@ -73,7 +73,9 @@ public partial class App : Application
         _ = Task.Run(async () =>
         {
             await update.ShowWhatsNewIfUpdatedAsync();
-            await update.CheckAndPromptAsync();
+            // 자동 확인을 꺼둔 사용자는 건너뛴다 — 설정창의 [지금 확인]으로는 여전히 볼 수 있다
+            if (settings.Options.AutoUpdateCheck)
+                await update.CheckAndPromptAsync();
         });
 
         // 프로그램 시작을 GAS RequestLog 시트에 기록 (백그라운드)

@@ -101,36 +101,80 @@ public sealed class UpdateService(GeneratorSettingsStore settings)
         settings.Save();
     }
 
-    /// <summary>백그라운드 확인 — 새 버전이 있으면 사용자에게 묻고 업데이트 진행.
-    /// 실제 다운로드·검증·교체·재시작은 Velopack 이 수행한다.</summary>
-    public async Task CheckAndPromptAsync()
+    /// <summary>
+    /// 시작할 때의 백그라운드 확인 — <b>조용히</b> 본다. 새 버전이 있을 때만 사용자에게 묻는다.
+    /// 최신이거나 오프라인이면 아무것도 띄우지 않는다 (앱 사용에 영향 없음).
+    /// </summary>
+    public Task CheckAndPromptAsync() => CheckAsync(null, manual: false);
+
+    /// <summary>
+    /// 설정창의 <b>[지금 확인]</b> — 사용자가 직접 누른 것이므로 <b>결과를 반드시 알려준다</b>.
+    /// 최신이면 "최신 버전입니다", 못 봤으면 그 이유까지. 침묵은 눌러도 아무 일 없는 것처럼 보인다.
+    /// </summary>
+    public Task CheckNowAsync(Window? owner) => CheckAsync(owner, manual: true);
+
+    /// <summary>실제 다운로드·검증·교체·재시작은 Velopack 이 수행한다.</summary>
+    private async Task CheckAsync(Window? owner, bool manual)
     {
         var repo = settings.Options.UpdateRepo?.Trim();
-        if (string.IsNullOrEmpty(repo) || !repo.Contains('/')) return;
+        if (string.IsNullOrEmpty(repo) || !repo.Contains('/'))
+        {
+            if (manual) Tell(owner, "업데이트 저장소가 설정되어 있지 않습니다.", MessageBoxImage.Warning);
+            return;
+        }
 
         try
         {
             var mgr = new UpdateManager(new GithubSource($"https://github.com/{repo}", null, prerelease: false));
 
             // Velopack 으로 설치된 경우에만 자동 업데이트 — 포터블 압축 해제본·개발 빌드는 대상 아님
-            if (!mgr.IsInstalled) return;
+            if (!mgr.IsInstalled)
+            {
+                if (manual)
+                    Tell(owner,
+                        "설치형으로 실행 중이 아니어서 자동 업데이트를 쓸 수 없습니다.\n" +
+                        "GitHub 릴리스에서 최신 설치 파일(Setup.exe)을 받아 주세요.",
+                        MessageBoxImage.Information);
+                return;
+            }
 
             var info = await mgr.CheckForUpdatesAsync();
-            if (info is null) return;   // 최신
+            if (info is null)
+            {
+                if (manual)
+                    Tell(owner, $"최신 버전입니다. (v{CurrentVersion.ToString(3)})", MessageBoxImage.Information);
+                return;   // 최신
+            }
 
             var latest = info.TargetFullRelease.Version.ToString();
             var ok = await Application.Current.Dispatcher.InvokeAsync(() =>
-                UpdatePromptWindow.Ask(latest, CurrentVersion.ToString(3), Application.Current.MainWindow));
+                UpdatePromptWindow.Ask(latest, CurrentVersion.ToString(3), owner ?? Application.Current.MainWindow));
             if (!ok) return;   // '나중에' — 다음 실행 때 다시 안내한다 (영구 건너뛰기 없음)
 
             await DownloadAndRestartAsync(mgr, info, latest);
         }
         catch (Exception ex)
         {
-            // 확인 단계 실패(오프라인 등)는 조용히 무시 — 앱 사용에 영향 없음
+            // 자동 확인의 실패(오프라인 등)는 조용히 무시 — 앱 사용에 영향 없음.
+            // 직접 누른 경우만 이유를 알린다.
             Diag.Swallow(ex, "업데이트 확인");
+            if (manual)
+                Tell(owner,
+                    $"업데이트를 확인하지 못했습니다.\n{ex.Message}\n\n인터넷 연결을 확인해 주세요.",
+                    MessageBoxImage.Warning);
         }
     }
+
+    /// <summary>주인 창을 붙여서 알린다 — 주인 없이 띄우면 본창 뒤로 숨는다.</summary>
+    private static void Tell(Window? owner, string message, MessageBoxImage icon) =>
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var host = owner ?? Application.Current.MainWindow;
+            if (host is not null)
+                MessageBox.Show(host, message, "업데이트", MessageBoxButton.OK, icon);
+            else
+                MessageBox.Show(message, "업데이트", MessageBoxButton.OK, icon);
+        });
 
     /// <summary>진행 창을 띄우고 Velopack 으로 내려받아 적용·재시작. 실패는 반드시 사용자에게 알린다.</summary>
     private static async Task DownloadAndRestartAsync(UpdateManager mgr, UpdateInfo info, string latest)
