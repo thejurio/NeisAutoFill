@@ -21,6 +21,20 @@ public sealed class GradeGridController(MainViewModel main)
         grid.ContextMenu = new ContextMenu();
         RebuildMenu(grid);
         grid.ContextMenuOpening += (_, _) => RebuildMenu(grid);   // 척도 변경 대응 — 열 때마다 재구성
+
+        // 이름 없이 생긴 줄은 그 줄을 벗어나는 순간 없앤다 (아래 _pending 설명)
+        grid.CurrentCellChanged += (_, _) =>
+        {
+            if (_pending is not null && !ReferenceEquals(grid.CurrentCell.Item, _pending))
+                DropPendingIfEmpty(grid, commit: true);
+        };
+        grid.AddHandler(UIElement.LostKeyboardFocusEvent,
+            new KeyboardFocusChangedEventHandler((_, e) =>
+            {
+                // 표 안에서 옮겨 다니는 것은 위 CurrentCellChanged 가 본다 — 여기선 표 밖으로 나갈 때만
+                if (e.NewFocus is DependencyObject next && IsInside(next, grid)) return;
+                DropPendingIfEmpty(grid, commit: true);
+            }), handledEventsToo: true);
     }
 
     // ── 명단 (번호·이름) ────────────────────────
@@ -40,6 +54,9 @@ public sealed class GradeGridController(MainViewModel main)
     {
         grid.CommitEdit(DataGridEditingUnit.Row, true);
 
+        // 이름을 안 쓴 빈 줄이 이미 기다리고 있으면 또 만들지 않는다 — Enter 를 두 번 쳐도 한 줄만
+        if (_pending is DataRowView waiting && grid.Items.Contains(waiting) && IsNameless(waiting)) return;
+
         if (main.AddStudent() < 0) return;
 
         grid.UpdateLayout();
@@ -54,6 +71,10 @@ public sealed class GradeGridController(MainViewModel main)
         grid.SelectedCells.Clear();
         grid.SelectedCells.Add(grid.CurrentCell);
         grid.BeginEdit();
+
+        // 이름이 채워지기 전까지는 임시 — 여기서 표시해 두어야 벗어날 때 지울 수 있다.
+        // (CurrentCell 을 옮기는 위 코드가 이전 임시 줄의 운명을 이미 결정했다)
+        _pending = last;
     }
 
     /// <summary>단추로 학생 더하기 — 표 맨 아랫줄 Enter 와 같은 일을 한다.</summary>
@@ -106,6 +127,15 @@ public sealed class GradeGridController(MainViewModel main)
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && OnLastRow(grid))
         {
             AddStudentRow(grid);
+            e.Handled = true;
+            return;
+        }
+
+        // <b>Esc = 방금 생긴 빈 줄 취소.</b> 편집 중(TextBox)에도 와야 해서 아래 조기 반환보다 먼저 본다.
+        if (e.Key == Key.Escape && _pending is not null &&
+            ReferenceEquals(grid.CurrentCell.Item, _pending))
+        {
+            DropPendingIfEmpty(grid, commit: false);
             e.Handled = true;
             return;
         }
@@ -270,6 +300,47 @@ public sealed class GradeGridController(MainViewModel main)
         finally { vm.EndBulkEdit(); }
         if (applied == 0 && skipped == 0) return;
         main.Log($"붙여넣기: {applied}셀 적용" + (skipped > 0 ? $", {skipped}셀 건너뜀 (허용외 등급·읽기전용)" : ""));
+    }
+
+    // ── 이름 없이 생긴 줄 되돌리기 ────────────────
+    //
+    // 맨 아랫줄에서 Enter 는 <b>"이 이름 확정"</b> 뜻으로 치는 경우가 많다(사용자 지적 2026-08-22).
+    // 그때 딸려 나온 줄을 그대로 두면 이름 없는 학생이 명단에 남는다. 그래서 새로 생긴 줄은
+    // 이름이 채워지기 전까지 <b>임시</b>로 두고, 이름 없이 그 줄을 벗어나면(Esc·다른 칸·표 밖) 없앤다.
+    private object? _pending;
+    private bool _dropping;
+
+    private static bool IsNameless(DataRowView row) =>
+        row.Row.RowState != DataRowState.Detached &&
+        (row.Row["이름"]?.ToString() ?? "").Trim().Length == 0;
+
+    /// <summary>임시 줄이 이름 없이 남았으면 없앤다. 이름이 들어갔으면 진짜 학생으로 굳힌다.</summary>
+    /// <param name="commit">치던 글자를 살릴지(다른 칸으로 이동) 버릴지(Esc).</param>
+    private void DropPendingIfEmpty(DataGrid grid, bool commit)
+    {
+        if (_dropping || _pending is not DataRowView row) return;
+
+        _dropping = true;   // 아래 편집 종료·행 삭제가 같은 처리를 다시 부르는 것을 막는다
+        try
+        {
+            _pending = null;
+
+            if (commit) grid.CommitEdit(DataGridEditingUnit.Row, true);
+            else grid.CancelEdit(DataGridEditingUnit.Row);
+
+            var index = grid.Items.IndexOf(row);
+            if (index < 0 || !IsNameless(row)) return;
+
+            main.RemoveStudent(index);
+        }
+        finally { _dropping = false; }
+    }
+
+    private static bool IsInside(DependencyObject node, DependencyObject root)
+    {
+        for (var at = node; at is not null; at = System.Windows.Media.VisualTreeHelper.GetParent(at))
+            if (ReferenceEquals(at, root)) return true;
+        return false;
     }
 
     private static T? FindAncestor<T>(object source) where T : DependencyObject
