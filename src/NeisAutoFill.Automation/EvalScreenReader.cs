@@ -186,6 +186,8 @@ public sealed class EvalScreenReader(IPage page)
     /// <summary>글자로 단추를 누른다. 꺼져 있으면 누르지 않고 false 를 돌려준다.</summary>
     public async Task<bool> ClickAsync(string text)
     {
+        await ClearAlertsAsync();   // 남은 알림이 화면을 막고 있으면 무엇을 눌러도 안 먹는다
+
         var at = await page.EvaluateAsync<float[]?>(@"(t) => {
           const vis = e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
           const x = [...document.querySelectorAll('[role=button], button, .cl-button')].filter(vis)
@@ -225,6 +227,8 @@ public sealed class EvalScreenReader(IPage page)
     /// </summary>
     public async Task<bool> SelectStandardAsync(int row)
     {
+        await ClearAlertsAsync();   // 남은 알림이 그리드를 막고 있으면 줄이 안 골라진다
+
         var at = await page.EvaluateAsync<float[]?>(@"(row) => {
           const g = [...document.querySelectorAll('div.cl-grid[role=grid]')]
             .find(x => [...x.querySelectorAll('[role=columnheader]')]
@@ -288,8 +292,32 @@ public sealed class EvalScreenReader(IPage page)
         }
         """);
 
-    /// <summary>알림 상자의 단추를 누른다. 누를 것이 없으면 false.</summary>
+    /// <summary>
+    /// 알림 상자의 단추를 누르고 <b>닫힌 것을 확인</b>한다. 못 닫으면 false.
+    ///
+    /// <b>누른 것과 닫힌 것은 다르다.</b> 한 번 눌러 보고 넘어갔더니 알림이 남은 채로 다음 걸음을 갔고,
+    /// 그 알림이 화면을 막아 <c>[단계선택]에서 3단계를 고르지 못했습니다</c> 로 멈췄다(실측 2026-08-22).
+    /// 상자는 뜨면서 자리가 잡히기도 해서 <b>좌표를 다시 재며 여러 번</b> 눌러 본다.
+    /// </summary>
     public async Task<bool> ClickAlertAsync(string text)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var before = await AlertTextAsync();
+            if (before is null) return true;   // 이미 닫혔다
+
+            if (!await PressAlertAsync(text)) return false;
+
+            if (await Wait.UntilAsync(async () => await AlertTextAsync() != before,
+                    TimeSpan.FromMilliseconds(1200)))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>알림 단추를 한 번 누른다. 못 찾으면 false.</summary>
+    private async Task<bool> PressAlertAsync(string text)
     {
         var at = await page.EvaluateAsync<float[]?>(
             $$"""
@@ -308,18 +336,19 @@ public sealed class EvalScreenReader(IPage page)
 
         if (at is null) return false;
 
-        var before = await AlertTextAsync();
         await page.Mouse.ClickAsync(at[0], at[1]);
 
-        // <b>닫히는 것을 보고</b> 넘어간다 — 누른 것과 닫힌 것은 다르다
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (await AlertTextAsync() != before) return true;
-            await Task.Delay(30);
-        }
-
         return true;
+    }
+
+    /// <summary>
+    /// 떠 있는 알림을 모두 치운다. <b>무엇을 누르기 전에</b> 부른다 —
+    /// 남은 알림이 화면을 막으면 그다음 클릭이 통째로 헛돈다.
+    /// </summary>
+    public async Task ClearAlertsAsync()
+    {
+        for (var i = 0; i < 3 && await AlertTextAsync() is not null; i++)
+            if (!await ClickAlertAsync("확인")) return;
     }
 
     /// <summary>

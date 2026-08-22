@@ -270,6 +270,9 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
 
     private async Task<bool> PickLevelCountAsync(int count, CancellationToken ct)
     {
+        // 앞 저장의 알림이 남아 있으면 콤보를 눌러도 안 먹는다 — 여기서 실제로 막혔다(2026-08-22)
+        await reader.ClearAlertsAsync();
+
         var at = await page.EvaluateAsync<float[]?>(@"() => {
           const c = [...document.querySelectorAll(""div[role='combobox']"")]
             .filter(x => x.getBoundingClientRect().width > 2)
@@ -372,7 +375,8 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
         if (!Done.Any(done.Contains))
             return new(EvalSaveOutcome.UnknownDialog, $"모르는 대화상자입니다: {Trim(done)}", seen);
 
-        await reader.ClickAlertAsync("확인");
+        if (!await reader.ClickAlertAsync("확인"))
+            return new(EvalSaveOutcome.UnknownDialog, "저장 완료 알림을 닫지 못했습니다.", seen);
 
         return new(EvalSaveOutcome.Saved, "저장하고 완료 알림까지 확인했습니다.", seen);
     }
