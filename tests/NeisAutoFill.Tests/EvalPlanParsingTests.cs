@@ -145,4 +145,66 @@ public class EvalPlanParsingTests
         Assert.Empty(doc.Skipped);
         Assert.DoesNotContain("뺀 영역", doc.Describe());
     }
+
+    // ── [자료 준비] 자료를 나이스 모양으로 (2026-08-22) ─────
+
+    private static readonly string[] 단계 = { "잘함", "보통", "노력요함" };
+
+    private static NeisAutoFill.Core.Models.SubjectPlan 계획(string subject, string domain, string standard,
+        params (string Level, string Text)[] rows)
+        => new(subject, new[] { domain },
+            rows.ToDictionary(r => (domain, r.Level),
+                r => new NeisAutoFill.Core.Models.CriteriaEntry(r.Text, standard)));
+
+    [Fact]
+    public void 자료_준비의_계획을_그대로_옮긴다()
+    {
+        var doc = EvalPlanFromWorkspace.Convert(
+            new[] { 계획("국어", "문법", "[6국04-05] 글과 담화에…",
+                ("잘함", "잘함 문장"), ("보통", "보통 문장"), ("노력요함", "노력요함 문장")) },
+            단계);
+
+        var area = Assert.Single(Assert.Single(doc.Subjects).Areas);
+        Assert.Equal("문법", area.Name);
+
+        var std = Assert.Single(area.Standards);
+        Assert.Equal("[6국04-05] 글과 담화에…", std.Standard);
+        Assert.Equal(3, std.LevelCount);
+        Assert.Equal(new[] { "잘함", "보통", "노력요함" }, std.Criteria.Select(c => c.Level));
+        Assert.Equal("보통 문장", std.Criteria[1].Result);
+    }
+
+    [Fact]
+    public void 단계_순서는_등급표를_따른다()
+    {
+        // 자료 준비는 사전이라 순서가 없다 — 높은 단계부터 넣어야 나이스와 맞는다
+        var doc = EvalPlanFromWorkspace.Convert(
+            new[] { 계획("수학", "수와 연산", "[6수01-09]",
+                ("노력요함", "ㄷ"), ("잘함", "ㄱ"), ("보통", "ㄴ")) },
+            단계);
+
+        var std = doc.Subjects[0].Areas[0].Standards[0];
+
+        Assert.Equal(new[] { "ㄱ", "ㄴ", "ㄷ" }, std.Criteria.Select(c => c.Result));
+    }
+
+    [Fact]
+    public void 평가요소는_자료_준비에_없어서_빈_칸이다()
+    {
+        var doc = EvalPlanFromWorkspace.Convert(
+            new[] { 계획("국어", "문법", "성취기준", ("잘함", "ㄱ"), ("보통", "ㄴ"), ("노력요함", "ㄷ")) },
+            단계);
+
+        Assert.Equal("", doc.Subjects[0].Areas[0].Standards[0].Element);
+    }
+
+    [Fact]
+    public void 내용이_비어_있는_영역은_넣지_않는다()
+    {
+        var doc = EvalPlanFromWorkspace.Convert(
+            new[] { 계획("국어", "문법", "성취기준", ("잘함", "  "), ("보통", ""), ("노력요함", "")) },
+            단계);
+
+        Assert.Empty(doc.Subjects);
+    }
 }
