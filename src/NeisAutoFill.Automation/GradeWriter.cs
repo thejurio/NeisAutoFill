@@ -73,7 +73,13 @@ public sealed class GradeWriter(IPage page, GridScroller scroller, ComboBoxDrive
             decision.AreaMap, decision.NameMap);
         if (fatal is not null)
             throw new InvalidOperationException(fatal);
-        Log($"매칭 방식: {(actualMode == StudentMatcher.MatchMode.ByOrder ? "순서 기반" : "이름 기반")} / 입력 대상 {todo.Count}건");
+        var how = actualMode switch
+        {
+            StudentMatcher.MatchMode.ByRowOrder => "빠른 입력 (화면 순서 그대로)",
+            StudentMatcher.MatchMode.ByOrder => "순서 기반 (영역만)",
+            _ => "이름 기반",
+        };
+        Log($"매칭 방식: {how} / 입력 대상 {todo.Count}건");
 
         var done = new List<GradeTask>();
         var failed = new List<SkipItem>();

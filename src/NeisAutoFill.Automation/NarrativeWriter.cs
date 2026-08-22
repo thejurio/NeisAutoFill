@@ -109,6 +109,11 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
             : NarrativeMatcher.Build(rowMap, entries, nameMap);
         var skippedList = skipped.ToList();
 
+        // 학생과 짝지어지지 않은 건너뜀(= 통째로 멈춘 사유)은 <b>화면 목록 어디에도 안 붙는다</b> —
+        // 로그로 크게 알리지 않으면 '건너뜀 1' 만 보이고 왜인지 알 수 없다.
+        foreach (var whole in skippedList.Where(k => k.Name.Length == 0))
+            log($"⚠ {whole.Reason}");
+
         var done = new List<NarrativeEntry>();
         var failed = new List<SkipItem>();
         int total = todo.Count;
