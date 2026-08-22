@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Timetable;
+﻿using NeisAutoFill.Core.Timetable;
 
 namespace NeisAutoFill.Tests;
 
@@ -447,5 +447,80 @@ public class TimetablePlanBuilderTests
 
         Assert.Empty(p.Clearing);
         Assert.Equal(AssignmentStatus.Pending, p.Assignments[0].Status);
+    }
+
+    // ── 파싱이 일부만 놓쳤을 때 (지적 2026-08-22) ──────────────
+    //
+    // "문서에 한 칸이라도 있는 날만" 이라는 안전장치는 <b>부분 누락</b>을 못 막는다.
+    // 5교시 하나를 못 읽으면 그 칸이 삭제 대상이 되어 멀쩡한 수업이 지워진다.
+
+    private static TimetableSourceLesson 국어(DateOnly 날, int 교시) =>
+        new(new TimetableCell(날, 교시), "국");
+
+    private static readonly TimetableMappingRule[] 국어규칙 =
+        { new("국", 키("국어(교사A(account-a))"), MappingScope.Default) };
+
+    /// <summary>가운데 빈 교시 = 못 읽었을 수 있다. 못 가르면 지우지 않는다.</summary>
+    [Fact]
+    public void 가운데_구멍은_지우지_않는다()
+    {
+        // 문서: 1·2·4교시 (3교시를 놓쳤다) / 나이스: 3교시에 수업이 있다
+        var 수업 = new[] { 국어(월, 1), 국어(월, 2), 국어(월, 4) };
+        var 구멍 = new TimetableCell(월, 3);
+
+        var p = 덮어쓰기계획(수업, 국어규칙, 화면(new() { [구멍] = 키("체육(교사A(account-a))") }));
+
+        Assert.Empty(p.Clearing);
+    }
+
+    /// <summary>꼬리 = 문서가 그 날을 여기까지로 본 것. 이것은 지운다.</summary>
+    [Fact]
+    public void 마지막_교시_뒤쪽은_지운다()
+    {
+        // 문서: 1·2교시 / 나이스: 3교시까지 있다 → 3교시는 꼬리
+        var 수업 = new[] { 국어(월, 1), 국어(월, 2) };
+        var 꼬리 = new TimetableCell(월, 3);
+
+        var p = 덮어쓰기계획(수업, 국어규칙, 화면(new() { [꼬리] = 키("체육(교사A(account-a))") }));
+
+        Assert.Equal(꼬리, Assert.Single(p.Clearing).Cell);
+    }
+
+    /// <summary>
+    /// 같은 요일 다른 주가 6교시인데 이 주만 4교시로 읽혔다 —
+    /// 뒤쪽을 통째로 놓쳤을 수 있으므로 그 날은 손대지 않는다.
+    /// </summary>
+    [Fact]
+    public void 그_요일_평소보다_짧은_날은_통째로_넘어간다()
+    {
+        var 다음월 = 월.AddDays(7);
+        var 수업 = new[]
+        {
+            국어(월, 1), 국어(월, 2), 국어(월, 3),                    // 이 주는 3교시까지만 읽혔다
+            국어(다음월, 1), 국어(다음월, 2), 국어(다음월, 3),
+            국어(다음월, 4), 국어(다음월, 5),                          // 평소 월요일은 5교시
+        };
+
+        var p = 덮어쓰기계획(수업, 국어규칙,
+            화면(new() { [new TimetableCell(월, 4)] = 키("체육(교사A(account-a))") }));
+
+        Assert.Empty(p.Clearing);
+    }
+
+    /// <summary>평소와 같은 길이면 꼬리를 지운다 — 진짜 짧은 요일(금요일 등)을 막지 않는다.</summary>
+    [Fact]
+    public void 평소와_같은_길이면_꼬리를_지운다()
+    {
+        var 다음월 = 월.AddDays(7);
+        var 수업 = new[]
+        {
+            국어(월, 1), 국어(월, 2),
+            국어(다음월, 1), 국어(다음월, 2),      // 월요일은 늘 2교시까지
+        };
+
+        var p = 덮어쓰기계획(수업, 국어규칙,
+            화면(new() { [new TimetableCell(월, 3)] = 키("체육(교사A(account-a))") }));
+
+        Assert.Single(p.Clearing);
     }
 }

@@ -1,4 +1,4 @@
-using NeisAutoFill.App.ViewModels;
+﻿using NeisAutoFill.App.ViewModels;
 using NeisAutoFill.Automation;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Timetable;
@@ -114,10 +114,13 @@ public sealed class TimetableSession(
                 $"{week.Name} 에서는 과목·교사 목록을 읽을 수 없었습니다. " +
                 "수업이 있는 다른 주를 골라 주세요 (학기 시작 전 주에서는 메뉴가 열리지 않습니다).");
 
+        // <b>손댈 것이 있을 때만 말한다.</b> 목록이 바뀌었어도 짝이 그대로면 그냥 쓰면 되는 일이라
+        // "재확인 필요" 같은 말로 붙잡지 않는다 (사용자 요청 2026-08-22).
         var saved = Scope is null ? null : profiles.Find(Scope);
+        var lost = saved?.LostCount(Catalog) ?? 0;
         var savedText = saved is null ? "저장된 매핑 없음"
-            : saved.NeedsRecheck(Catalog.Fingerprint) ? "저장된 매핑 있음 — 목록이 바뀌어 재확인 필요"
-            : $"저장된 매핑 {saved.Rules.Count}건 재사용 가능";
+            : lost > 0 ? $"저장된 매핑 {saved.Rules.Count - lost}건 재사용 · {lost}건은 목록에서 사라져 다시 골라야 합니다"
+            : $"저장된 매핑 {saved.Rules.Count}건 재사용";
 
         return new TimetablePreflight(true,
             $"{Scope?.Describe() ?? "범위 미확인"} · {week.Name}\n" +

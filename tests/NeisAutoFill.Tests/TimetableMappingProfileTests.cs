@@ -1,4 +1,4 @@
-using NeisAutoFill.Core.Timetable;
+﻿using NeisAutoFill.Core.Timetable;
 
 namespace NeisAutoFill.Tests;
 
@@ -85,16 +85,33 @@ public class TimetableMappingProfileTests
         Assert.Equal("국", alive[0].SourceToken);
     }
 
+    /// <summary>
+    /// 짝이 그대로면 <b>확정도 그대로</b> — 다시 묻지 않는다 (사용자 요청 2026-08-22).
+    /// 목록 어딘가에서 남의 교사가 하나 늘었다는 이유로 붙잡는 것은 쓸데없는 일이다.
+    /// </summary>
     [Fact]
-    public void 살린_규칙은_사용자_확정_표시가_지워진다()
+    public void 짝이_그대로면_확정도_그대로_둔다()
     {
         var cat = 카탈로그();
         var p = 프로필(cat, new TimetableMappingRule("국", 키("국어(교사A(account-a))"), MappingScope.Default, true));
 
         var alive = p.RulesStillValid(cat);
 
-        Assert.False(alive[0].IsUserConfirmed);   // 다시 확인받아야 한다
+        Assert.True(alive[0].IsUserConfirmed);
         Assert.Equal(cat.Fingerprint, alive[0].CatalogFingerprint);
+    }
+
+    /// <summary>정말 손대야 하는 것 — 짝이 사라진 규칙 수만 센다.</summary>
+    [Fact]
+    public void 짝이_사라진_규칙만_다시_골라야_할_것으로_센다()
+    {
+        var cat = 카탈로그();
+        var p = 프로필(cat,
+            new TimetableMappingRule("국", 키("국어(교사A(account-a))"), MappingScope.Default, true),
+            new TimetableMappingRule("체", 키("체육(교사B(account-b))"), MappingScope.Default, true));
+
+        Assert.Equal(0, p.LostCount(cat));
+        Assert.Equal(1, p.LostCount(카탈로그(메뉴.Where(m => !m.Contains("교사B")))));
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 
 namespace NeisAutoFill.Core.Timetable;
@@ -59,14 +59,21 @@ public sealed record TimetableMappingProfile(
 
     /// <summary>
     /// 지문이 달라졌을 때 살릴 수 있는 규칙만 남긴다.
-    /// 대상이 현재 카탈로그에 <b>그대로 있는</b> 규칙만 통과시키고, 사용자 확정 표시는 지운다
-    /// (다시 확인받아야 한다 — 기술설계 §11).
+    /// 대상이 현재 카탈로그에 <b>그대로 있는</b> 규칙만 통과시킨다.
+    ///
+    /// <b>사용자 확정 표시는 그대로 둔다.</b> 대상이 하나도 안 변했다면 그때 한 확정은 지금도 유효하다 —
+    /// 목록 어딘가에서 남의 교사 한 명이 늘었다는 이유로 다시 묻는 것은 <b>쓸데없이 붙잡는 일</b>이다
+    /// (사용자 요청 2026-08-22). 대상이 사라진 규칙은 위에서 이미 걸러졌고,
+    /// 그 과목은 담당 교사가 비어 실행이 막히므로 <b>정말 손대야 할 때만</b> 사용자가 끌려온다.
     /// </summary>
     public IReadOnlyList<TimetableMappingRule> RulesStillValid(TimetableCatalog catalog) =>
         Rules
             .Where(r => r.IsSkip || catalog.Find(r.TargetStableKey) is not null)
-            .Select(r => r with { IsUserConfirmed = false, CatalogFingerprint = catalog.Fingerprint })
+            .Select(r => r with { CatalogFingerprint = catalog.Fingerprint })
             .ToList();
+
+    /// <summary>목록이 바뀌어 <b>버려진</b> 규칙 수 — 사용자가 다시 골라야 하는 것만 센다.</summary>
+    public int LostCount(TimetableCatalog catalog) => Rules.Count - RulesStillValid(catalog).Count;
 
     /// <summary>지문이 달라져 재확인이 필요한지.</summary>
     public bool NeedsRecheck(string catalogFingerprint) => CatalogFingerprint != catalogFingerprint;

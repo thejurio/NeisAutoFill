@@ -1,4 +1,4 @@
-namespace NeisAutoFill.Core.Timetable;
+﻿namespace NeisAutoFill.Core.Timetable;
 
 /// <summary>원본에서 읽어낸 수업 한 칸 (문서 인식 결과 — 나이스 항목이 아니다).</summary>
 /// <param name="Cell">날짜+교시</param>
@@ -77,11 +77,16 @@ public static class TimetablePlanBuilder
     /// 나이스 학급시간표는 기준시간표로 일괄 생성되므로, 문서보다 교시가 많은 날이 흔하다
     /// (예: 나이스는 6교시까지, 문서는 4교시까지). 그냥 두면 문서와 영영 달라진다.
     ///
-    /// <b>두 겹의 안전장치를 둔다:</b>
+    /// <b>네 겹의 안전장치를 둔다:</b>
     /// <list type="number">
     /// <item><b>문서에 수업이 한 칸이라도 있는 날만</b> 본다. 문서가 아예 다루지 않는 날
-    ///       (주말·공휴일·문서 범위 밖, 그리고 <b>파싱이 어긋난 날</b>)은 통째로 건드리지 않는다.
-    ///       실측상 공휴일 10일은 모두 문서 수업이 0칸이라 이 규칙만으로 걸러진다.</item>
+    ///       (주말·공휴일·문서 범위 밖)은 통째로 건드리지 않는다.</item>
+    /// <item><b>꼬리만 지운다.</b> 그 날 문서의 마지막 교시보다 <b>뒤</b>에 있는 칸만 지운다.
+    ///       가운데 빈 교시(<b>구멍</b>)는 남긴다 — 문서가 그 교시를 못 읽었을 수 있는데,
+    ///       "진짜 비었다"와 "못 읽었다"를 값만 보고는 가를 수 없다. 못 가르면 지우지 않는다.</item>
+    /// <item><b>그 요일의 평소보다 짧은 날은 통째로 넘어간다.</b> 같은 요일 다른 주들이 6교시인데
+    ///       이 날만 4교시로 읽혔다면 뒤쪽을 통째로 놓쳤을 가능성이 크다. 단축수업일 수도 있지만,
+    ///       <b>잘못 지우는 손해가 안 지우는 손해보다 훨씬 크다.</b></item>
     /// <item><b>지금 값이 카탈로그에 있는 수업일 때만</b> 지운다. 즉 <b>우리가 넣을 수 있었던 것만</b> 되돌린다.
     ///       행사·현장체험학습·휴업일 표시처럼 학교가 따로 넣은 것은 남긴다.</item>
     /// </list>
@@ -93,12 +98,28 @@ public static class TimetablePlanBuilder
         TimetableScreenState screen)
     {
         var planned = lessons.Select(l => l.Cell).ToHashSet();
-        var coveredDays = lessons.Select(l => l.Cell.Date).ToHashSet();
+
+        // 날짜 → 그 날 문서의 마지막 교시. 여기 없는 날은 문서가 안 다루는 날이다.
+        var lastPeriod = lessons
+            .GroupBy(l => l.Cell.Date)
+            .ToDictionary(g => g.Key, g => g.Max(l => l.Cell.Period));
+
+        // 요일 → 그 요일의 <b>평소</b> 마지막 교시(최빈값). 이 날만 유독 짧으면 파싱을 의심한다.
+        var usualLast = lastPeriod
+            .GroupBy(kv => kv.Key.DayOfWeek)
+            .ToDictionary(
+                g => g.Key,
+                g => g.GroupBy(kv => kv.Value)
+                      .OrderByDescending(x => x.Count()).ThenByDescending(x => x.Key)
+                      .First().Key);
 
         foreach (var (cell, current) in screen.CurrentValues.OrderBy(c => c.Key.Date).ThenBy(c => c.Key.Period))
         {
             if (planned.Contains(cell)) continue;              // 문서가 쓸 칸이다
-            if (!coveredDays.Contains(cell.Date)) continue;    // ① 문서가 안 다루는 날
+            if (!lastPeriod.TryGetValue(cell.Date, out var last)) continue;   // ① 문서가 안 다루는 날
+            if (cell.Period < last) continue;                  // ② 구멍 — 못 읽었을 수 있다
+            if (usualLast.TryGetValue(cell.Date.DayOfWeek, out var usual) && last < usual)
+                continue;                                      // ③ 그 요일 평소보다 짧다 — 뒤를 놓쳤을 수 있다
             if (!screen.IsInTerm(cell.Date)) continue;
             if (screen.UnavailableCells.Contains(cell)) continue;
             if (string.IsNullOrEmpty(current)) continue;
