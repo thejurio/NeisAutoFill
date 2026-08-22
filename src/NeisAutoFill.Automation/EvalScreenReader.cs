@@ -100,27 +100,55 @@ public sealed class EvalScreenReader(IPage page)
         }", label);
 
     /// <summary>단계를 바꾼다 (화면 위쪽 두 카드). 바뀌면 편집 단추가 통째로 달라진다.</summary>
-    public async Task<bool> GoToAsync(EvalStep step)
+    public async Task<bool> GoToAsync(EvalStep step, CancellationToken ct = default)
     {
         var name = step == EvalStep.Standards ? "성취기준관리" : "성취기준(평가기준)관리";
 
-        var at = await page.EvaluateAsync<float[]?>(@"(t) => {
-          const vis = e => { const r = e.getBoundingClientRect(); return r.width > 150 && r.height > 24; };
-          const x = [...document.querySelectorAll('div')].filter(vis)
-            .filter(e => (e.innerText || '').trim() === t)
-            .sort((a, b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width)[0];
-          if (!x) return null;
-          const r = x.getBoundingClientRect();
-          return [r.x + r.width / 2, r.y + r.height / 2];
-        }", name);
+        // <b>누른 것과 옮겨진 것은 다르다.</b> 예전엔 카드를 누르고 150ms 뒤 무조건 성공이라 했는데,
+        // 실제로 화면이 안 바뀐 채 다음 걸음으로 가서 <b>1단계 화면에서 [단계선택]을 찾다</b> 멈췄다
+        // (실측 2026-08-22). 이제 <b>그 단계에만 있는 것이 보일 때까지</b> 확인하고, 안 되면 다시 누른다.
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            if (await AtStepAsync(step)) return true;
 
-        if (at is null) return false;
+            var at = await page.EvaluateAsync<float[]?>(@"(t) => {
+              const vis = e => { const r = e.getBoundingClientRect(); return r.width > 150 && r.height > 24; };
+              const x = [...document.querySelectorAll('div')].filter(vis)
+                .filter(e => (e.innerText || '').trim() === t)
+                .sort((a, b) => a.getBoundingClientRect().width - b.getBoundingClientRect().width)[0];
+              if (!x) return null;
+              const r = x.getBoundingClientRect();
+              return [r.x + r.width / 2, r.y + r.height / 2];
+            }", name);
 
-        await page.Mouse.ClickAsync(at[0], at[1]);
-        await Task.Delay(Settle);
+            if (at is null) return false;
 
-        return true;
+            await page.Mouse.ClickAsync(at[0], at[1]);
+
+            var deadline = DateTime.UtcNow + QueryWait;
+            while (DateTime.UtcNow < deadline)
+            {
+                if (await AtStepAsync(step)) return true;
+                await Task.Delay(40, ct);
+            }
+        }
+
+        return false;
     }
+
+    /// <summary>
+    /// 지금 그 단계 화면인가 — <b>그 단계에만 있는 것</b>으로 가린다.
+    /// 1단계에는 [영역명관리]·[일괄업로드]가 있고, 2단계에는 [단계선택] 콤보가 있다.
+    /// </summary>
+    private async Task<bool> AtStepAsync(EvalStep step) => step == EvalStep.Criteria
+        ? await page.EvaluateAsync<bool>(
+            @"() => [...document.querySelectorAll(""div[role='combobox']"")]
+                .filter(x => x.getBoundingClientRect().width > 2)
+                .some(x => (x.getAttribute('aria-label') || '').startsWith('단계선택'))")
+        : await page.EvaluateAsync<bool>(
+            @"() => [...document.querySelectorAll('[role=button], button, .cl-button')]
+                .filter(e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; })
+                .some(e => (e.innerText || '').trim() === '영역명관리')");
 
     /// <summary>
     /// 조회를 누른다. 이걸 해야 편집 단추가 켜진다.

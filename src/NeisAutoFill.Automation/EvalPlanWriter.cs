@@ -282,7 +282,17 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
         if (at is null) return false;
 
         await page.Mouse.ClickAsync(at[0], at[1]);
-        await Task.Delay(Settle, ct);
+
+        // 목록이 <b>뜨는 것을 보고</b> 고른다 — 고정 대기로는 느릴 때 빈손으로 찾게 된다
+        var open = DateTime.UtcNow + ServerWait / 2;
+        while (DateTime.UtcNow < open)
+        {
+            var ready = await page.EvaluateAsync<bool>(
+                @"() => [...document.querySelectorAll('div.cl-combobox-item')]
+                    .some(e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; })");
+            if (ready) break;
+            await Task.Delay(30, ct);
+        }
 
         var item = await page.EvaluateAsync<float[]?>(@"(t) => {
           const vis = e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
