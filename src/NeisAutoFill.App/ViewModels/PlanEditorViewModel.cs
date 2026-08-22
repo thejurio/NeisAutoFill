@@ -335,6 +335,12 @@ public sealed class PlanEditorViewModel : ObservableObject
     public ICommand RemoveRosterRowCommand { get; }
     public ICommand ImportPlanCommand { get; }
 
+    /// <summary>
+    /// 문서에서 계획을 다 읽어 표에 채운 직후. [평가계획] 탭이 받아 <b>성적표까지 곧바로 반영</b>한다.
+    /// (전담 자료 준비 창은 닫을 때 저장하므로 이 신호를 쓰지 않는다.)
+    /// </summary>
+    public event Action? Imported;
+
     // ── AI 평가계획 불러오기 (이지에듀/스쿨마스터 PDF·HWP·HWPX) ──
 
     private bool _isImporting;
@@ -441,10 +447,15 @@ public sealed class PlanEditorViewModel : ObservableObject
             foreach (var note in localNotes)
                 RecognitionWarnings.Insert(0, new PlanWarningVm($"⚠ [{note.Subject}] {note.Text}", true));
             OnPropertyChanged(nameof(HasWarnings));
+
+            // <b>가져온 즉시 반영한다.</b> 파일을 고르고 과목까지 골랐다면 쓰겠다는 뜻이다 —
+            // 단추를 한 번 더 눌러야 성적표에 들어가는 것은 사용자가 예상하지 못한다(지적 2026-08-22).
+            Imported?.Invoke();
+
             var warnN = RecognitionWarnings.Count(w => w.IsWarn);
             ImportStatus = warnN > 0
-                ? $"✔ {plans.Count}개 과목 인식 · ⚠ 확인 필요 {warnN}건 — 아래 목록의 과목을 표에서 확인하세요."
-                : $"✔ {plans.Count}개 과목 인식 완료 — 내용을 확인·수정한 뒤 [저장 후 적용]을 누르세요.";
+                ? $"✔ {plans.Count}개 과목 인식 · 성적표에 반영했습니다 · ⚠ 확인 필요 {warnN}건 — 아래 목록의 과목을 표에서 확인하세요."
+                : $"✔ {plans.Count}개 과목 인식 · 성적표에 반영했습니다. 표에서 고치면 [저장 후 적용]을 눌러 주세요.";
         }
         catch (OperationCanceledException)
         {

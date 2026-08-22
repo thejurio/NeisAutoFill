@@ -657,6 +657,10 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             _planEditorVm = NewPlanEditor();
+
+            // 문서를 읽어 오면 곧바로 저장·반영한다 — 사용자가 단추를 한 번 더 누를 이유가 없다
+            _planEditorVm.Imported += () => ApplyPlanEdits();
+
             OnPropertyChanged(nameof(PlanEditor));
         }
         catch (Exception ex)

@@ -105,4 +105,35 @@ public class EvalPlanRealDocumentTests
 
         Assert.DoesNotContain(result.Plans, p => p.SubjectName.Contains("활동"));
     }
+
+    /// <summary>
+    /// <b>문서 → 표 → 파일 → 성적표</b> 전 구간. 가져온 계획이 성적표 열까지 닿는지 확인한다
+    /// (사용자 지적 2026-08-22: 가져왔는데 교과평가에 안 나온다).
+    /// </summary>
+    [Fact]
+    public void 가져온_계획이_성적표_열까지_닿는다()
+    {
+        var result = Read("스쿨마스터.pdf");
+        if (result is null) return;
+
+        var file = Path.Combine(Path.GetTempPath(), $"plan_{Guid.NewGuid():N}.xlsx");
+        try
+        {
+            NeisAutoFill.Excel.PlanWorkbookWriter.Write(
+                file, result.Plans, new List<(string, string)> { ("1", "홍길동") }, Scale);
+
+            var reloaded = NeisAutoFill.Excel.PlanWorkbookLoader.Load(file, Scale);
+            var social = reloaded.Single(p => p.SubjectName == "사회");
+
+            var sheet = NeisAutoFill.Core.SheetSynchronizer.BuildSheet(
+                social.SubjectName, social.Domains, old: null,
+                roster: new List<(string, string)> { ("1", "홍길동") }, rosterAuthoritative: true);
+
+            // 한국사 한 영역의 평가 셋이 성적표 열 셋으로 남아 있어야 한다
+            Assert.Equal(social.Domains, sheet.Areas);
+            Assert.Equal(3, sheet.Areas.Count(a => a.StartsWith("한국사")));
+            Assert.Equal(sheet.Areas.Count, sheet.Areas.Distinct().Count());
+        }
+        finally { if (File.Exists(file)) File.Delete(file); }
+    }
 }
