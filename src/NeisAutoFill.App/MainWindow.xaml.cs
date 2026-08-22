@@ -216,7 +216,6 @@ public partial class MainWindow : Window
 
     private void AddStudent_Click(object sender, RoutedEventArgs e) => _gradeGrid.AddStudent();
 
-    private void RemoveStudent_Click(object sender, RoutedEventArgs e) => _gradeGrid.RemoveStudent();
 
     private void BulkAssign_Click(object sender, RoutedEventArgs e)
     {

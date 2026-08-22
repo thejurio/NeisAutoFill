@@ -80,18 +80,6 @@ public sealed class GradeGridController(MainViewModel main)
     /// <summary>단추로 학생 더하기 — 표 맨 아랫줄 Enter 와 같은 일을 한다.</summary>
     public void AddStudent() { if (_active is not null) AddStudentRow(_active); }
 
-    /// <summary>고른 줄의 학생을 <b>모든 과목에서</b> 뺀다. 고른 줄이 없으면 아무 일도 하지 않는다.</summary>
-    public void RemoveStudent()
-    {
-        if (_active is null) return;
-
-        var index = _active.Items.IndexOf(_active.CurrentCell.Item);
-        if (index < 0) return;
-
-        _active.CommitEdit(DataGridEditingUnit.Row, true);
-        main.RemoveStudent(index);
-    }
-
     // ── 일괄 입력 바 (버튼) ─────────────────────
 
     public void BulkAssign(string label) { if (_active is not null) ApplyToSelected(_active, label); }

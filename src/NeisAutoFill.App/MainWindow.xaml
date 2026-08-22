@@ -297,12 +297,9 @@
 
                                     <!-- 명단도 이 표에서 고친다 — 번호는 한 번, 이름은 두 번 누르면 고쳐진다 -->
                                     <Border DockPanel.Dock="Left" Width="1" Background="{StaticResource Line}" Margin="6,3,10,3"/>
-                                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="＋ 학생" Padding="10,5" Margin="0,0,4,0"
+                                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="＋ 학생" Padding="10,5" Margin="0,0,6,0"
                                             Click="AddStudent_Click"
                                             ToolTip="맨 아래에 학생을 한 명 더합니다.&#10;💡 표 맨 아랫줄에서 Enter 를 쳐도 됩니다.&#10;💡 이름을 안 쓴 채 Enter(또는 Esc)를 치면 그 줄은 없어집니다."/>
-                                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Content="− 학생" Padding="10,5" Margin="0,0,6,0"
-                                            Click="RemoveStudent_Click"
-                                            ToolTip="고른 줄의 학생을 명단에서 뺍니다 (모든 과목에서 함께)"/>
 
                                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Content="■" Padding="9,5" Command="{Binding CancelCommand}"
                                             ToolTip="진행 중인 나이스 입력을 중지합니다"/>
