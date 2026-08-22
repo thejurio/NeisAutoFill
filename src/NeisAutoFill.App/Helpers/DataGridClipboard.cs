@@ -11,11 +11,14 @@ namespace NeisAutoFill.App.Helpers;
 /// </summary>
 public static class DataGridClipboard
 {
-    /// <param name="validate">(헤더, 값) → 허용 여부. null 이면 전부 허용.</param>
+    /// <param name="validate">(컬럼명, 값) → 허용 여부. null 이면 전부 허용.</param>
     /// <param name="allowGrow">붙여넣을 행이 표보다 많으면 새 행 추가 (명단·계획 편집용).</param>
-    /// <param name="resolveColumn">표시 헤더 → 실제 DataTable 컬럼명 변환 (영역명↔안전ID). null 이면 헤더=컬럼명.</param>
+    /// <param name="columnName">
+    /// 화면 열 → 실제 DataTable 컬럼명. null 이면 머리글을 그대로 쓴다.
+    /// <b>머리글은 겹칠 수 있다</b> — 한 영역에 평가가 여럿이면 머리글이 같은 열이 여럿이다.
+    /// </param>
     /// <param name="grow">
-    /// (모자란 줄 수, 붙여넣기 시작 칸의 헤더) → 줄 늘리기. <c>allowGrow</c> 와 달리 <b>이 표 밖에서</b>
+    /// (모자란 줄 수, 붙여넣기 시작 칸의 컬럼명) → 줄 늘리기. <c>allowGrow</c> 와 달리 <b>이 표 밖에서</b>
     /// 늘려야 할 때 쓴다 — 명단은 모든 과목 표에 같이 늘어나야 하기 때문이다.
     /// </param>
     /// <param name="dropHeaderRow">첫 줄이 컬럼 제목과 똑같으면 떼어 낸다 (엑셀에서 제목까지 복사한 경우).</param>
@@ -23,11 +26,11 @@ public static class DataGridClipboard
         DataGrid grid, DataTable table,
         Func<string, string, bool>? validate = null,
         bool allowGrow = false,
-        Func<string, string>? resolveColumn = null,
+        Func<DataGridColumn, string>? columnName = null,
         Action<int, string>? grow = null,
         bool dropHeaderRow = false)
     {
-        string Col(string header) => resolveColumn?.Invoke(header) ?? header;
+        string Col(DataGridColumn c) => columnName?.Invoke(c) ?? c.Header?.ToString() ?? "";
 
         var rows = ClipboardTable.Parse(Clipboard.ContainsText() ? Clipboard.GetText() : null);
         if (rows.Length == 0) return (0, 0);
@@ -43,10 +46,9 @@ public static class DataGridClipboard
             int filled = 0, refused = 0;
             foreach (var cell in selected)
             {
-                var header = cell.Column.Header?.ToString() ?? "";
-                var name = Col(header);
+                var name = Col(cell.Column);
                 if (cell.Column.IsReadOnly || !table.Columns.Contains(name) ||
-                    (validate is not null && !validate(header, value))) { refused++; continue; }
+                    (validate is not null && !validate(name, value))) { refused++; continue; }
                 ((DataRowView)cell.Item).Row[name] = value;
                 filled++;
             }
@@ -81,8 +83,7 @@ public static class DataGridClipboard
 
         // 표보다 긴 자료면 먼저 줄을 늘린다 (늘릴 수 없으면 아래에서 그냥 건너뛴다)
         if (grow is not null && startRow + rows.Length > table.Rows.Count && startCol < columns.Count)
-            grow(startRow + rows.Length - table.Rows.Count,
-                 columns[startCol].Header?.ToString() ?? "");
+            grow(startRow + rows.Length - table.Rows.Count, Col(columns[startCol]));
 
         int applied = 0, skipped = 0;
         for (int r = 0; r < rows.Length; r++)
@@ -99,12 +100,11 @@ public static class DataGridClipboard
                 int colIdx = startCol + c;
                 if (colIdx >= columns.Count) { skipped++; continue; }
                 var gridCol = columns[colIdx];
-                var header = gridCol.Header?.ToString() ?? "";
-                var colName = Col(header);
+                var colName = Col(gridCol);
                 if (gridCol.IsReadOnly || !table.Columns.Contains(colName)) { skipped++; continue; }
 
                 var value = rows[r][c];
-                if (validate is not null && !validate(header, value)) { skipped++; continue; }
+                if (validate is not null && !validate(colName, value)) { skipped++; continue; }
 
                 table.Rows[rowIdx][colName] = value;
                 applied++;

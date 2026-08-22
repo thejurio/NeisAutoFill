@@ -114,7 +114,7 @@ public sealed class GradeGridController(MainViewModel main)
         // '전체 선택' = 등급(영역) 셀만 — 번호·이름·특기사항은 일괄 입력 대상이 아니므로 제외
         if (_active.DataContext is not SubjectViewModel vm) { _active.SelectAllCells(); return; }
         var areaCols = _active.Columns
-            .Where(c => vm.Areas.Contains(c.Header?.ToString() ?? "")).ToList();
+            .Where(c => vm.IsAreaColumn(ColumnNameOf(c))).ToList();
         if (areaCols.Count == 0) { _active.SelectAllCells(); return; }   // 영역이 없으면 기존 동작
 
         _active.SelectedCells.Clear();
@@ -205,7 +205,7 @@ public sealed class GradeGridController(MainViewModel main)
         };
         if (digit > 0 && Keyboard.Modifiers == ModifierKeys.None &&
             grid.DataContext is SubjectViewModel vd &&
-            grid.SelectedCells.Any(c => vd.Areas.Contains(c.Column?.Header?.ToString() ?? "")))
+            grid.SelectedCells.Any(c => vd.IsAreaColumn(ColumnNameOf(c.Column))))
         {
             var labels = main.GradeLabels.Where(l => l != "").ToList();
             if (digit <= labels.Count)
@@ -225,8 +225,7 @@ public sealed class GradeGridController(MainViewModel main)
 
         if (FindAncestor<System.Windows.Controls.Primitives.DataGridColumnHeader>(e.OriginalSource) is { } header)
         {
-            var name = header.Column?.Header?.ToString();
-            if (name is null || !vm.Areas.Contains(name)) return;   // 영역 컬럼만
+            if (!vm.IsAreaColumn(ColumnNameOf(header.Column))) return;   // 영역 컬럼만
             grid.Focus();
             if (!additive) grid.SelectedCells.Clear();
             foreach (var item in grid.Items)
@@ -256,7 +255,7 @@ public sealed class GradeGridController(MainViewModel main)
             grid.Focus();
             if (!additive) grid.SelectedCells.Clear();
             foreach (var col in grid.Columns)
-                if (vm.Areas.Contains(col.Header?.ToString() ?? ""))
+                if (vm.IsAreaColumn(ColumnNameOf(col)))
                     grid.SelectedCells.Add(new DataGridCellInfo(row, col));
             e.Handled = true;
         }
@@ -377,12 +376,12 @@ public sealed class GradeGridController(MainViewModel main)
         {
             foreach (var cell in grid.SelectedCells)
             {
-                var header = cell.Column?.Header?.ToString();
-                if (header is null || cell.Item is not DataRowView row) continue;
-                bool isArea = vm.Areas.Contains(header);
-                bool isNote = header == SubjectViewModel.NoteColumn;
+                var name = ColumnNameOf(cell.Column);
+                if (cell.Item is not DataRowView row) continue;
+                bool isArea = vm.IsAreaColumn(name);
+                bool isNote = name == SubjectViewModel.NoteColumn;
                 if (!isArea && !(isNote && value == "")) continue;   // 등급값은 영역 셀에만
-                row.Row[vm.DataColumnOf(header)] = value;            // 영역은 안전ID 로 접근
+                row.Row[name] = value;
                 applied++;
             }
         }
@@ -406,13 +405,13 @@ public sealed class GradeGridController(MainViewModel main)
         try
         {
             (applied, skipped) = DataGridClipboard.Paste(grid, vm.Grid,
-                validate: (header, value) =>
-                    header is "번호" or "이름" ||   // 명단 칸은 값을 가리지 않는다
-                    header == SubjectViewModel.NoteColumn || value == "" || main.GradeLabels.Contains(value),
-                resolveColumn: vm.DataColumnOf,   // 영역 헤더 → 안전 컬럼ID
-                grow: (need, startHeader) =>
+                validate: (name, value) =>
+                    name is "번호" or "이름" ||   // 명단 칸은 값을 가리지 않는다
+                    name == SubjectViewModel.NoteColumn || value == "" || main.GradeLabels.Contains(value),
+                columnName: ColumnNameOf,   // 머리글이 겹칠 수 있어 열 ID 로 가린다
+                grow: (need, startName) =>
                 {
-                    if (startHeader is not ("번호" or "이름")) return;
+                    if (startName is not ("번호" or "이름")) return;
                     if (main.AddStudents(need) >= 0) added = need;   // Ctrl+Z 한 번에 되돌려지도록 한 묶음
                 },
                 dropHeaderRow: true);
@@ -464,6 +463,14 @@ public sealed class GradeGridController(MainViewModel main)
             if (ReferenceEquals(at, root)) return true;
         return false;
     }
+
+    /// <summary>
+    /// 그 열이 다루는 <b>DataTable 컬럼명</b>. 머리글로 찾으면 안 된다 —
+    /// 한 영역에 평가가 여럿이면 <b>머리글이 같은 열이 여럿</b>이기 때문이다(2026-08-22).
+    /// 등급 열은 만들 때 SortMemberPath 에 컬럼ID 를 새겨 두었다.
+    /// </summary>
+    private static string ColumnNameOf(DataGridColumn? column) =>
+        column?.SortMemberPath is { Length: > 0 } id ? id : column?.Header?.ToString() ?? "";
 
     private static T? FindAncestor<T>(object source) where T : DependencyObject
     {

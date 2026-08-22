@@ -88,9 +88,9 @@ public class EvalPlanRealDocumentTests
             .Where(d => social.Criteria[(d, "잘함")].Area == "한국사").ToList();
         Assert.Equal(3, korean.Count);
 
-        // 줄 이름은 겹치지 않고, 평가요소로 갈렸다
+        // 줄 이름(키)은 겹치지 않지만, 떼면 셋 다 진짜 영역명 '한국사' 다
         Assert.Equal(3, korean.Distinct().Count());
-        Assert.All(korean, d => Assert.StartsWith("한국사 · ", d));
+        Assert.All(korean, d => Assert.Equal("한국사", PlanKeys.NameOf(d)));
 
         // 평가마다 성취기준이 따로다 — 합쳐지지 않았다
         Assert.Equal(3, korean.Select(d => social.Criteria[(d, "잘함")].Achievement).Distinct().Count());

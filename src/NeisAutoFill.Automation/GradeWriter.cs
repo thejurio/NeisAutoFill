@@ -1,4 +1,4 @@
-using Microsoft.Playwright;
+﻿using Microsoft.Playwright;
 using NeisAutoFill.Automation.Abstractions;
 using NeisAutoFill.Core.Matching;
 using NeisAutoFill.Core.Models;
@@ -29,7 +29,8 @@ public sealed class GradeWriter(IPage page, GridScroller scroller, ComboBoxDrive
 
         int expected = int.Parse(await grid.GetAttributeAsync("aria-rowcount") ?? "1") - 1;
 
-        Log($"엑셀 영역: {string.Join(", ", sheet.Areas.Select(a => $"'{a}'"))}");
+        // 로그에도 <b>진짜 영역명</b>만 — 속으로 붙인 구분 꼬리(#2)는 사용자에게 보일 것이 아니다
+        Log($"엑셀 영역: {string.Join(", ", sheet.Areas.Select(a => $"'{NeisAutoFill.Core.Evaluation.PlanKeys.NameOf(a)}'"))}");
         Log($"그리드 {expected}행 / 행 위치 파악 중...");
         var rowMap = await new RowMapBuilder(page, scroller).BuildAsync(grid, expected, Log, ct);
         var missing = Enumerable.Range(0, expected).Where(i => !rowMap.ContainsKey(i)).ToList();
@@ -53,11 +54,22 @@ public sealed class GradeWriter(IPage page, GridScroller scroller, ComboBoxDrive
             decision = new MatchDecision(StudentMatcher.MatchMode.ByName);
         }
 
-        var excelAreas = decision.Mode == StudentMatcher.MatchMode.ByOrder
+        // <b>같은 영역이 여러 번 나오면 이름으로는 가릴 수 없다.</b>
+        // 한 영역에 평가가 여럿일 수 있고(사용자 확인 2026-08-22), 나이스 화면에도 같은 영역명으로
+        // 여러 줄이 뜬다 — 그때는 <b>순서로</b> 맞춘다. 이름으로 맞추면 세 줄에 같은 값이 들어간다.
+        var mode = decision.Mode;
+        if (mode == StudentMatcher.MatchMode.ByName &&
+            NeisAutoFill.Core.Evaluation.PlanKeys.HasRepeats(sheet.Areas))
+        {
+            mode = StudentMatcher.MatchMode.ByOrder;
+            Log("같은 영역에 평가가 여럿이라 순서 기반으로 맞춥니다.");
+        }
+
+        var excelAreas = mode == StudentMatcher.MatchMode.ByOrder
             ? decision.OrderedExcelAreas ?? sheet.Areas
             : sheet.Areas;
         var (todo, skipped, actualMode, fatal) = StudentMatcher.Build(
-            rowMap, sheet.Students, scale, excelAreas, decision.Mode,
+            rowMap, sheet.Students, scale, excelAreas, mode,
             decision.AreaMap, decision.NameMap);
         if (fatal is not null)
             throw new InvalidOperationException(fatal);

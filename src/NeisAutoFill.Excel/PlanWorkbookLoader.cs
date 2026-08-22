@@ -93,7 +93,7 @@ public static class PlanWorkbookLoader
                 if (items.Count > 0 && desc != "") items[^1].ByLevel[grade] = desc;
             }
 
-            var keys = PlanKeys.Build(items.Select(i => (i.Area, i.Elem)).ToList());
+            var keys = PlanKeys.Build(items.Select(i => i.Area).ToList());
             var domains = new List<string>();
             var criteria = new Dictionary<(string, string), CriteriaEntry>();
 

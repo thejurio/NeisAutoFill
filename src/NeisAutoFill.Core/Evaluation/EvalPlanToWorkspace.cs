@@ -17,8 +17,8 @@ public sealed record PlanConversion(IReadOnlyList<SubjectPlan> Plans, IReadOnlyL
 ///
 /// <b>평가 하나가 표의 한 줄</b>이다. 한 영역에 평가가 여럿이면 그만큼 줄이 늘어난다 —
 /// 잘함·보통·노력요함 한 세트가 평가 하나이고, 그 경계는 평가요소다(사용자 확인 2026-08-22).
-/// 줄 이름이 겹치지 않도록 <see cref="PlanKeys"/> 가 <c>영역 · 평가요소</c> 로 갈라 주고,
-/// 진짜 영역명은 <c>CriteriaEntry.Area</c> 에 그대로 남는다.
+/// 줄 이름이 겹치지 않도록 <see cref="PlanKeys"/> 가 <c>한국사#2</c> 처럼 꼬리를 붙이고,
+/// 진짜 영역명은 <c>CriteriaEntry.Area</c> 에 그대로 남는다 — 화면과 나이스에는 그것만 나간다.
 /// </summary>
 public static class EvalPlanToWorkspace
 {
@@ -36,7 +36,7 @@ public static class EvalPlanToWorkspace
                 .ToList();
             if (items.Count == 0) continue;
 
-            var keys = PlanKeys.Build(items.Select(i => (i.Area, i.Standard.Element)).ToList());
+            var keys = PlanKeys.Build(items.Select(i => i.Area).ToList());
 
             var domains = new List<string>();
             var criteria = new Dictionary<(string Domain, string Grade), CriteriaEntry>();

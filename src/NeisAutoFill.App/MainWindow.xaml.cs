@@ -202,6 +202,9 @@ public partial class MainWindow : Window
         return new DataGridTemplateColumn
         {
             Header = header,
+            // 머리글은 <b>영역명</b>이라 같은 이름이 여럿일 수 있다(한 영역에 평가 여럿).
+            // 그래서 열을 가릴 때는 머리글이 아니라 여기 새겨 둔 컬럼ID 를 쓴다.
+            SortMemberPath = columnId,
             CellTemplate = cellTemplate,
             CellEditingTemplate = editTemplate,
             ClipboardContentBinding = new Binding(path),   // 다중 셀 Ctrl+C 지원

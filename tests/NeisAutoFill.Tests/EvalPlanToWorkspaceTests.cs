@@ -58,17 +58,18 @@ public class EvalPlanToWorkspaceTests
         var result = EvalPlanToWorkspace.Convert(doc, ThreeLevels);
 
         var plan = Assert.Single(result.Plans);
-        Assert.Equal(new[] { "한국사 · 선사 추론", "한국사 · 서민 문화" }, plan.Domains);
+        Assert.Equal(new[] { "한국사", "한국사#2" }, plan.Domains);
 
         // 갈라 준 것은 <b>이름뿐</b> — 진짜 영역명은 그대로 남아 나이스로 간다
         Assert.All(plan.Domains, d => Assert.Equal("한국사", plan.Criteria[(d, "잘함")].Area));
-        Assert.Equal("가1", plan.Criteria[("한국사 · 선사 추론", "잘함")].Text);
-        Assert.Equal("나2", plan.Criteria[("한국사 · 서민 문화", "보통")].Text);
+        Assert.Equal("가1", plan.Criteria[("한국사", "잘함")].Text);
+        Assert.Equal("나2", plan.Criteria[("한국사#2", "보통")].Text);
         Assert.Empty(result.Notes);
     }
 
+    /// <summary>구분 꼬리는 <b>속으로만</b> 쓴다 — 떼면 언제나 진짜 영역명이 나온다.</summary>
     [Fact]
-    public void 평가요소가_비어_겹치면_번호로_가른다()
+    public void 구분_꼬리는_떼면_진짜_영역명이다()
     {
         var doc = Doc(new EvalArea("한국사", new[]
         {
@@ -78,7 +79,8 @@ public class EvalPlanToWorkspaceTests
 
         var plan = Assert.Single(EvalPlanToWorkspace.Convert(doc, ThreeLevels).Plans);
 
-        Assert.Equal(new[] { "한국사", "한국사 (2)" }, plan.Domains);
+        Assert.Equal(new[] { "한국사", "한국사#2" }, plan.Domains);
+        Assert.All(plan.Domains, d => Assert.Equal("한국사", PlanKeys.NameOf(d)));
         Assert.All(plan.Domains, d => Assert.Equal("한국사", plan.Criteria[(d, "잘함")].Area));
     }
 

@@ -1,3 +1,4 @@
+﻿using NeisAutoFill.Core.Evaluation;
 using NeisAutoFill.Core.Models;
 using NeisAutoFill.Core.Scale;
 
@@ -22,7 +23,8 @@ public static class CriteriaPanelBuilder
             var ach = labels
                 .Select(g => plan.Criteria.TryGetValue((domain, g), out var e) ? e.Achievement : null)
                 .FirstOrDefault(a => !string.IsNullOrEmpty(a));
-            return new DomainView(domain, ach, levels);
+            // 사람에게 보이는 자리라 <b>진짜 영역명</b>을 쓴다 (속 구분 꼬리 #2 는 떼고)
+            return new DomainView(PlanKeys.NameOf(domain), ach, levels);
         }).ToList();
     }
 }

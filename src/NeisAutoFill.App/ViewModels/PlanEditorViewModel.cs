@@ -715,7 +715,7 @@ public sealed class PlanSubjectEdit : ObservableObject
                 row));
         }
 
-        var keys = PlanKeys.Build(rows.Select(r => (r.Area, r.Elem)).ToList());
+        var keys = PlanKeys.Build(rows.Select(r => r.Area).ToList());
 
         var domains = new List<string>();
         var criteria = new Dictionary<(string, string), CriteriaEntry>();
