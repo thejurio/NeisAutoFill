@@ -188,7 +188,10 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
 
                 await input.FillAsync(text);
                 await page.Keyboard.PressAsync("Tab");     // 포커스 이탈로 값 확정
-                await Task.Delay(Timings.AfterOptionClick, ct);
+
+                // 값이 실제로 들어간 것을 보고 넘어간다 — 확정은 눌렀다고 되는 게 아니다
+                await Wait.UntilAsync(async () => (await input.InputValueAsync()) == text,
+                    Timings.AfterOptionClick, ct);
 
                 // ★ 재검증: 표시 컨트롤을 fresh 로 다시 읽어 확인.
                 // 마지막 행은 Tab 확정 직후 재렌더로 표시 컨트롤이 비거나 행이 떨어질 수 있어(§8)
@@ -342,8 +345,9 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
                 int expected = Math.Max(int.Parse(rowcountAttr) - 1, 1);
                 double approx = v.scrollHeight * idx / expected - v.clientHeight / 2;
                 await scroller.ScrollProxyAsync(v.bar, Math.Max(approx, 0));
-                await Task.Delay(Timings.AfterScroll, ct);
-                ed = await GetFreshEditorAsync(grid, idx);
+
+                // 고정 대기 대신 <b>그 칸이 보일 때까지</b>. 안 보이면 예전만큼 기다린 셈이라 손해가 없다.
+                ed = await Wait.ForAsync(() => GetFreshEditorAsync(grid, idx), Timings.AfterScroll, ct);
             }
         }
         if (ed is null)   // 끝행 대비 (§8): CLX 공식 reveal API 로 행 직접 가시화
@@ -351,14 +355,12 @@ public sealed class NarrativeWriter(IPage page, GridScroller scroller)
             var rowcountAttr2 = await grid.GetAttributeAsync("aria-rowcount") ?? "1";
             int expected2 = Math.Max(int.Parse(rowcountAttr2) - 1, 1);
             await ClxGridApi.RevealAsync(page, expected2, idx);
-            await Task.Delay(Timings.AfterScroll, ct);
-            ed = await GetFreshEditorAsync(grid, idx);
+            ed = await Wait.ForAsync(() => GetFreshEditorAsync(grid, idx), Timings.AfterScroll, ct);
         }
         if (ed is not null)
         {
             await ed.ScrollIntoViewIfNeededAsync();
-            await Task.Delay(Timings.AfterScrollIntoView, ct);
-            ed = await GetFreshEditorAsync(grid, idx);
+            ed = await Wait.ForAsync(() => GetFreshEditorAsync(grid, idx), Timings.AfterScrollIntoView, ct);
         }
         return ed;
     }

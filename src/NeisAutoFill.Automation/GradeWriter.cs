@@ -176,8 +176,9 @@ public sealed class GradeWriter(IPage page, GridScroller scroller, ComboBoxDrive
                 int expected = Math.Max(int.Parse(expectedAttr) - 1, 1);
                 double approx = v.scrollHeight * idx / expected - v.clientHeight / 2;
                 await scroller.ScrollProxyAsync(v.bar, Math.Max(approx, 0));
-                await Task.Delay(Timings.AfterScroll, ct);
-                cell = await GetFreshComboAsync(grid, idx);
+
+                // 고정 대기 대신 <b>그 칸이 보일 때까지</b>. 안 보이면 예전만큼 기다린 셈이라 손해가 없다.
+                cell = await Wait.ForAsync(() => GetFreshComboAsync(grid, idx), Timings.AfterScroll, ct);
             }
         }
         if (cell is null)   // 끝행 대비 (§8): CLX 공식 reveal API 로 행 직접 가시화
@@ -185,14 +186,12 @@ public sealed class GradeWriter(IPage page, GridScroller scroller, ComboBoxDrive
             var expectedAttr2 = await grid.GetAttributeAsync("aria-rowcount") ?? "1";
             int expected2 = Math.Max(int.Parse(expectedAttr2) - 1, 1);
             await ClxGridApi.RevealAsync(page, expected2, idx);
-            await Task.Delay(Timings.AfterScroll, ct);
-            cell = await GetFreshComboAsync(grid, idx);
+            cell = await Wait.ForAsync(() => GetFreshComboAsync(grid, idx), Timings.AfterScroll, ct);
         }
         if (cell is not null)
         {
             await cell.ScrollIntoViewIfNeededAsync();
-            await Task.Delay(Timings.AfterScrollIntoView, ct);
-            cell = await GetFreshComboAsync(grid, idx);
+            cell = await Wait.ForAsync(() => GetFreshComboAsync(grid, idx), Timings.AfterScrollIntoView, ct);
         }
         return cell;
     }
