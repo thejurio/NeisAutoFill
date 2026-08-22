@@ -296,8 +296,11 @@
                                             <Button Style="{StaticResource PrimaryButton}" Content="이동" Command="{Binding GoSubjectCommand}" Padding="12,3"/>
                                         </StackPanel>
                                     </Border>
-                                    <Button Style="{StaticResource GhostButton}" Content="📁 자료 준비" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"
-                                            ToolTip="학생 명단·평가계획을 입력합니다 (평가계획서 파일을 넣으면 AI가 자동 인식)"/>
+                                    <!-- 담임은 [평가계획] 탭과 이 표에서 다 되므로 이 단추가 없다.
+                                         전담만 반 등록·반별 명단을 여기서 다룬다. -->
+                                    <Button Style="{StaticResource GhostButton}" Content="📁 명단·반 관리" Command="{Binding OpenPlanEditorCommand}" Margin="0,0,6,0"
+                                            Visibility="{Binding IsSubjectMode, Converter={StaticResource BoolToVis}}"
+                                            ToolTip="반을 등록하고 반별 학생 명단을 입력합니다"/>
                                     <Border Width="1" Background="{StaticResource Line}" Margin="10,2,4,2"/>
                                     <StackPanel Orientation="Horizontal" Margin="6,0,6,0">
                                         <Button Style="{StaticResource GhostButtonLeft}" Content="📂 성적파일" Command="{Binding OpenExcelCommand}" Padding="9,7"/>
@@ -388,10 +391,10 @@
                             <Border Background="{StaticResource NeisSoft}" BorderBrush="{StaticResource Neis}" BorderThickness="1.5" CornerRadius="12" Padding="18,16" Width="220">
                                 <StackPanel>
                                     <TextBlock Text="STEP 1" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Neis}"/>
-                                    <TextBlock Text="📁 자료 준비" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="0,3,0,4"/>
-                                    <TextBlock Text="평가계획서 파일(PDF/HWP)을 넣으면 AI가 자동으로 읽고, 명단은 엑셀에서 붙여넣기 한 번이면 됩니다."
+                                    <TextBlock Text="📋 평가계획 넣기" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource Ink}" Margin="0,3,0,4"/>
+                                    <TextBlock Text="평가계획서 파일(PDF/HWP)을 넣으면 AI가 자동으로 읽습니다. 명단은 [교과평가] 표에 붙여넣기 한 번이면 됩니다."
                                                FontSize="12" Foreground="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,0,0,12"/>
-                                    <Button Style="{StaticResource PrimaryButton}" Content="시작하기" Command="{Binding OpenPlanEditorCommand}" HorizontalAlignment="Left"/>
+                                    <Button Style="{StaticResource PrimaryButton}" Content="시작하기" Command="{Binding PreparePlansCommand}" HorizontalAlignment="Left"/>
                                 </StackPanel>
                             </Border>
                             <TextBlock Text="→" FontSize="20" Foreground="#CBD5E1" VerticalAlignment="Center" Margin="10,0"/>

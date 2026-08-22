@@ -25,6 +25,13 @@ public partial class MainWindow : Window
         _gradeGrid = new GradeGridController(vm);
         StateChanged += (_, _) => UpdateMaxGlyph();
 
+        // 문서를 끌어다 놓거나 [시작하기]를 누르면 평가계획 탭으로 데려간다 (탭 조작은 화면의 일)
+        vm.PlanTabRequested += () =>
+        {
+            MainTabs.SelectedIndex = 0;   // 평가
+            EvalTabs.SelectedIndex = 0;   // 평가계획
+        };
+
         // 패널 토글은 창을 바깥으로 확장 — 본문(성적표)이 구겨지지 않는다 (최대화 상태는 그대로)
         if (_vm.ShowCriteriaPanel) Width += CriteriaPanelWidth;   // 저장된 켜짐 상태 복원분
         if (_vm.LogExpanded) Height += LogPanelHeight;

@@ -200,8 +200,36 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>평가계획 문서를 나이스에 넣는 창을 연다 — 평가 탭 안에 둔다.</summary>
 
 
-    /// <summary>드래그앤드롭된 평가계획 문서(pdf/hwp/hwpx) → 편집 창 열고 AI 가져오기 시작.</summary>
-    public void ImportPlanDocument(string path) => OpenPlanEditor(path);
+    /// <summary>
+    /// 평가계획을 준비하러 간다 — 담임은 <b>평가계획 탭</b>, 전담은 반·학년까지 다뤄야 해 <b>자료 준비 창</b>.
+    /// </summary>
+    public ICommand PreparePlansCommand => _preparePlans ??= new RelayCommand(() =>
+    {
+        if (_profiles.IsSubjectMode) { OpenPlanEditor(); return; }
+
+        PreparePlanEditor();
+        PlanTabRequested?.Invoke();
+    });
+    private ICommand? _preparePlans;
+
+    /// <summary>
+    /// 평가계획 탭을 앞으로 불러 달라는 신호 — 창이 받아서 탭을 옮긴다.
+    /// (탭 조작은 화면의 일이라 뷰모델이 직접 하지 않는다.)
+    /// </summary>
+    public event Action? PlanTabRequested;
+
+    /// <summary>
+    /// 드래그앤드롭된 평가계획 문서(pdf/hwp/hwpx) → AI 가져오기 시작.
+    /// 담임은 <b>평가계획 탭</b>에서, 전담은 반·학년을 함께 고쳐야 해 <b>자료 준비 창</b>에서 받는다.
+    /// </summary>
+    public void ImportPlanDocument(string path)
+    {
+        if (_profiles.IsSubjectMode) { OpenPlanEditor(path); return; }
+
+        PreparePlanEditor();
+        PlanTabRequested?.Invoke();
+        _ = _planEditorVm?.ImportPlanFileAsync(path);
+    }
 
     // 담임 import: 과목 목록 인식 → 선택 콜백 → 고른 과목만 (F9 M4b)
     private Task<IReadOnlyList<SubjectPlan>> ImportPlansAsync(string path, IProgress<string> progress,
@@ -237,36 +265,20 @@ public sealed class MainViewModel : ObservableObject
             initialSubject: SelectedSubject?.SubjectName);
     }
 
+    /// <summary>
+    /// <b>전담 전용</b> 자료 준비 창 — 반을 등록하고 반별 명단을 넣는다.
+    ///
+    /// 담임에게는 이 창이 없다. 계획은 [평가계획] 탭에서, 명단은 [교과평가] 표에서 바로 고친다
+    /// (사용자 요청 2026-08-22). 전담은 반 자체를 만들고 반마다 명단이 달라 아직 이 창이 필요하다.
+    /// </summary>
     private void OpenPlanEditor(string? importPath = null)
     {
-        if (_profiles.IsSubjectMode)
-        {
-            var svm = NewPlanEditor();
-            var swin = new PlanEditorWindow(svm) { Owner = Application.Current.MainWindow };
-            if (importPath is not null) swin.Loaded += async (_, _) => await svm.ImportPlanFileAsync(importPath);
-            swin.ShowDialog();
-            svm.SaveSubjectMode();   // 현재 반·학년 저장 (전환 시마다 이미 저장되지만 마지막 것도)
-            Log("전담 명단·평가계획 저장 완료");
-            return;
-        }
-
         var vm = NewPlanEditor();
         var win = new PlanEditorWindow(vm) { Owner = Application.Current.MainWindow };
-        if (importPath is not null)
-            win.Loaded += async (_, _) => await vm.ImportPlanFileAsync(importPath);
-        if (win.ShowDialog() != true) return;
-
-        var built = vm.Build(out var error);
-        if (built is null) { ShowError(error ?? "편집 내용을 읽지 못했습니다."); return; }
-
-        var (savedPath, saveError) = _workspace.SavePlan(built.Value.Plans, built.Value.Roster);
-        if (saveError is not null)
-        {
-            ShowError($"평가계획 저장 실패: {saveError}\n(파일이 엑셀에서 열려 있으면 닫고 다시 시도하세요)");
-            return;
-        }
-        Log($"명단·평가계획 저장: {Path.GetFileName(savedPath!)}");
-        LoadPlan(savedPath!);   // 저장본을 다시 읽어 반영 (엑셀 직접 수정과 같은 경로)
+        if (importPath is not null) win.Loaded += async (_, _) => await vm.ImportPlanFileAsync(importPath);
+        win.ShowDialog();
+        vm.SaveSubjectMode();   // 현재 반·학년 저장 (전환 시마다 이미 저장되지만 마지막 것도)
+        Log("전담 명단·평가계획 저장 완료");
     }
 
     private string _planName = "평가계획서 없음";
