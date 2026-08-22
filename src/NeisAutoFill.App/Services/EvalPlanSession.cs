@@ -175,8 +175,9 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
 
         if (!await reader.QueryAsync(ct)) return "[조회]를 누르지 못했습니다.";
 
-        for (var i = 0; i < 3 && await reader.DialogTextAsync() is not null; i++)
-            await reader.ClickDialogAsync("확인");
+        // 뜬 알림을 <b>보고</b> 확인을 누른다. 작업 창은 세지 않는다 — 그것까지 세면 끝없이 돈다.
+        for (var i = 0; i < 3 && await reader.AlertTextAsync() is not null; i++)
+            await reader.ClickAlertAsync("확인");
 
         Scope = await reader.ReadScopeAsync();
         if (Scope is null || !string.Equals(Scope.Subject.Trim(), subject.Trim(), StringComparison.Ordinal))
@@ -195,8 +196,9 @@ public sealed class EvalPlanSession(INeisEngine engine, NeisSessionController se
             throw new InvalidOperationException("평가계획 화면에서 [조회]를 누르지 못했습니다.");
 
         // 조회할 때 "변경사항이 반영되지 않았습니다" 가 뜨면 확인을 눌러 버린다
-        for (var i = 0; i < 3 && await reader.DialogTextAsync() is not null; i++)
-            await reader.ClickDialogAsync("확인");
+        // 뜬 알림을 <b>보고</b> 확인을 누른다. 작업 창은 세지 않는다 — 그것까지 세면 끝없이 돈다.
+        for (var i = 0; i < 3 && await reader.AlertTextAsync() is not null; i++)
+            await reader.ClickAlertAsync("확인");
     }
 
     /// <summary>지금 화면에 올라와 있는 (영역명, 성취기준) 쌍.</summary>

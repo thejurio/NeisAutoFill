@@ -235,6 +235,84 @@ public sealed class EvalScreenReader(IPage page)
           return d ? (d.innerText || '').replace(/\s+/g, ' ').trim() : null;
         }");
 
+    /// <summary>
+    /// <b>알림 상자</b>만 고르는 자바스크립트. 작업 창(일괄업로드 등)과 구분한다.
+    ///
+    /// 나이스는 <b>작업 창도 <c>role=dialog</c></b> 로 그린다. 그래서 "떠 있는 마지막 dialog" 를
+    /// 알림으로 보면 <b>업로드 창 자신을 알림으로 착각</b>한다 — 실제로 그래서 저장 확인을 못 누르고
+    /// "모르는 대화상자"로 멈췄다(실측 2026-08-22).
+    ///
+    /// 알림은 <b>그리드가 없고</b> 확인·예 같은 단추를 가진 작은 상자다. 그것만 고른다.
+    /// </summary>
+    private const string AlertsJs = """
+        () => {
+          const vis = e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
+          const ok = ['확인', '예', '아니오', '취소'];
+          return [...document.querySelectorAll('[role=dialog]')].filter(vis)
+            .filter(d => !d.querySelector('[role=grid]'))
+            .filter(d => [...d.querySelectorAll('[role=button], button, .cl-button')]
+              .some(b => ok.includes((b.innerText || '').trim())));
+        }
+        """;
+
+    /// <summary>지금 떠 있는 알림 상자의 글. 없으면 null.</summary>
+    public async Task<string?> AlertTextAsync() => await page.EvaluateAsync<string?>(
+        $$"""
+        () => {
+          const ds = ({{AlertsJs}})();
+          const d = ds[ds.length - 1];
+          return d ? (d.innerText || '').replace(/\s+/g, ' ').trim() : null;
+        }
+        """);
+
+    /// <summary>알림 상자의 단추를 누른다. 누를 것이 없으면 false.</summary>
+    public async Task<bool> ClickAlertAsync(string text)
+    {
+        var at = await page.EvaluateAsync<float[]?>(
+            $$"""
+            (t) => {
+              const vis = e => { const r = e.getBoundingClientRect(); return r.width > 2 && r.height > 2; };
+              const ds = ({{AlertsJs}})();
+              const d = ds[ds.length - 1];
+              if (!d) return null;
+              const x = [...d.querySelectorAll('[role=button], button, .cl-button')].filter(vis)
+                .find(e => (e.innerText || '').trim() === t);
+              if (!x) return null;
+              const r = x.getBoundingClientRect();
+              return [r.x + r.width / 2, r.y + r.height / 2];
+            }
+            """, text);
+
+        if (at is null) return false;
+
+        var before = await AlertTextAsync();
+        await page.Mouse.ClickAsync(at[0], at[1]);
+
+        // <b>닫히는 것을 보고</b> 넘어간다 — 누른 것과 닫힌 것은 다르다
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await AlertTextAsync() != before) return true;
+            await Task.Delay(30);
+        }
+
+        return true;
+    }
+
+    /// <summary>알림이 뜰 때까지 기다린다. 떴으면 그 글, 안 뜨면 null.</summary>
+    public async Task<string?> WaitForAlertAsync(TimeSpan limit, CancellationToken ct = default)
+    {
+        var deadline = DateTime.UtcNow + limit;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await AlertTextAsync() is { } text) return text;
+            await Task.Delay(30, ct);
+        }
+
+        return null;
+    }
+
     /// <summary>대화상자가 뜰 때까지 기다린다. 떴으면 그 글, 안 뜨면 null.</summary>
     public async Task<string?> WaitForDialogAsync(TimeSpan limit, CancellationToken ct = default)
     {

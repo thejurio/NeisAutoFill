@@ -324,7 +324,7 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
 
         if (!clicked) return new(EvalSaveOutcome.CannotSave, "[저장]을 누를 수 없습니다.", seen);
 
-        var first = await WaitDialogAsync(null, ct);
+        var first = await WaitAlertAsync(null, ct);
         if (first is null)
             return new(EvalSaveOutcome.UnknownDialog, "저장 확인창이 뜨지 않았습니다.", seen);
 
@@ -332,22 +332,22 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
 
         if (Nothing.Any(first.Contains))
         {
-            await reader.ClickDialogAsync("확인");
+            await reader.ClickAlertAsync("확인");
             return new(EvalSaveOutcome.NothingToSave, "바뀐 것이 없어 저장하지 않았습니다.", seen);
         }
 
         if (Done.Any(first.Contains))
         {
-            await reader.ClickDialogAsync("확인");
+            await reader.ClickAlertAsync("확인");
             return new(EvalSaveOutcome.Saved, "저장했습니다.", seen);
         }
 
         if (!Confirm.Any(first.Contains))
             return new(EvalSaveOutcome.UnknownDialog, $"모르는 대화상자입니다: {Trim(first)}", seen);
 
-        await reader.ClickDialogAsync("확인");
+        await reader.ClickAlertAsync("확인");
 
-        var done = await WaitDialogAsync(first, ct);
+        var done = await WaitAlertAsync(first, ct);
         if (done is null)
             return new(EvalSaveOutcome.UnknownDialog, "저장 완료 알림을 확인하지 못했습니다.", seen);
 
@@ -355,29 +355,32 @@ public sealed class EvalPlanWriter(IPage page, EvalScreenReader reader)
 
         if (Nothing.Any(done.Contains))
         {
-            await reader.ClickDialogAsync("확인");
+            await reader.ClickAlertAsync("확인");
             return new(EvalSaveOutcome.NothingToSave, "바뀐 것이 없어 저장하지 않았습니다.", seen);
         }
 
         if (!Done.Any(done.Contains))
             return new(EvalSaveOutcome.UnknownDialog, $"모르는 대화상자입니다: {Trim(done)}", seen);
 
-        await reader.ClickDialogAsync("확인");
+        await reader.ClickAlertAsync("확인");
 
         return new(EvalSaveOutcome.Saved, "저장하고 완료 알림까지 확인했습니다.", seen);
     }
 
     /// <summary>
-    /// <paramref name="previous"/> 와 <b>글이 다른</b> 상자가 뜰 때까지 기다린다.
+    /// <paramref name="previous"/> 와 <b>글이 다른 알림</b>이 뜰 때까지 기다린다.
     /// 상자가 사라진 것을 끝으로 보면 안 된다 — 다음 상자가 아직 안 뜬 것일 수 있다.
+    ///
+    /// <b>작업 창은 세지 않는다</b>(<see cref="EvalScreenReader.AlertTextAsync"/>) —
+    /// 일괄업로드 창을 알림으로 착각해 "모르는 대화상자"로 멈춘 적이 있다(2026-08-22).
     /// </summary>
-    private async Task<string?> WaitDialogAsync(string? previous, CancellationToken ct)
+    private async Task<string?> WaitAlertAsync(string? previous, CancellationToken ct)
     {
         var deadline = DateTime.UtcNow + ServerWait;
 
         while (DateTime.UtcNow < deadline)
         {
-            var text = await reader.DialogTextAsync();
+            var text = await reader.AlertTextAsync();
             if (text is not null && text != previous) return text;
 
             await Task.Delay(30, ct);
