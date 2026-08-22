@@ -126,6 +126,19 @@ public sealed class GradeGridController(MainViewModel main)
         // 셀을 고치는 중(TextBox)에도 통해야 해서 아래 조기 반환보다 먼저 본다.
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && OnLastRow(grid))
         {
+            // <b>빈 줄에서 한 번 더 Enter = 그만.</b> Esc 와 같이 그 줄을 없앤다(사용자 요청 2026-08-22).
+            // 이름을 썼으면 지금까지대로 다음 학생 줄로 이어진다.
+            if (_pending is DataRowView waiting && ReferenceEquals(grid.CurrentCell.Item, waiting))
+            {
+                grid.CommitEdit(DataGridEditingUnit.Row, true);   // 치던 글자를 살려 놓고 비었는지 본다
+                if (IsNameless(waiting))
+                {
+                    DropPendingIfEmpty(grid, commit: false);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
             AddStudentRow(grid);
             e.Handled = true;
             return;
@@ -221,6 +234,9 @@ public sealed class GradeGridController(MainViewModel main)
             // 이름을 고칠 길만 두 번 누르기로 따로 냈다(사용자 요청 2026-08-22).
             if (e.ClickCount >= 2)
             {
+                // 첫 번째 누르기로 잡힌 가로 한 줄은 푼다 — 이름을 고치는 중에 남아 있으면
+                // 무엇을 하고 있는지 헷갈린다(사용자 지적 2026-08-22).
+                grid.SelectedCells.Clear();
                 grid.CurrentCell = new DataGridCellInfo(row, cell.Column);
                 grid.BeginEdit();
                 e.Handled = true;
